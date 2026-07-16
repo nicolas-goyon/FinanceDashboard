@@ -14,9 +14,14 @@ CashFlowPage 1.0 qml/pages/CashFlowPage.qml
 SavingsPage 1.0 qml/pages/SavingsPage.qml
 InvestmentsPage 1.0 qml/pages/InvestmentsPage.qml
 ProjectsPage 1.0 qml/pages/ProjectsPage.qml
-DataEntryPage 1.0 qml/pages/DataEntryPage.qml
+TransactionsManagementPage 1.0 qml/pages/TransactionsManagementPage.qml
+AccountManagementLandingPage 1.0 qml/pages/AccountManagementLandingPage.qml
+DatabaseManagementPage 1.0 qml/pages/DatabaseManagementPage.qml
 OtherLegacyPage 1.0 qml/pages/OtherLegacyPage.qml
 ImportSnapshotPage 1.0 qml/pages/ImportSnapshotPage.qml
 CategoriesManagePage 1.0 qml/pages/CategoriesManagePage.qml
+AccountsManagePage 1.0 qml/pages/AccountsManagePage.qml
+AccountTypesCategoriesPage 1.0 qml/pages/AccountTypesCategoriesPage.qml
+AccountTransactionsPage 1.0 qml/pages/AccountTransactionsPage.qml
 depends QtQuick
 

@@ -10,10 +10,13 @@ import FinanceDashboard
 // CategoryController.h) — the same shared instance read by the "Add
 // transaction" form (DataEntryPage.qml) and the import review table
 // (ImportSnapshotPage.qml), so edits made here show up immediately on both.
-// In-memory only — resets on app restart, same scope as the rest of the app
-// (see ARCHITECTURE.MD § Category Management). Replaces the old keyword
-// auto-suggestion system, removed per product decision — categories/
-// subcategories are now a user-managed list picked manually everywhere.
+// DB-backed (categories/subcategories tables — see CategoryController.h and
+// ARCHITECTURE.MD § Category Management): every add/rename/recolor/remove
+// here writes through to SQLite immediately, so deletions are permanent
+// across restarts — hence the confirmation prompt before removing a
+// category. Replaces the old keyword auto-suggestion system, removed per
+// product decision — categories/subcategories are now a user-managed list
+// picked manually everywhere.
 
 Item {
     id: page
@@ -64,7 +67,6 @@ Item {
                     font.bold: true
                     color: "#cdd6f4"
                 }
-                Text { text: "[session only]"; font.pixelSize: 14; color: "#f38ba8" }
                 Item { Layout.fillWidth: true }
                 Rectangle {
                     width: 150; height: 30; radius: 4
@@ -175,7 +177,7 @@ Item {
                                         color: removeCatHover.hovered ? "#f38ba8" : "#6c7086"
                                     }
                                     HoverHandler { id: removeCatHover }
-                                    TapHandler { onTapped: CategoryController.removeCategory(catRow.index) }
+                                    TapHandler { onTapped: deleteCategoryDialog.openFor(catRow.index, catRow.modelData.name) }
                                 }
                             }
 
@@ -474,6 +476,76 @@ Item {
                                 CategoryController.setSubcategoryColor(subcategoryDialog.parentCategoryIndex, subcategoryDialog.editSubIndex, subcategoryDialog.selectedColor)
                             }
                             subcategoryDialog.close()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ── Delete category confirmation ────────────────────────────────────────
+    // Deleting a category also drops all of its subcategories, so this asks
+    // for an explicit confirmation before calling
+    // CategoryController.removeCategory() (per product request — no
+    // undo/history for category edits, see file header).
+    Popup {
+        id: deleteCategoryDialog
+        anchors.centerIn: parent
+        width: 340
+        padding: 20
+        modal: true
+
+        property int categoryIndex: -1
+        property string categoryName: ""
+
+        function openFor(idx, name) {
+            categoryIndex = idx
+            categoryName = name
+            open()
+        }
+
+        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+
+            Text {
+                text: "Delete category?"
+                font.pixelSize: 19
+                font.bold: true
+                color: "#cdd6f4"
+            }
+
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "This will remove “" + deleteCategoryDialog.categoryName
+                    + "” and all of its subcategories. This cannot be undone."
+                font.pixelSize: 14
+                color: "#a6adc8"
+            }
+
+            RowLayout {
+                Layout.topMargin: 6
+                Item { Layout.fillWidth: true }
+                Rectangle {
+                    width: 80; height: 30; radius: 4
+                    color: delCancelHover.hovered ? "#313244" : "#1e1e2e"
+                    border.color: "#313244"
+                    Text { anchors.centerIn: parent; text: "Cancel"; font.pixelSize: 15; color: "#cdd6f4" }
+                    HoverHandler { id: delCancelHover }
+                    TapHandler { onTapped: deleteCategoryDialog.close() }
+                }
+                Rectangle {
+                    width: 90; height: 30; radius: 4
+                    color: delConfirmHover.hovered ? "#5a2d36" : "#3d2028"
+                    border.color: "#f38ba8"
+                    Text { anchors.centerIn: parent; text: "Delete"; font.pixelSize: 15; font.bold: true; color: "#f38ba8" }
+                    HoverHandler { id: delConfirmHover }
+                    TapHandler {
+                        onTapped: {
+                            CategoryController.removeCategory(deleteCategoryDialog.categoryIndex)
+                            deleteCategoryDialog.close()
                         }
                     }
                 }

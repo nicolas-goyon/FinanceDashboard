@@ -184,7 +184,7 @@
                         {
                             "codegenResult": 2,
                             "column": 48,
-                            "durationMicroseconds": 4000,
+                            "durationMicroseconds": 2000,
                             "functionName": "onCompleted",
                             "line": 126,
                             "message": "Cannot generate efficient code for LoadElement on a sequence potentially affected by side effects"
@@ -224,7 +224,7 @@
                         {
                             "codegenResult": 2,
                             "column": 44,
-                            "durationMicroseconds": 0,
+                            "durationMicroseconds": 1000,
                             "functionName": "onClicked",
                             "line": 180,
                             "message": "Cannot generate efficient code for call to untyped JavaScript function"

@@ -1634,15 +1634,21 @@
 			null
 		],
 		[
-			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/CategoryController.h",
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/database/DatabaseManagementController.h",
 			"MU",
-			"IEQTOHGRIO/moc_CategoryController.cpp",
+			"BQRVYOGCH5/moc_DatabaseManagementController.cpp",
 			null
 		],
 		[
-			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/DataEntryController.h",
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/AccountController.h",
 			"MU",
-			"IEQTOHGRIO/moc_DataEntryController.cpp",
+			"IEQTOHGRIO/moc_AccountController.cpp",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/CategoryController.h",
+			"MU",
+			"IEQTOHGRIO/moc_CategoryController.cpp",
 			null
 		],
 		[
@@ -1688,6 +1694,30 @@
 			null
 		],
 		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountCategoriesTable.h",
+			"MU",
+			"VIF6ZRPZEV/moc_AccountCategoriesTable.cpp",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountHashesTable.h",
+			"MU",
+			"VIF6ZRPZEV/moc_AccountHashesTable.cpp",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountTypesTable.h",
+			"MU",
+			"VIF6ZRPZEV/moc_AccountTypesTable.cpp",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountsTable.h",
+			"MU",
+			"VIF6ZRPZEV/moc_AccountsTable.cpp",
+			null
+		],
+		[
 			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AssetEntriesTable.h",
 			"MU",
 			"VIF6ZRPZEV/moc_AssetEntriesTable.cpp",
@@ -1712,6 +1742,12 @@
 			null
 		],
 		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/TransactionsTable.h",
+			"MU",
+			"VIF6ZRPZEV/moc_TransactionsTable.cpp",
+			null
+		],
+		[
 			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/import/CheckingCsvTemplateV1.h",
 			"MU",
 			"HK2UQ27XJ4/moc_CheckingCsvTemplateV1.cpp",
@@ -1727,6 +1763,12 @@
 			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/import/ImportTemplateRegistry.h",
 			"MU",
 			"HK2UQ27XJ4/moc_ImportTemplateRegistry.cpp",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/Account.h",
+			"MU",
+			"M4YTXQ7V2H/moc_Account.cpp",
 			null
 		],
 		[
@@ -1757,6 +1799,18 @@
 			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/PortfolioData.h",
 			"MU",
 			"M4YTXQ7V2H/moc_PortfolioData.cpp",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/Transaction.h",
+			"MU",
+			"M4YTXQ7V2H/moc_Transaction.cpp",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/utils/AccountHashing.h",
+			"MU",
+			"VSCBVMNR7M/moc_AccountHashing.cpp",
 			null
 		],
 		[
@@ -1825,6 +1879,7 @@
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/investments",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/projects",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/database",
 		"C:/Qt/6.11.1/mingw_64/include/QtQml",
 		"C:/Qt/6.11.1/mingw_64/include",
 		"C:/Qt/6.11.1/mingw_64/include/QtCore",
@@ -1885,15 +1940,20 @@
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/components/KpiCard_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/components/MoneyFlow_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/components/SidebarCategory_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/AccountManagementLandingPage_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/AccountTransactionsPage_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/AccountTypesCategoriesPage_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/AccountsManagePage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/CashFlowPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/CategoriesManagePage_qml.cpp",
-		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/DataEntryPage_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/DatabaseManagementPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/ImportSnapshotPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/InvestmentsPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/OtherLegacyPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/OverviewPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/ProjectsPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/SavingsPage_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/TransactionsManagementPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qmlcache_loader.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/financedashboard_qmltyperegistrations.cpp"
 	],
@@ -1913,12 +1973,17 @@
 			null
 		],
 		[
-			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/CategoryController.cpp",
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/database/DatabaseManagementController.cpp",
 			"MU",
 			null
 		],
 		[
-			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/DataEntryController.cpp",
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/AccountController.cpp",
+			"MU",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/CategoryController.cpp",
 			"MU",
 			null
 		],
@@ -1958,6 +2023,26 @@
 			null
 		],
 		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountCategoriesTable.cpp",
+			"MU",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountHashesTable.cpp",
+			"MU",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountTypesTable.cpp",
+			"MU",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountsTable.cpp",
+			"MU",
+			null
+		],
+		[
 			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AssetEntriesTable.cpp",
 			"MU",
 			null
@@ -1974,6 +2059,11 @@
 		],
 		[
 			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SubcategoriesTable.cpp",
+			"MU",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/TransactionsTable.cpp",
 			"MU",
 			null
 		],
@@ -2018,15 +2108,20 @@
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/components/KpiCard_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/components/MoneyFlow_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/components/SidebarCategory_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/AccountManagementLandingPage_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/AccountTransactionsPage_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/AccountTypesCategoriesPage_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/AccountsManagePage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/CashFlowPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/CategoriesManagePage_qml.cpp",
-		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/DataEntryPage_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/DatabaseManagementPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/ImportSnapshotPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/InvestmentsPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/OtherLegacyPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/OverviewPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/ProjectsPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/SavingsPage_qml.cpp",
+		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qml/pages/TransactionsManagementPage_qml.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.rcc/qmlcache/FinanceDashboard_qmlcache_loader.cpp",
 		"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/financedashboard_qmltyperegistrations.cpp"
 	],

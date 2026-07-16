@@ -96,14 +96,23 @@ public:
     Q_INVOKABLE void setSubcategoryColor(int categoryIndex, int subIndex, const QString& color);
     Q_INVOKABLE void removeSubcategory(int categoryIndex, int subIndex);
 
+    // Re-reads categories/subcategories from Database — no auto-reseed, even
+    // if the result is empty (deliberately: this is also what "Reset
+    // Database" in Database Management uses to refresh this singleton after
+    // wiping the table, and that action must leave the list genuinely empty,
+    // not silently repopulate it — see ARCHITECTURE.MD § Database
+    // Management). "Reset to Mock" reseeds explicitly through Database
+    // first, then calls this to pick the fresh rows up.
+    Q_INVOKABLE void reload();
+
 signals:
     void categoriesChanged();
 
 private:
     // Seeds the original mock category/subcategory list into the DB (and
     // m_categories) the first time the app runs against an empty categories
-    // table. Only called from the constructor when Database::loadCategories()
-    // comes back empty.
+    // table. Called from the constructor, and from reload(), whenever
+    // Database::loadCategories() comes back empty.
     void seedDefaults();
 
     QVector<Data::Category> m_categories;

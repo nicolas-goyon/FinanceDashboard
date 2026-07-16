@@ -8,49 +8,19 @@
                 }
             ],
             "className": "DataEntryController",
-            "lineNumber": 18,
+            "lineNumber": 27,
             "methods": [
                 {
                     "access": "public",
-                    "arguments": [
-                        {
-                            "name": "name",
-                            "type": "QString"
-                        },
-                        {
-                            "name": "type",
-                            "type": "QString"
-                        }
-                    ],
-                    "index": 2,
-                    "lineNumber": 43,
-                    "name": "addAccount",
-                    "returnType": "void"
-                },
-                {
-                    "access": "public",
-                    "arguments": [
-                        {
-                            "name": "index",
-                            "type": "int"
-                        }
-                    ],
-                    "index": 3,
-                    "lineNumber": 44,
-                    "name": "removeAccount",
-                    "returnType": "void"
-                },
-                {
-                    "access": "public",
-                    "index": 4,
-                    "lineNumber": 50,
+                    "index": 1,
+                    "lineNumber": 46,
                     "name": "saveSnapshot",
                     "returnType": "void"
                 },
                 {
                     "access": "public",
-                    "index": 5,
-                    "lineNumber": 51,
+                    "index": 2,
+                    "lineNumber": 47,
                     "name": "addTransaction",
                     "returnType": "void"
                 }
@@ -58,44 +28,11 @@
             "object": true,
             "properties": [
                 {
-                    "constant": false,
+                    "constant": true,
                     "designable": true,
                     "final": false,
                     "index": 0,
-                    "lineNumber": 28,
-                    "name": "accounts",
-                    "notify": "accountsChanged",
-                    "override": false,
-                    "read": "accounts",
-                    "required": false,
-                    "scriptable": true,
-                    "stored": true,
-                    "type": "QVariantList",
-                    "user": false,
-                    "virtual": false
-                },
-                {
-                    "constant": true,
-                    "designable": true,
-                    "final": false,
-                    "index": 1,
-                    "lineNumber": 29,
-                    "name": "accountTypes",
-                    "override": false,
-                    "read": "accountTypes",
-                    "required": false,
-                    "scriptable": true,
-                    "stored": true,
-                    "type": "QStringList",
-                    "user": false,
-                    "virtual": false
-                },
-                {
-                    "constant": true,
-                    "designable": true,
-                    "final": false,
-                    "index": 2,
-                    "lineNumber": 31,
+                    "lineNumber": 33,
                     "name": "historyRows",
                     "override": false,
                     "read": "historyRows",
@@ -110,8 +47,8 @@
                     "constant": true,
                     "designable": true,
                     "final": false,
-                    "index": 3,
-                    "lineNumber": 33,
+                    "index": 1,
+                    "lineNumber": 35,
                     "name": "annualRows",
                     "override": false,
                     "read": "annualRows",
@@ -126,8 +63,8 @@
                     "constant": false,
                     "designable": true,
                     "final": false,
-                    "index": 4,
-                    "lineNumber": 34,
+                    "index": 2,
+                    "lineNumber": 36,
                     "name": "statusText",
                     "notify": "statusChanged",
                     "override": false,
@@ -145,14 +82,7 @@
                 {
                     "access": "public",
                     "index": 0,
-                    "lineNumber": 54,
-                    "name": "accountsChanged",
-                    "returnType": "void"
-                },
-                {
-                    "access": "public",
-                    "index": 1,
-                    "lineNumber": 55,
+                    "lineNumber": 50,
                     "name": "statusChanged",
                     "returnType": "void"
                 }

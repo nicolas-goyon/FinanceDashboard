@@ -1,0 +1,430 @@
+{
+    "classes": [
+        {
+            "classInfos": [
+                {
+                    "name": "QML.Element",
+                    "value": "auto"
+                },
+                {
+                    "name": "QML.Singleton",
+                    "value": "true"
+                }
+            ],
+            "className": "AccountController",
+            "lineNumber": 58,
+            "methods": [
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "name",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "type",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "category",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "currency",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "notes",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 4,
+                    "lineNumber": 81,
+                    "name": "addAccount",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "index",
+                            "type": "int"
+                        },
+                        {
+                            "name": "name",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "type",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "category",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "currency",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "notes",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 5,
+                    "lineNumber": 83,
+                    "name": "updateAccount",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "index",
+                            "type": "int"
+                        }
+                    ],
+                    "index": 6,
+                    "lineNumber": 85,
+                    "name": "removeAccount",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "name",
+                            "type": "QString"
+                        },
+                        {
+                            "name": "color",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 7,
+                    "lineNumber": 88,
+                    "name": "addAccountCategory",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "index",
+                            "type": "int"
+                        },
+                        {
+                            "name": "newName",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 8,
+                    "lineNumber": 89,
+                    "name": "renameAccountCategory",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "index",
+                            "type": "int"
+                        },
+                        {
+                            "name": "color",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 9,
+                    "lineNumber": 90,
+                    "name": "setAccountCategoryColor",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "index",
+                            "type": "int"
+                        }
+                    ],
+                    "index": 10,
+                    "lineNumber": 91,
+                    "name": "removeAccountCategory",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "categoryName",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 11,
+                    "isConst": true,
+                    "lineNumber": 93,
+                    "name": "accountCategoryColor",
+                    "returnType": "QString"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "name",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 12,
+                    "lineNumber": 97,
+                    "name": "addAccountType",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "index",
+                            "type": "int"
+                        },
+                        {
+                            "name": "newName",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 13,
+                    "lineNumber": 98,
+                    "name": "renameAccountType",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "index",
+                            "type": "int"
+                        }
+                    ],
+                    "index": 14,
+                    "lineNumber": 99,
+                    "name": "removeAccountType",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "accountIndex",
+                            "type": "int"
+                        },
+                        {
+                            "name": "hash",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 15,
+                    "lineNumber": 107,
+                    "name": "addHash",
+                    "returnType": "bool"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "accountIndex",
+                            "type": "int"
+                        },
+                        {
+                            "name": "hash",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 16,
+                    "lineNumber": 108,
+                    "name": "linkAccountHash",
+                    "returnType": "bool"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "accountIndex",
+                            "type": "int"
+                        },
+                        {
+                            "name": "hashIndex",
+                            "type": "int"
+                        }
+                    ],
+                    "index": 17,
+                    "lineNumber": 109,
+                    "name": "removeHash",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "accountIndex",
+                            "type": "int"
+                        },
+                        {
+                            "name": "hash",
+                            "type": "QString"
+                        }
+                    ],
+                    "index": 18,
+                    "isConst": true,
+                    "lineNumber": 110,
+                    "name": "accountHasHash",
+                    "returnType": "bool"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "accountIndex",
+                            "type": "int"
+                        }
+                    ],
+                    "index": 19,
+                    "isConst": true,
+                    "lineNumber": 117,
+                    "name": "transactionsForAccount",
+                    "returnType": "QVariantList"
+                },
+                {
+                    "access": "public",
+                    "arguments": [
+                        {
+                            "name": "accountIndex",
+                            "type": "int"
+                        }
+                    ],
+                    "index": 20,
+                    "isConst": true,
+                    "lineNumber": 118,
+                    "name": "transactionCountForAccount",
+                    "returnType": "int"
+                },
+                {
+                    "access": "public",
+                    "index": 21,
+                    "lineNumber": 131,
+                    "name": "reload",
+                    "returnType": "void"
+                }
+            ],
+            "object": true,
+            "properties": [
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 0,
+                    "lineNumber": 64,
+                    "name": "accounts",
+                    "notify": "accountsChanged",
+                    "override": false,
+                    "read": "accounts",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QVariantList",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 1,
+                    "lineNumber": 65,
+                    "name": "accountCategories",
+                    "notify": "accountCategoriesChanged",
+                    "override": false,
+                    "read": "accountCategories",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QVariantList",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 2,
+                    "lineNumber": 66,
+                    "name": "accountTypes",
+                    "notify": "accountTypesChanged",
+                    "override": false,
+                    "read": "accountTypes",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QVariantList",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": false,
+                    "designable": true,
+                    "final": false,
+                    "index": 3,
+                    "lineNumber": 67,
+                    "name": "statusText",
+                    "notify": "statusChanged",
+                    "override": false,
+                    "read": "statusText",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QString",
+                    "user": false,
+                    "virtual": false
+                }
+            ],
+            "qualifiedClassName": "AccountController",
+            "signals": [
+                {
+                    "access": "public",
+                    "index": 0,
+                    "lineNumber": 134,
+                    "name": "accountsChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "index": 1,
+                    "lineNumber": 135,
+                    "name": "accountCategoriesChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "index": 2,
+                    "lineNumber": 136,
+                    "name": "accountTypesChanged",
+                    "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "index": 3,
+                    "lineNumber": 137,
+                    "name": "statusChanged",
+                    "returnType": "void"
+                }
+            ],
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QObject"
+                }
+            ]
+        }
+    ],
+    "inputFile": "AccountController.h",
+    "outputRevision": 69
+}

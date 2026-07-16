@@ -6,19 +6,19 @@
                 {
                     "entries": [
                         {
-                            "codegenResult": 0,
-                            "column": 39,
-                            "durationMicroseconds": 1000,
-                            "functionName": "typeColors",
-                            "line": 18,
-                            "message": ""
+                            "codegenResult": 2,
+                            "column": 5,
+                            "durationMicroseconds": 0,
+                            "functionName": "categoryBadgeColor",
+                            "line": 28,
+                            "message": "Functions without type annotations won't be compiled"
                         },
                         {
                             "codegenResult": 2,
                             "column": 23,
                             "durationMicroseconds": 0,
                             "functionName": "contentWidth",
-                            "line": 26,
+                            "line": 35,
                             "message": "Could not find property \"contentWidth\"."
                         },
                         {
@@ -26,7 +26,7 @@
                             "column": 23,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 25,
+                            "line": 34,
                             "message": "Could not find property \"fill\"."
                         },
                         {
@@ -34,15 +34,15 @@
                             "column": 20,
                             "durationMicroseconds": 0,
                             "functionName": "width",
-                            "line": 31,
+                            "line": 40,
                             "message": ""
                         },
                         {
                             "codegenResult": 0,
                             "column": 30,
-                            "durationMicroseconds": 3000,
+                            "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 46,
+                            "line": 55,
                             "message": ""
                         },
                         {
@@ -50,7 +50,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "width",
-                            "line": 47,
+                            "line": 56,
                             "message": ""
                         },
                         {
@@ -58,7 +58,7 @@
                             "column": 31,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 55,
+                            "line": 64,
                             "message": ""
                         },
                         {
@@ -66,7 +66,7 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 54,
+                            "line": 63,
                             "message": ""
                         },
                         {
@@ -74,7 +74,7 @@
                             "column": 37,
                             "durationMicroseconds": 0,
                             "functionName": "implicitHeight",
-                            "line": 71,
+                            "line": 80,
                             "message": ""
                         },
                         {
@@ -82,7 +82,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "title",
-                            "line": 72,
+                            "line": 81,
                             "message": ""
                         },
                         {
@@ -90,7 +90,7 @@
                             "column": 39,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 76,
+                            "line": 85,
                             "message": ""
                         },
                         {
@@ -98,7 +98,7 @@
                             "column": 49,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 86,
+                            "line": 95,
                             "message": ""
                         },
                         {
@@ -106,15 +106,15 @@
                             "column": 36,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 96,
+                            "line": 104,
                             "message": ""
                         },
                         {
                             "codegenResult": 0,
                             "column": 40,
-                            "durationMicroseconds": 0,
+                            "durationMicroseconds": 1000,
                             "functionName": "color",
-                            "line": 103,
+                            "line": 111,
                             "message": ""
                         },
                         {
@@ -122,7 +122,7 @@
                             "column": 53,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 106,
+                            "line": 114,
                             "message": ""
                         },
                         {
@@ -130,7 +130,15 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 113,
+                            "line": 121,
+                            "message": "Cannot generate efficient code for internal conversion with incompatible or ambiguous types: call to method rgba, returning QVariant -> QColor stored as QVariant"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 55,
+                            "durationMicroseconds": 0,
+                            "functionName": "color",
+                            "line": 122,
                             "message": "Cannot access value for name page"
                         },
                         {
@@ -138,47 +146,63 @@
                             "column": 51,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 116,
-                            "message": "Cannot load property type from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/DataEntryPage.qml)::modelData with type QVariant."
+                            "line": 125,
+                            "message": "Cannot load property category from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/DataEntryPage.qml)::modelData with type QVariant."
                         },
                         {
                             "codegenResult": 2,
                             "column": 52,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 118,
+                            "line": 127,
                             "message": "Cannot access value for name page"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 52,
+                            "durationMicroseconds": 0,
+                            "functionName": "elide",
+                            "line": 128,
+                            "message": ""
                         },
                         {
                             "codegenResult": 0,
                             "column": 63,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 115,
+                            "line": 124,
                             "message": ""
                         },
                         {
                             "codegenResult": 2,
-                            "column": 47,
+                            "column": 51,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 123,
+                            "line": 135,
                             "message": "Cannot load property name from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/DataEntryPage.qml)::modelData with type QVariant."
                         },
                         {
                             "codegenResult": 0,
-                            "column": 48,
+                            "column": 52,
                             "durationMicroseconds": 0,
                             "functionName": "elide",
-                            "line": 126,
+                            "line": 138,
                             "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 51,
+                            "durationMicroseconds": 0,
+                            "functionName": "text",
+                            "line": 141,
+                            "message": "Cannot load property type from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/DataEntryPage.qml)::modelData with type QVariant."
                         },
                         {
                             "codegenResult": 2,
                             "column": 62,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 133,
+                            "line": 151,
                             "message": "Could not find property \"horizontalAlignment\"."
                         },
                         {
@@ -186,7 +210,7 @@
                             "column": 59,
                             "durationMicroseconds": 0,
                             "functionName": "inputMethodHints",
-                            "line": 136,
+                            "line": 154,
                             "message": "Could not find property \"inputMethodHints\"."
                         },
                         {
@@ -194,55 +218,23 @@
                             "column": 59,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 140,
+                            "line": 158,
                             "message": "Cannot access value for name balanceField"
                         },
                         {
                             "codegenResult": 0,
-                            "column": 48,
+                            "column": 39,
                             "durationMicroseconds": 0,
-                            "functionName": "color",
-                            "line": 147,
+                            "functionName": "wrapMode",
+                            "line": 168,
                             "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 55,
-                            "durationMicroseconds": 0,
-                            "functionName": "color",
-                            "line": 148,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 52,
-                            "durationMicroseconds": 0,
-                            "functionName": "color",
-                            "line": 154,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 63,
-                            "durationMicroseconds": 0,
-                            "functionName": "centerIn",
-                            "line": 150,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 55,
-                            "durationMicroseconds": 0,
-                            "functionName": "onTapped",
-                            "line": 158,
-                            "message": "Cannot access value for name controller"
                         },
                         {
                             "codegenResult": 0,
                             "column": 40,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 173,
+                            "line": 183,
                             "message": ""
                         },
                         {
@@ -250,31 +242,7 @@
                             "column": 55,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 176,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 56,
-                            "durationMicroseconds": 0,
-                            "functionName": "onTapped",
-                            "line": 182,
-                            "message": "Cannot retrieve a non-object type by ID: addAccountDialog"
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 40,
-                            "durationMicroseconds": 0,
-                            "functionName": "color",
-                            "line": 187,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 55,
-                            "durationMicroseconds": 0,
-                            "functionName": "centerIn",
-                            "line": 190,
+                            "line": 186,
                             "message": ""
                         },
                         {
@@ -282,7 +250,7 @@
                             "column": 56,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 197,
+                            "line": 193,
                             "message": ""
                         },
                         {
@@ -290,7 +258,7 @@
                             "column": 37,
                             "durationMicroseconds": 0,
                             "functionName": "implicitHeight",
-                            "line": 208,
+                            "line": 204,
                             "message": ""
                         },
                         {
@@ -298,7 +266,7 @@
                             "column": 39,
                             "durationMicroseconds": 0,
                             "functionName": "alignment",
-                            "line": 207,
+                            "line": 203,
                             "message": ""
                         },
                         {
@@ -306,7 +274,7 @@
                             "column": 39,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 213,
+                            "line": 209,
                             "message": ""
                         },
                         {
@@ -314,7 +282,7 @@
                             "column": 47,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 226,
+                            "line": 222,
                             "message": "Cannot access value for name txLabel"
                         },
                         {
@@ -322,7 +290,7 @@
                             "column": 54,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 237,
+                            "line": 233,
                             "message": "Could not find property \"horizontalAlignment\"."
                         },
                         {
@@ -330,7 +298,7 @@
                             "column": 51,
                             "durationMicroseconds": 0,
                             "functionName": "inputMethodHints",
-                            "line": 240,
+                            "line": 236,
                             "message": "Could not find property \"inputMethodHints\"."
                         },
                         {
@@ -338,7 +306,7 @@
                             "column": 51,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 244,
+                            "line": 240,
                             "message": "Cannot access value for name txAmount"
                         },
                         {
@@ -346,7 +314,7 @@
                             "column": 40,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 250,
+                            "line": 246,
                             "message": "Could not find property \"model\"."
                         },
                         {
@@ -354,7 +322,7 @@
                             "column": 65,
                             "durationMicroseconds": 0,
                             "functionName": "subNames",
-                            "line": 255,
+                            "line": 251,
                             "message": "Cannot use shadowable base type for further lookups: CategoryController::categories with type QVariantList"
                         },
                         {
@@ -362,7 +330,7 @@
                             "column": 40,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 259,
+                            "line": 255,
                             "message": "Could not find property \"model\"."
                         },
                         {
@@ -370,7 +338,7 @@
                             "column": 42,
                             "durationMicroseconds": 0,
                             "functionName": "enabled",
-                            "line": 260,
+                            "line": 256,
                             "message": "Could not find property \"enabled\"."
                         },
                         {
@@ -378,7 +346,7 @@
                             "column": 39,
                             "durationMicroseconds": 0,
                             "functionName": "wrapMode",
-                            "line": 267,
+                            "line": 263,
                             "message": ""
                         },
                         {
@@ -386,7 +354,7 @@
                             "column": 36,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 275,
+                            "line": 271,
                             "message": ""
                         },
                         {
@@ -394,7 +362,7 @@
                             "column": 47,
                             "durationMicroseconds": 0,
                             "functionName": "alignment",
-                            "line": 273,
+                            "line": 269,
                             "message": ""
                         },
                         {
@@ -402,7 +370,7 @@
                             "column": 51,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 278,
+                            "line": 274,
                             "message": ""
                         },
                         {
@@ -410,7 +378,7 @@
                             "column": 52,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 285,
+                            "line": 281,
                             "message": ""
                         },
                         {
@@ -418,7 +386,7 @@
                             "column": 33,
                             "durationMicroseconds": 0,
                             "functionName": "implicitHeight",
-                            "line": 294,
+                            "line": 290,
                             "message": ""
                         },
                         {
@@ -426,7 +394,7 @@
                             "column": 35,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 299,
+                            "line": 295,
                             "message": ""
                         },
                         {
@@ -434,23 +402,23 @@
                             "column": 45,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
+                            "line": 304,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 158,
+                            "durationMicroseconds": 0,
+                            "functionName": "horizontalAlignment",
+                            "line": 307,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 158,
+                            "durationMicroseconds": 0,
+                            "functionName": "horizontalAlignment",
                             "line": 308,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 158,
-                            "durationMicroseconds": 0,
-                            "functionName": "horizontalAlignment",
-                            "line": 311,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 158,
-                            "durationMicroseconds": 0,
-                            "functionName": "horizontalAlignment",
-                            "line": 312,
                             "message": ""
                         },
                         {
@@ -458,7 +426,7 @@
                             "column": 32,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 317,
+                            "line": 313,
                             "message": ""
                         },
                         {
@@ -466,7 +434,7 @@
                             "column": 36,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 323,
+                            "line": 319,
                             "message": ""
                         },
                         {
@@ -474,7 +442,7 @@
                             "column": 49,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 326,
+                            "line": 322,
                             "message": ""
                         },
                         {
@@ -482,7 +450,7 @@
                             "column": 74,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 327,
+                            "line": 323,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -490,7 +458,7 @@
                             "column": 74,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 328,
+                            "line": 324,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -498,7 +466,7 @@
                             "column": 136,
                             "durationMicroseconds": 0,
                             "functionName": "elide",
-                            "line": 328,
+                            "line": 324,
                             "message": ""
                         },
                         {
@@ -506,7 +474,7 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 331,
+                            "line": 327,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -514,7 +482,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 333,
+                            "line": 329,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -522,7 +490,7 @@
                             "column": 58,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 334,
+                            "line": 330,
                             "message": ""
                         },
                         {
@@ -530,7 +498,7 @@
                             "column": 74,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 336,
+                            "line": 332,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -538,7 +506,7 @@
                             "column": 153,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 336,
+                            "line": 332,
                             "message": ""
                         },
                         {
@@ -546,7 +514,7 @@
                             "column": 33,
                             "durationMicroseconds": 0,
                             "functionName": "implicitHeight",
-                            "line": 346,
+                            "line": 342,
                             "message": ""
                         },
                         {
@@ -554,7 +522,7 @@
                             "column": 35,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 351,
+                            "line": 347,
                             "message": ""
                         },
                         {
@@ -562,6 +530,30 @@
                             "column": 45,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
+                            "line": 356,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 162,
+                            "durationMicroseconds": 0,
+                            "functionName": "horizontalAlignment",
+                            "line": 358,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 162,
+                            "durationMicroseconds": 0,
+                            "functionName": "horizontalAlignment",
+                            "line": 359,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 162,
+                            "durationMicroseconds": 0,
+                            "functionName": "horizontalAlignment",
                             "line": 360,
                             "message": ""
                         },
@@ -570,31 +562,7 @@
                             "column": 162,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 362,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 162,
-                            "durationMicroseconds": 0,
-                            "functionName": "horizontalAlignment",
-                            "line": 363,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 162,
-                            "durationMicroseconds": 0,
-                            "functionName": "horizontalAlignment",
-                            "line": 364,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 162,
-                            "durationMicroseconds": 0,
-                            "functionName": "horizontalAlignment",
-                            "line": 365,
+                            "line": 361,
                             "message": ""
                         },
                         {
@@ -602,22 +570,78 @@
                             "column": 32,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 370,
+                            "line": 366,
                             "message": ""
                         },
                         {
                             "codegenResult": 0,
                             "column": 36,
-                            "durationMicroseconds": 1000,
+                            "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 376,
+                            "line": 372,
                             "message": ""
                         },
                         {
                             "codegenResult": 0,
                             "column": 49,
-                            "durationMicroseconds": 1000,
+                            "durationMicroseconds": 0,
                             "functionName": "fill",
+                            "line": 375,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 74,
+                            "durationMicroseconds": 0,
+                            "functionName": "text",
+                            "line": 376,
+                            "message": "Cannot access value for name modelData"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 74,
+                            "durationMicroseconds": 0,
+                            "functionName": "text",
+                            "line": 377,
+                            "message": "Cannot access value for name modelData"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 153,
+                            "durationMicroseconds": 0,
+                            "functionName": "horizontalAlignment",
+                            "line": 377,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 74,
+                            "durationMicroseconds": 0,
+                            "functionName": "text",
+                            "line": 378,
+                            "message": "Cannot access value for name modelData"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 153,
+                            "durationMicroseconds": 0,
+                            "functionName": "horizontalAlignment",
+                            "line": 378,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 74,
+                            "durationMicroseconds": 0,
+                            "functionName": "text",
+                            "line": 379,
+                            "message": "Cannot access value for name modelData"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 153,
+                            "durationMicroseconds": 0,
+                            "functionName": "horizontalAlignment",
                             "line": 379,
                             "message": ""
                         },
@@ -630,140 +654,12 @@
                             "message": "Cannot access value for name modelData"
                         },
                         {
-                            "codegenResult": 2,
-                            "column": 74,
-                            "durationMicroseconds": 0,
-                            "functionName": "text",
-                            "line": 381,
-                            "message": "Cannot access value for name modelData"
-                        },
-                        {
                             "codegenResult": 0,
                             "column": 153,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 381,
+                            "line": 380,
                             "message": ""
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 74,
-                            "durationMicroseconds": 0,
-                            "functionName": "text",
-                            "line": 382,
-                            "message": "Cannot access value for name modelData"
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 153,
-                            "durationMicroseconds": 0,
-                            "functionName": "horizontalAlignment",
-                            "line": 382,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 74,
-                            "durationMicroseconds": 0,
-                            "functionName": "text",
-                            "line": 383,
-                            "message": "Cannot access value for name modelData"
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 153,
-                            "durationMicroseconds": 0,
-                            "functionName": "horizontalAlignment",
-                            "line": 383,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 74,
-                            "durationMicroseconds": 0,
-                            "functionName": "text",
-                            "line": 384,
-                            "message": "Cannot access value for name modelData"
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 153,
-                            "durationMicroseconds": 0,
-                            "functionName": "horizontalAlignment",
-                            "line": 384,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 27,
-                            "durationMicroseconds": 0,
-                            "functionName": "centerIn",
-                            "line": 398,
-                            "message": "Could not find property \"centerIn\"."
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 39,
-                            "durationMicroseconds": 0,
-                            "functionName": "color",
-                            "line": 432,
-                            "message": "Cannot access value for name accountNameField"
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 28,
-                            "durationMicroseconds": 0,
-                            "functionName": "model",
-                            "line": 442,
-                            "message": "Could not find property \"model\"."
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 28,
-                            "durationMicroseconds": 0,
-                            "functionName": "color",
-                            "line": 451,
-                            "message": "Cannot access value for name accCancelHover"
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 46,
-                            "durationMicroseconds": 0,
-                            "functionName": "centerIn",
-                            "line": 453,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 44,
-                            "durationMicroseconds": 0,
-                            "functionName": "onTapped",
-                            "line": 455,
-                            "message": "Cannot access value for name addAccountDialog"
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 28,
-                            "durationMicroseconds": 0,
-                            "functionName": "color",
-                            "line": 459,
-                            "message": "Cannot access value for name accAddHover"
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 46,
-                            "durationMicroseconds": 0,
-                            "functionName": "centerIn",
-                            "line": 461,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 35,
-                            "durationMicroseconds": 0,
-                            "functionName": "onTapped",
-                            "line": 464,
-                            "message": "Cannot access value for name accountNameField"
                         }
                     ],
                     "filePath": "C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/DataEntryPage.qml"

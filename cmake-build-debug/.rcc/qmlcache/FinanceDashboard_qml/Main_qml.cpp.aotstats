@@ -10,7 +10,7 @@
                             "column": 39,
                             "durationMicroseconds": 2000,
                             "functionName": "categories",
-                            "line": 35,
+                            "line": 48,
                             "message": "Cannot generate efficient code for storing an array in a non-sequence type"
                         },
                         {
@@ -18,7 +18,7 @@
                             "column": 24,
                             "durationMicroseconds": 0,
                             "functionName": "top",
-                            "line": 70,
+                            "line": 91,
                             "message": ""
                         },
                         {
@@ -26,7 +26,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "bottom",
-                            "line": 70,
+                            "line": 91,
                             "message": ""
                         },
                         {
@@ -34,7 +34,7 @@
                             "column": 65,
                             "durationMicroseconds": 0,
                             "functionName": "left",
-                            "line": 70,
+                            "line": 91,
                             "message": ""
                         },
                         {
@@ -42,7 +42,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "contentHeight",
-                            "line": 76,
+                            "line": 97,
                             "message": ""
                         },
                         {
@@ -50,7 +50,7 @@
                             "column": 27,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 75,
+                            "line": 96,
                             "message": ""
                         },
                         {
@@ -58,7 +58,7 @@
                             "column": 24,
                             "durationMicroseconds": 0,
                             "functionName": "width",
-                            "line": 81,
+                            "line": 102,
                             "message": ""
                         },
                         {
@@ -66,7 +66,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 94,
+                            "line": 115,
                             "message": "Cannot retrieve a non-object type by ID: root"
                         },
                         {
@@ -74,7 +74,7 @@
                             "column": 40,
                             "durationMicroseconds": 0,
                             "functionName": "categoryLabel",
-                            "line": 99,
+                            "line": 120,
                             "message": "Cannot load property label from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/Main.qml)::modelData with type QVariant."
                         },
                         {
@@ -82,7 +82,7 @@
                             "column": 34,
                             "durationMicroseconds": 0,
                             "functionName": "actions",
-                            "line": 100,
+                            "line": 121,
                             "message": "Cannot load property actions from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/Main.qml)::modelData with type QVariant."
                         },
                         {
@@ -90,7 +90,7 @@
                             "column": 34,
                             "durationMicroseconds": 0,
                             "functionName": "current",
-                            "line": 101,
+                            "line": 122,
                             "message": "Cannot access value for name root"
                         },
                         {
@@ -98,15 +98,15 @@
                             "column": 37,
                             "durationMicroseconds": 0,
                             "functionName": "onSelected",
-                            "line": 102,
+                            "line": 123,
                             "message": "Cannot access value for name root"
                         },
                         {
                             "codegenResult": 2,
                             "column": 44,
-                            "durationMicroseconds": 0,
+                            "durationMicroseconds": 1000,
                             "functionName": "onActionTriggered",
-                            "line": 103,
+                            "line": 139,
                             "message": "Cannot load property label from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/Main.qml)::modelData with type QVariant."
                         },
                         {
@@ -114,7 +114,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "onActionTriggered",
-                            "line": 103,
+                            "line": 139,
                             "message": ""
                         },
                         {
@@ -122,7 +122,7 @@
                             "column": 24,
                             "durationMicroseconds": 0,
                             "functionName": "top",
-                            "line": 121,
+                            "line": 175,
                             "message": ""
                         },
                         {
@@ -130,7 +130,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "bottom",
-                            "line": 121,
+                            "line": 175,
                             "message": ""
                         },
                         {
@@ -138,7 +138,7 @@
                             "column": 65,
                             "durationMicroseconds": 0,
                             "functionName": "left",
-                            "line": 121,
+                            "line": 175,
                             "message": ""
                         },
                         {
@@ -146,7 +146,7 @@
                             "column": 18,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 131,
+                            "line": 185,
                             "message": "Cannot retrieve a non-object type by ID: root"
                         },
                         {
@@ -154,7 +154,7 @@
                             "column": 23,
                             "durationMicroseconds": 0,
                             "functionName": "currentIndex",
-                            "line": 132,
+                            "line": 187,
                             "message": "Cannot retrieve a non-object type by ID: root"
                         },
                         {
@@ -162,7 +162,7 @@
                             "column": 18,
                             "durationMicroseconds": 0,
                             "functionName": "top",
-                            "line": 128,
+                            "line": 182,
                             "message": ""
                         },
                         {
@@ -170,7 +170,7 @@
                             "column": 38,
                             "durationMicroseconds": 0,
                             "functionName": "bottom",
-                            "line": 128,
+                            "line": 182,
                             "message": ""
                         },
                         {
@@ -178,7 +178,7 @@
                             "column": 19,
                             "durationMicroseconds": 0,
                             "functionName": "left",
-                            "line": 129,
+                            "line": 183,
                             "message": ""
                         },
                         {
@@ -186,7 +186,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "right",
-                            "line": 129,
+                            "line": 183,
                             "message": ""
                         },
                         {
@@ -194,7 +194,7 @@
                             "column": 17,
                             "durationMicroseconds": 0,
                             "functionName": "active",
-                            "line": 150,
+                            "line": 207,
                             "message": "Cannot retrieve a non-object type by ID: root"
                         },
                         {
@@ -202,7 +202,7 @@
                             "column": 18,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 151,
+                            "line": 208,
                             "message": ""
                         },
                         {
@@ -210,7 +210,7 @@
                             "column": 26,
                             "durationMicroseconds": 0,
                             "functionName": "sourceComponent",
-                            "line": 152,
+                            "line": 209,
                             "message": ""
                         },
                         {
@@ -218,7 +218,7 @@
                             "column": 18,
                             "durationMicroseconds": 0,
                             "functionName": "top",
-                            "line": 147,
+                            "line": 204,
                             "message": ""
                         },
                         {
@@ -226,7 +226,7 @@
                             "column": 38,
                             "durationMicroseconds": 0,
                             "functionName": "bottom",
-                            "line": 147,
+                            "line": 204,
                             "message": ""
                         },
                         {
@@ -234,7 +234,7 @@
                             "column": 19,
                             "durationMicroseconds": 0,
                             "functionName": "left",
-                            "line": 148,
+                            "line": 205,
                             "message": ""
                         },
                         {
@@ -242,7 +242,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "right",
-                            "line": 148,
+                            "line": 205,
                             "message": ""
                         },
                         {
@@ -250,7 +250,7 @@
                             "column": 31,
                             "durationMicroseconds": 0,
                             "functionName": "onCloseRequested",
-                            "line": 158,
+                            "line": 215,
                             "message": "Cannot access value for name root"
                         },
                         {
@@ -258,7 +258,7 @@
                             "column": 17,
                             "durationMicroseconds": 0,
                             "functionName": "active",
-                            "line": 169,
+                            "line": 226,
                             "message": "Cannot retrieve a non-object type by ID: root"
                         },
                         {
@@ -266,7 +266,7 @@
                             "column": 18,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 170,
+                            "line": 227,
                             "message": ""
                         },
                         {
@@ -274,7 +274,7 @@
                             "column": 26,
                             "durationMicroseconds": 0,
                             "functionName": "sourceComponent",
-                            "line": 171,
+                            "line": 228,
                             "message": ""
                         },
                         {
@@ -282,7 +282,7 @@
                             "column": 18,
                             "durationMicroseconds": 0,
                             "functionName": "top",
-                            "line": 166,
+                            "line": 223,
                             "message": ""
                         },
                         {
@@ -290,7 +290,7 @@
                             "column": 38,
                             "durationMicroseconds": 0,
                             "functionName": "bottom",
-                            "line": 166,
+                            "line": 223,
                             "message": ""
                         },
                         {
@@ -298,7 +298,7 @@
                             "column": 19,
                             "durationMicroseconds": 0,
                             "functionName": "left",
-                            "line": 167,
+                            "line": 224,
                             "message": ""
                         },
                         {
@@ -306,7 +306,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "right",
-                            "line": 167,
+                            "line": 224,
                             "message": ""
                         },
                         {
@@ -314,7 +314,223 @@
                             "column": 31,
                             "durationMicroseconds": 0,
                             "functionName": "onCloseRequested",
-                            "line": 177,
+                            "line": 234,
+                            "message": "Cannot access value for name root"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 17,
+                            "durationMicroseconds": 0,
+                            "functionName": "active",
+                            "line": 245,
+                            "message": "Cannot retrieve a non-object type by ID: root"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 18,
+                            "durationMicroseconds": 0,
+                            "functionName": "visible",
+                            "line": 246,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 26,
+                            "durationMicroseconds": 0,
+                            "functionName": "sourceComponent",
+                            "line": 247,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 18,
+                            "durationMicroseconds": 0,
+                            "functionName": "top",
+                            "line": 242,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 38,
+                            "durationMicroseconds": 0,
+                            "functionName": "bottom",
+                            "line": 242,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 19,
+                            "durationMicroseconds": 0,
+                            "functionName": "left",
+                            "line": 243,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 48,
+                            "durationMicroseconds": 0,
+                            "functionName": "right",
+                            "line": 243,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 31,
+                            "durationMicroseconds": 0,
+                            "functionName": "onCloseRequested",
+                            "line": 253,
+                            "message": "Cannot access value for name root"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 42,
+                            "durationMicroseconds": 0,
+                            "functionName": "onViewTransactionsRequested",
+                            "line": 257,
+                            "message": "Cannot access value for name root"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 42,
+                            "durationMicroseconds": 0,
+                            "functionName": "onViewTransactionsRequested",
+                            "line": 257,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 17,
+                            "durationMicroseconds": 0,
+                            "functionName": "active",
+                            "line": 273,
+                            "message": "Cannot retrieve a non-object type by ID: root"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 18,
+                            "durationMicroseconds": 0,
+                            "functionName": "visible",
+                            "line": 274,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 26,
+                            "durationMicroseconds": 0,
+                            "functionName": "sourceComponent",
+                            "line": 275,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 18,
+                            "durationMicroseconds": 0,
+                            "functionName": "top",
+                            "line": 270,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 38,
+                            "durationMicroseconds": 0,
+                            "functionName": "bottom",
+                            "line": 270,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 19,
+                            "durationMicroseconds": 0,
+                            "functionName": "left",
+                            "line": 271,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 48,
+                            "durationMicroseconds": 0,
+                            "functionName": "right",
+                            "line": 271,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 27,
+                            "durationMicroseconds": 0,
+                            "functionName": "accountIndex",
+                            "line": 281,
+                            "message": "Cannot access value for name root"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 31,
+                            "durationMicroseconds": 0,
+                            "functionName": "onCloseRequested",
+                            "line": 284,
+                            "message": "Cannot access value for name root"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 17,
+                            "durationMicroseconds": 0,
+                            "functionName": "active",
+                            "line": 298,
+                            "message": "Cannot retrieve a non-object type by ID: root"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 18,
+                            "durationMicroseconds": 0,
+                            "functionName": "visible",
+                            "line": 299,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 26,
+                            "durationMicroseconds": 0,
+                            "functionName": "sourceComponent",
+                            "line": 300,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 18,
+                            "durationMicroseconds": 0,
+                            "functionName": "top",
+                            "line": 295,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 38,
+                            "durationMicroseconds": 0,
+                            "functionName": "bottom",
+                            "line": 295,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 19,
+                            "durationMicroseconds": 0,
+                            "functionName": "left",
+                            "line": 296,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 48,
+                            "durationMicroseconds": 0,
+                            "functionName": "right",
+                            "line": 296,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 31,
+                            "durationMicroseconds": 0,
+                            "functionName": "onCloseRequested",
+                            "line": 306,
                             "message": "Cannot access value for name root"
                         }
                     ],

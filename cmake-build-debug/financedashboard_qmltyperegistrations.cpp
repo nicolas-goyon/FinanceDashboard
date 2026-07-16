@@ -7,14 +7,17 @@
 #include <QtQml/qqml.h>
 #include <QtQml/qqmlmoduleregistration.h>
 
+#if __has_include(<AccountController.h>)
+#  include <AccountController.h>
+#endif
 #if __has_include(<CashFlowController.h>)
 #  include <CashFlowController.h>
 #endif
 #if __has_include(<CategoryController.h>)
 #  include <CategoryController.h>
 #endif
-#if __has_include(<DataEntryController.h>)
-#  include <DataEntryController.h>
+#if __has_include(<DatabaseManagementController.h>)
+#  include <DatabaseManagementController.h>
 #endif
 #if __has_include(<InvestmentsController.h>)
 #  include <InvestmentsController.h>
@@ -41,9 +44,10 @@
 Q_QMLTYPE_EXPORT void qml_register_types_FinanceDashboard()
 {
     QT_WARNING_PUSH QT_WARNING_DISABLE_DEPRECATED
+    qmlRegisterTypesAndRevisions<AccountController>("FinanceDashboard", 1);
     qmlRegisterTypesAndRevisions<CashFlowController>("FinanceDashboard", 1);
     qmlRegisterTypesAndRevisions<CategoryController>("FinanceDashboard", 1);
-    qmlRegisterTypesAndRevisions<DataEntryController>("FinanceDashboard", 1);
+    qmlRegisterTypesAndRevisions<DatabaseManagementController>("FinanceDashboard", 1);
     qmlRegisterTypesAndRevisions<InvestmentsController>("FinanceDashboard", 1);
     qmlRegisterTypesAndRevisions<NetWorthController>("FinanceDashboard", 1);
     qmlRegisterTypesAndRevisions<ProjectsController>("FinanceDashboard", 1);

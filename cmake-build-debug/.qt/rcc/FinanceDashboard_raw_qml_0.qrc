@@ -13,10 +13,15 @@
     <file alias="qml/pages/SavingsPage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/SavingsPage.qml</file>
     <file alias="qml/pages/InvestmentsPage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/InvestmentsPage.qml</file>
     <file alias="qml/pages/ProjectsPage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/ProjectsPage.qml</file>
-    <file alias="qml/pages/DataEntryPage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/DataEntryPage.qml</file>
+    <file alias="qml/pages/TransactionsManagementPage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/TransactionsManagementPage.qml</file>
+    <file alias="qml/pages/AccountManagementLandingPage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/AccountManagementLandingPage.qml</file>
+    <file alias="qml/pages/DatabaseManagementPage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/DatabaseManagementPage.qml</file>
     <file alias="qml/pages/OtherLegacyPage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/OtherLegacyPage.qml</file>
     <file alias="qml/pages/ImportSnapshotPage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/ImportSnapshotPage.qml</file>
     <file alias="qml/pages/CategoriesManagePage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/CategoriesManagePage.qml</file>
+    <file alias="qml/pages/AccountsManagePage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/AccountsManagePage.qml</file>
+    <file alias="qml/pages/AccountTypesCategoriesPage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/AccountTypesCategoriesPage.qml</file>
+    <file alias="qml/pages/AccountTransactionsPage.qml">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/AccountTransactionsPage.qml</file>
   </qresource>
 </RCC>
 

@@ -64,6 +64,7 @@ template <> constexpr inline auto CategoryController::qt_create_metaobjectdata<q
         "subIndex",
         "setSubcategoryColor",
         "removeSubcategory",
+        "reload",
         "categories",
         "QVariantList"
     };
@@ -115,10 +116,12 @@ template <> constexpr inline auto CategoryController::qt_create_metaobjectdata<q
         QtMocHelpers::MethodData<void(int, int)>(25, 6, QMC::AccessPublic, QMetaType::Void, {{
             { QMetaType::Int, 12 }, { QMetaType::Int, 23 },
         }}),
+        // Method 'reload'
+        QtMocHelpers::MethodData<void()>(26, 6, QMC::AccessPublic, QMetaType::Void),
     };
     QtMocHelpers::UintData qt_properties {
         // property 'categories'
-        QtMocHelpers::PropertyData<QVariantList>(26, 0x80000000 | 27, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 0),
+        QtMocHelpers::PropertyData<QVariantList>(27, 0x80000000 | 28, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 0),
     };
     QtMocHelpers::UintData qt_enums {
     };
@@ -160,6 +163,7 @@ void CategoryController::qt_static_metacall(QObject *_o, QMetaObject::Call _c, i
         case 9: _t->renameSubcategory((*reinterpret_cast<std::add_pointer_t<int>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<int>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[3]))); break;
         case 10: _t->setSubcategoryColor((*reinterpret_cast<std::add_pointer_t<int>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<int>>(_a[2])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[3]))); break;
         case 11: _t->removeSubcategory((*reinterpret_cast<std::add_pointer_t<int>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<int>>(_a[2]))); break;
+        case 12: _t->reload(); break;
         default: ;
         }
     }
@@ -195,14 +199,14 @@ int CategoryController::qt_metacall(QMetaObject::Call _c, int _id, void **_a)
     if (_id < 0)
         return _id;
     if (_c == QMetaObject::InvokeMetaMethod) {
-        if (_id < 12)
+        if (_id < 13)
             qt_static_metacall(this, _c, _id, _a);
-        _id -= 12;
+        _id -= 13;
     }
     if (_c == QMetaObject::RegisterMethodArgumentMetaType) {
-        if (_id < 12)
+        if (_id < 13)
             *reinterpret_cast<QMetaType *>(_a[0]) = QMetaType();
-        _id -= 12;
+        _id -= 13;
     }
     if (_c == QMetaObject::ReadProperty || _c == QMetaObject::WriteProperty
             || _c == QMetaObject::ResetProperty || _c == QMetaObject::BindableProperty

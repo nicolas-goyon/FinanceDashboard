@@ -7,6 +7,170 @@ import QtQuick.tooling 1.2
 
 Module {
     Component {
+        file: "AccountController.h"
+        lineNumber: 58
+        name: "AccountController"
+        accessSemantics: "reference"
+        prototype: "QObject"
+        exports: ["FinanceDashboard/AccountController 1.0"]
+        isCreatable: false
+        isSingleton: true
+        exportMetaObjectRevisions: [256]
+        Property {
+            name: "accounts"
+            type: "QVariantList"
+            read: "accounts"
+            notify: "accountsChanged"
+            index: 0
+            lineNumber: 64
+            isReadonly: true
+        }
+        Property {
+            name: "accountCategories"
+            type: "QVariantList"
+            read: "accountCategories"
+            notify: "accountCategoriesChanged"
+            index: 1
+            lineNumber: 65
+            isReadonly: true
+        }
+        Property {
+            name: "accountTypes"
+            type: "QVariantList"
+            read: "accountTypes"
+            notify: "accountTypesChanged"
+            index: 2
+            lineNumber: 66
+            isReadonly: true
+        }
+        Property {
+            name: "statusText"
+            type: "QString"
+            read: "statusText"
+            notify: "statusChanged"
+            index: 3
+            lineNumber: 67
+            isReadonly: true
+        }
+        Signal { name: "accountsChanged"; lineNumber: 134 }
+        Signal { name: "accountCategoriesChanged"; lineNumber: 135 }
+        Signal { name: "accountTypesChanged"; lineNumber: 136 }
+        Signal { name: "statusChanged"; lineNumber: 137 }
+        Method {
+            name: "addAccount"
+            lineNumber: 81
+            Parameter { name: "name"; type: "QString" }
+            Parameter { name: "type"; type: "QString" }
+            Parameter { name: "category"; type: "QString" }
+            Parameter { name: "currency"; type: "QString" }
+            Parameter { name: "notes"; type: "QString" }
+        }
+        Method {
+            name: "updateAccount"
+            lineNumber: 83
+            Parameter { name: "index"; type: "int" }
+            Parameter { name: "name"; type: "QString" }
+            Parameter { name: "type"; type: "QString" }
+            Parameter { name: "category"; type: "QString" }
+            Parameter { name: "currency"; type: "QString" }
+            Parameter { name: "notes"; type: "QString" }
+        }
+        Method {
+            name: "removeAccount"
+            lineNumber: 85
+            Parameter { name: "index"; type: "int" }
+        }
+        Method {
+            name: "addAccountCategory"
+            lineNumber: 88
+            Parameter { name: "name"; type: "QString" }
+            Parameter { name: "color"; type: "QString" }
+        }
+        Method {
+            name: "renameAccountCategory"
+            lineNumber: 89
+            Parameter { name: "index"; type: "int" }
+            Parameter { name: "newName"; type: "QString" }
+        }
+        Method {
+            name: "setAccountCategoryColor"
+            lineNumber: 90
+            Parameter { name: "index"; type: "int" }
+            Parameter { name: "color"; type: "QString" }
+        }
+        Method {
+            name: "removeAccountCategory"
+            lineNumber: 91
+            Parameter { name: "index"; type: "int" }
+        }
+        Method {
+            name: "accountCategoryColor"
+            type: "QString"
+            isMethodConstant: true
+            lineNumber: 93
+            Parameter { name: "categoryName"; type: "QString" }
+        }
+        Method {
+            name: "addAccountType"
+            lineNumber: 97
+            Parameter { name: "name"; type: "QString" }
+        }
+        Method {
+            name: "renameAccountType"
+            lineNumber: 98
+            Parameter { name: "index"; type: "int" }
+            Parameter { name: "newName"; type: "QString" }
+        }
+        Method {
+            name: "removeAccountType"
+            lineNumber: 99
+            Parameter { name: "index"; type: "int" }
+        }
+        Method {
+            name: "addHash"
+            type: "bool"
+            lineNumber: 107
+            Parameter { name: "accountIndex"; type: "int" }
+            Parameter { name: "hash"; type: "QString" }
+        }
+        Method {
+            name: "linkAccountHash"
+            type: "bool"
+            lineNumber: 108
+            Parameter { name: "accountIndex"; type: "int" }
+            Parameter { name: "hash"; type: "QString" }
+        }
+        Method {
+            name: "removeHash"
+            lineNumber: 109
+            Parameter { name: "accountIndex"; type: "int" }
+            Parameter { name: "hashIndex"; type: "int" }
+        }
+        Method {
+            name: "accountHasHash"
+            type: "bool"
+            isMethodConstant: true
+            lineNumber: 110
+            Parameter { name: "accountIndex"; type: "int" }
+            Parameter { name: "hash"; type: "QString" }
+        }
+        Method {
+            name: "transactionsForAccount"
+            type: "QVariantList"
+            isMethodConstant: true
+            lineNumber: 117
+            Parameter { name: "accountIndex"; type: "int" }
+        }
+        Method {
+            name: "transactionCountForAccount"
+            type: "int"
+            isMethodConstant: true
+            lineNumber: 118
+            Parameter { name: "accountIndex"; type: "int" }
+        }
+        Method { name: "reload"; lineNumber: 131 }
+    }
+    Component {
         file: "CashFlowController.h"
         lineNumber: 14
         name: "CashFlowController"
@@ -157,7 +321,7 @@ Module {
             lineNumber: 58
             isReadonly: true
         }
-        Signal { name: "categoriesChanged"; lineNumber: 100 }
+        Signal { name: "categoriesChanged"; lineNumber: 109 }
         Method {
             name: "categoryColor"
             type: "QString"
@@ -230,75 +394,29 @@ Module {
             Parameter { name: "categoryIndex"; type: "int" }
             Parameter { name: "subIndex"; type: "int" }
         }
+        Method { name: "reload"; lineNumber: 106 }
     }
     Component {
-        file: "DataEntryController.h"
-        lineNumber: 18
-        name: "DataEntryController"
+        file: "DatabaseManagementController.h"
+        lineNumber: 38
+        name: "DatabaseManagementController"
         accessSemantics: "reference"
         prototype: "QObject"
-        exports: ["FinanceDashboard/DataEntryController 1.0"]
+        exports: ["FinanceDashboard/DatabaseManagementController 1.0"]
         exportMetaObjectRevisions: [256]
-        Property {
-            name: "accounts"
-            type: "QVariantList"
-            read: "accounts"
-            notify: "accountsChanged"
-            index: 0
-            lineNumber: 28
-            isReadonly: true
-        }
-        Property {
-            name: "accountTypes"
-            type: "QStringList"
-            read: "accountTypes"
-            index: 1
-            lineNumber: 29
-            isReadonly: true
-            isPropertyConstant: true
-        }
-        Property {
-            name: "historyRows"
-            type: "QVariantList"
-            read: "historyRows"
-            index: 2
-            lineNumber: 31
-            isReadonly: true
-            isPropertyConstant: true
-        }
-        Property {
-            name: "annualRows"
-            type: "QVariantList"
-            read: "annualRows"
-            index: 3
-            lineNumber: 33
-            isReadonly: true
-            isPropertyConstant: true
-        }
         Property {
             name: "statusText"
             type: "QString"
             read: "statusText"
             notify: "statusChanged"
-            index: 4
-            lineNumber: 34
+            index: 0
+            lineNumber: 43
             isReadonly: true
         }
-        Signal { name: "accountsChanged"; lineNumber: 54 }
-        Signal { name: "statusChanged"; lineNumber: 55 }
-        Method {
-            name: "addAccount"
-            lineNumber: 43
-            Parameter { name: "name"; type: "QString" }
-            Parameter { name: "type"; type: "QString" }
-        }
-        Method {
-            name: "removeAccount"
-            lineNumber: 44
-            Parameter { name: "index"; type: "int" }
-        }
-        Method { name: "saveSnapshot"; lineNumber: 50 }
-        Method { name: "addTransaction"; lineNumber: 51 }
+        Signal { name: "statusChanged"; lineNumber: 63 }
+        Signal { name: "databaseReset"; lineNumber: 67 }
+        Method { name: "resetDatabase"; lineNumber: 53 }
+        Method { name: "resetToMock"; lineNumber: 60 }
     }
     Component {
         file: "InvestmentsController.h"
@@ -726,7 +844,7 @@ Module {
     }
     Component {
         file: "SnapshotImportController.h"
-        lineNumber: 28
+        lineNumber: 31
         name: "SnapshotImportController"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -737,7 +855,7 @@ Module {
             type: "QVariantList"
             read: "templates"
             index: 0
-            lineNumber: 34
+            lineNumber: 37
             isReadonly: true
             isPropertyConstant: true
         }
@@ -747,7 +865,7 @@ Module {
             read: "hasParsed"
             notify: "statementChanged"
             index: 1
-            lineNumber: 38
+            lineNumber: 41
             isReadonly: true
         }
         Property {
@@ -756,7 +874,7 @@ Module {
             read: "lastParseFailed"
             notify: "statementChanged"
             index: 2
-            lineNumber: 40
+            lineNumber: 43
             isReadonly: true
         }
         Property {
@@ -765,7 +883,7 @@ Module {
             read: "sourceFileName"
             notify: "statementChanged"
             index: 3
-            lineNumber: 41
+            lineNumber: 44
             isReadonly: true
         }
         Property {
@@ -774,7 +892,7 @@ Module {
             read: "statementInfo"
             notify: "statementChanged"
             index: 4
-            lineNumber: 47
+            lineNumber: 52
             isReadonly: true
         }
         Property {
@@ -783,7 +901,7 @@ Module {
             read: "transactionRows"
             notify: "statementChanged"
             index: 5
-            lineNumber: 50
+            lineNumber: 55
             isReadonly: true
         }
         Property {
@@ -792,7 +910,7 @@ Module {
             read: "logEntries"
             notify: "logChanged"
             index: 6
-            lineNumber: 53
+            lineNumber: 58
             isReadonly: true
         }
         Property {
@@ -801,7 +919,7 @@ Module {
             read: "errorCount"
             notify: "logChanged"
             index: 7
-            lineNumber: 54
+            lineNumber: 59
             isReadonly: true
         }
         Property {
@@ -810,7 +928,7 @@ Module {
             read: "warningCount"
             notify: "logChanged"
             index: 8
-            lineNumber: 55
+            lineNumber: 60
             isReadonly: true
         }
         Property {
@@ -819,33 +937,33 @@ Module {
             read: "statusText"
             notify: "statusChanged"
             index: 9
-            lineNumber: 57
+            lineNumber: 62
             isReadonly: true
         }
-        Signal { name: "statementChanged"; lineNumber: 102 }
-        Signal { name: "logChanged"; lineNumber: 103 }
-        Signal { name: "statusChanged"; lineNumber: 104 }
+        Signal { name: "statementChanged"; lineNumber: 121 }
+        Signal { name: "logChanged"; lineNumber: 122 }
+        Signal { name: "statusChanged"; lineNumber: 123 }
         Method {
             name: "parseFile"
-            lineNumber: 78
+            lineNumber: 83
             Parameter { name: "fileUrl"; type: "QUrl" }
             Parameter { name: "templateId"; type: "QString" }
         }
         Method {
             name: "setRowCategory"
-            lineNumber: 81
+            lineNumber: 86
             Parameter { name: "row"; type: "int" }
             Parameter { name: "category"; type: "QString" }
         }
         Method {
             name: "setRowSubcategory"
-            lineNumber: 82
+            lineNumber: 87
             Parameter { name: "row"; type: "int" }
             Parameter { name: "subcategory"; type: "QString" }
         }
         Method {
             name: "setRowIncluded"
-            lineNumber: 83
+            lineNumber: 88
             Parameter { name: "row"; type: "int" }
             Parameter { name: "included"; type: "bool" }
         }
@@ -853,13 +971,14 @@ Module {
             name: "matchAccountIndex"
             type: "int"
             isMethodConstant: true
-            lineNumber: 93
+            lineNumber: 102
             Parameter { name: "accounts"; type: "QVariantList" }
         }
-        Method { name: "reset"; lineNumber: 96 }
+        Method { name: "reset"; lineNumber: 105 }
         Method {
             name: "save"
-            lineNumber: 99
+            lineNumber: 118
+            Parameter { name: "accountId"; type: "int" }
             Parameter { name: "accountLabel"; type: "QString" }
         }
     }

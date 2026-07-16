@@ -1468,10 +1468,12 @@ FinanceDashboard_autogen/timestamp: \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/FinanceDashboard_autogen/moc_predefs.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/cashflow/CashFlowController.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/cashflow/CashFlowController.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/database/DatabaseManagementController.cpp \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/database/DatabaseManagementController.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/AccountController.cpp \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/AccountController.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/CategoryController.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/CategoryController.h \
-	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/DataEntryController.cpp \
-	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/DataEntryController.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/SnapshotImportController.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/dataentry/SnapshotImportController.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/controllers/investments/InvestmentsController.cpp \
@@ -1486,6 +1488,14 @@ FinanceDashboard_autogen/timestamp: \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/data/DebugData.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/Database.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/Database.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountCategoriesTable.cpp \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountCategoriesTable.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountHashesTable.cpp \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountHashesTable.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountTypesTable.cpp \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountTypesTable.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountsTable.cpp \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AccountsTable.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AssetEntriesTable.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AssetEntriesTable.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/CategoriesTable.cpp \
@@ -1494,12 +1504,15 @@ FinanceDashboard_autogen/timestamp: \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SnapshotsTable.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SubcategoriesTable.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SubcategoriesTable.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/TransactionsTable.cpp \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/TransactionsTable.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/import/CheckingCsvTemplateV1.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/import/CheckingCsvTemplateV1.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/import/ImportTemplate.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/import/ImportTemplateRegistry.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/import/ImportTemplateRegistry.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/main.cpp \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/Account.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/AssetEntry.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/AssetEntry.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/Category.h \
@@ -1507,6 +1520,8 @@ FinanceDashboard_autogen/timestamp: \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/ImportedStatement.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/PortfolioData.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/PortfolioData.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/Transaction.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/utils/AccountHashing.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/utils/FileFinder.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/utils/Formatter.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/utils/JsonReader.h \

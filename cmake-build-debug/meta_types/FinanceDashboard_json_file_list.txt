@@ -1,6 +1,7 @@
 C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/FinanceDashboard_autogen/include/../355P7YHYJ3/moc_SavingsController.cpp.json
+C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/FinanceDashboard_autogen/include/../BQRVYOGCH5/moc_DatabaseManagementController.cpp.json
+C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/FinanceDashboard_autogen/include/../IEQTOHGRIO/moc_AccountController.cpp.json
 C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/FinanceDashboard_autogen/include/../IEQTOHGRIO/moc_CategoryController.cpp.json
-C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/FinanceDashboard_autogen/include/../IEQTOHGRIO/moc_DataEntryController.cpp.json
 C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/FinanceDashboard_autogen/include/../IEQTOHGRIO/moc_SnapshotImportController.cpp.json
 C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/FinanceDashboard_autogen/include/../JYAKVH7ID2/moc_ProjectsController.cpp.json
 C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/FinanceDashboard_autogen/include/../NOTG2YMHK5/moc_NetWorthController.cpp.json

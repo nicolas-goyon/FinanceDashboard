@@ -8,7 +8,7 @@
                         {
                             "codegenResult": 2,
                             "column": 26,
-                            "durationMicroseconds": 3000,
+                            "durationMicroseconds": 0,
                             "functionName": "inputs",
                             "line": 12,
                             "message": "Cannot generate efficient code for storing an array in a non-sequence type"
@@ -96,7 +96,7 @@
                         {
                             "codegenResult": 2,
                             "column": 18,
-                            "durationMicroseconds": 5000,
+                            "durationMicroseconds": 8000,
                             "functionName": "onPaint",
                             "line": 59,
                             "message": "Cannot load property length from MoneyFlow::inputs with type QVariant."

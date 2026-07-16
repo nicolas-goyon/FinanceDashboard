@@ -96,7 +96,21 @@ namespace _qt_qml_FinanceDashboard_qml_pages_ProjectsPage_qml {
         reinterpret_cast<const QV4::CompiledData::Unit*>(&qmlData), &aotBuiltFunctions[0], nullptr
     };
 }
-namespace _qt_qml_FinanceDashboard_qml_pages_DataEntryPage_qml { 
+namespace _qt_qml_FinanceDashboard_qml_pages_TransactionsManagementPage_qml { 
+    extern const unsigned char qmlData[];
+    extern const QQmlPrivate::AOTCompiledFunction aotBuiltFunctions[];
+    const QQmlPrivate::CachedQmlUnit unit = {
+        reinterpret_cast<const QV4::CompiledData::Unit*>(&qmlData), &aotBuiltFunctions[0], nullptr
+    };
+}
+namespace _qt_qml_FinanceDashboard_qml_pages_AccountManagementLandingPage_qml { 
+    extern const unsigned char qmlData[];
+    extern const QQmlPrivate::AOTCompiledFunction aotBuiltFunctions[];
+    const QQmlPrivate::CachedQmlUnit unit = {
+        reinterpret_cast<const QV4::CompiledData::Unit*>(&qmlData), &aotBuiltFunctions[0], nullptr
+    };
+}
+namespace _qt_qml_FinanceDashboard_qml_pages_DatabaseManagementPage_qml { 
     extern const unsigned char qmlData[];
     extern const QQmlPrivate::AOTCompiledFunction aotBuiltFunctions[];
     const QQmlPrivate::CachedQmlUnit unit = {
@@ -118,6 +132,27 @@ namespace _qt_qml_FinanceDashboard_qml_pages_ImportSnapshotPage_qml {
     };
 }
 namespace _qt_qml_FinanceDashboard_qml_pages_CategoriesManagePage_qml { 
+    extern const unsigned char qmlData[];
+    extern const QQmlPrivate::AOTCompiledFunction aotBuiltFunctions[];
+    const QQmlPrivate::CachedQmlUnit unit = {
+        reinterpret_cast<const QV4::CompiledData::Unit*>(&qmlData), &aotBuiltFunctions[0], nullptr
+    };
+}
+namespace _qt_qml_FinanceDashboard_qml_pages_AccountsManagePage_qml { 
+    extern const unsigned char qmlData[];
+    extern const QQmlPrivate::AOTCompiledFunction aotBuiltFunctions[];
+    const QQmlPrivate::CachedQmlUnit unit = {
+        reinterpret_cast<const QV4::CompiledData::Unit*>(&qmlData), &aotBuiltFunctions[0], nullptr
+    };
+}
+namespace _qt_qml_FinanceDashboard_qml_pages_AccountTypesCategoriesPage_qml { 
+    extern const unsigned char qmlData[];
+    extern const QQmlPrivate::AOTCompiledFunction aotBuiltFunctions[];
+    const QQmlPrivate::CachedQmlUnit unit = {
+        reinterpret_cast<const QV4::CompiledData::Unit*>(&qmlData), &aotBuiltFunctions[0], nullptr
+    };
+}
+namespace _qt_qml_FinanceDashboard_qml_pages_AccountTransactionsPage_qml { 
     extern const unsigned char qmlData[];
     extern const QQmlPrivate::AOTCompiledFunction aotBuiltFunctions[];
     const QQmlPrivate::CachedQmlUnit unit = {
@@ -151,10 +186,15 @@ Registry::Registry() {
     resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/SavingsPage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_SavingsPage_qml::unit);
     resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/InvestmentsPage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_InvestmentsPage_qml::unit);
     resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/ProjectsPage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_ProjectsPage_qml::unit);
-    resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/DataEntryPage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_DataEntryPage_qml::unit);
+    resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/TransactionsManagementPage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_TransactionsManagementPage_qml::unit);
+    resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/AccountManagementLandingPage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_AccountManagementLandingPage_qml::unit);
+    resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/DatabaseManagementPage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_DatabaseManagementPage_qml::unit);
     resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/OtherLegacyPage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_OtherLegacyPage_qml::unit);
     resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/ImportSnapshotPage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_ImportSnapshotPage_qml::unit);
     resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/CategoriesManagePage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_CategoriesManagePage_qml::unit);
+    resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/AccountsManagePage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_AccountsManagePage_qml::unit);
+    resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/AccountTypesCategoriesPage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_AccountTypesCategoriesPage_qml::unit);
+    resourcePathToCachedUnit.insert(QStringLiteral("/qt/qml/FinanceDashboard/qml/pages/AccountTransactionsPage.qml"), &QmlCacheGeneratedCode::_qt_qml_FinanceDashboard_qml_pages_AccountTransactionsPage_qml::unit);
     QQmlPrivate::RegisterQmlUnitCacheHook registration;
     registration.structVersion = 0;
     registration.lookupCachedQmlUnit = &lookupCachedUnit;

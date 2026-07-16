@@ -17,7 +17,12 @@ C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-buil
 /qt/qml/FinanceDashboard/qml/pages/SavingsPage.qml
 /qt/qml/FinanceDashboard/qml/pages/InvestmentsPage.qml
 /qt/qml/FinanceDashboard/qml/pages/ProjectsPage.qml
-/qt/qml/FinanceDashboard/qml/pages/DataEntryPage.qml
+/qt/qml/FinanceDashboard/qml/pages/TransactionsManagementPage.qml
+/qt/qml/FinanceDashboard/qml/pages/AccountManagementLandingPage.qml
+/qt/qml/FinanceDashboard/qml/pages/DatabaseManagementPage.qml
 /qt/qml/FinanceDashboard/qml/pages/OtherLegacyPage.qml
 /qt/qml/FinanceDashboard/qml/pages/ImportSnapshotPage.qml
 /qt/qml/FinanceDashboard/qml/pages/CategoriesManagePage.qml
+/qt/qml/FinanceDashboard/qml/pages/AccountsManagePage.qml
+/qt/qml/FinanceDashboard/qml/pages/AccountTypesCategoriesPage.qml
+/qt/qml/FinanceDashboard/qml/pages/AccountTransactionsPage.qml

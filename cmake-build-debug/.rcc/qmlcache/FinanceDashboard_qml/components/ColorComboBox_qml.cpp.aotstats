@@ -159,10 +159,58 @@
                         },
                         {
                             "codegenResult": 2,
+                            "column": 12,
+                            "durationMicroseconds": 1000,
+                            "functionName": "x",
+                            "line": 128,
+                            "message": "Cannot access value for name control"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 12,
+                            "durationMicroseconds": 0,
+                            "functionName": "y",
+                            "line": 129,
+                            "message": "Cannot access value for name control"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 36,
+                            "durationMicroseconds": 0,
+                            "functionName": "arrowColor",
+                            "line": 134,
+                            "message": "Cannot access value for name control"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 30,
+                            "durationMicroseconds": 0,
+                            "functionName": "onArrowColorChanged",
+                            "line": 135,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 18,
+                            "durationMicroseconds": 1000,
+                            "functionName": "onPaint",
+                            "line": 138,
+                            "message": "Cannot access value for name canvas"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 32,
+                            "durationMicroseconds": 0,
+                            "functionName": "onCompleted",
+                            "line": 136,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
                             "column": 15,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 131,
+                            "line": 169,
                             "message": "Cannot access value for name control"
                         },
                         {
@@ -170,7 +218,7 @@
                             "column": 16,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 132,
+                            "line": 170,
                             "message": "Cannot access value for name control"
                         },
                         {
@@ -178,7 +226,7 @@
                             "column": 16,
                             "durationMicroseconds": 0,
                             "functionName": "elide",
-                            "line": 134,
+                            "line": 172,
                             "message": ""
                         },
                         {
@@ -186,7 +234,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "verticalAlignment",
-                            "line": 135,
+                            "line": 173,
                             "message": ""
                         },
                         {
@@ -194,7 +242,7 @@
                             "column": 16,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 140,
+                            "line": 178,
                             "message": "Cannot access value for name control"
                         }
                     ],

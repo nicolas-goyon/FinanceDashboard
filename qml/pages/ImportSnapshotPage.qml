@@ -4,15 +4,16 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 import FinanceDashboard
 
-// ── New Monthly Snapshot — statement import ───────────────────────────────────
-// Reached from the sidebar: Data Entry → "New Monthly Snapshot" action.
+// ── Import Transactions — statement import ────────────────────────────────────
+// Reached from the sidebar: Transactions Management → "Import Transactions"
+// action (renamed from "New Monthly Snapshot" / "Data Entry" — see
+// ARCHITECTURE.MD § Transactions Management).
 // Step 1: pick a template + file → real parsing (SnapshotImportController,
 //         backed by src/import/ — see ARCHITECTURE.MD § Statement Import).
 // Step 2: review header info, match/pick the target account, edit rows and
-//         categories, inspect the parse log, mock-save (UI pass — see
-//         SnapshotImportController class comment for scope).
-//
-// [MOCK SAVE] — parsing is real, persistence is not (yet).
+//         categories, inspect the parse log, save for real (see
+//         SnapshotImportController class comment for scope — persists to
+//         the `transactions` table and auto-links the account hash).
 
 Item {
     id: page
@@ -22,10 +23,13 @@ Item {
     property int step: 0   // 0 = pick template/file · 1 = review/edit
 
     SnapshotImportController { id: controller }
-    // Reused for the accounts list (incl. MOCK iban/number) — same controller
-    // instance shape as DataEntryPage.qml. Category/subcategory come from the
-    // CategoryController singleton instead (see qml/pages/CategoriesManagePage.qml).
-    DataEntryController { id: accountsController }
+    // Accounts now come from AccountController (QML_SINGLETON,
+    // src/controllers/dataentry/AccountController.h) — the real, DB-backed
+    // accounts list (see ARCHITECTURE.MD § Account Management), same
+    // singleton read by AccountsManagePage.qml/AccountTypesCategoriesPage.qml/
+    // AccountTransactionsPage.qml.
+    // Category/subcategory come from the CategoryController singleton
+    // instead (see qml/pages/CategoriesManagePage.qml).
 
     property int currentTemplateIndex: 0
     readonly property var currentTemplate:
@@ -34,8 +38,12 @@ Item {
     property int matchedAccountIndex: -1
     property int selectedAccountIndex: -1
 
+    readonly property var selectedAccount:
+        page.selectedAccountIndex >= 0 && page.selectedAccountIndex < AccountController.accounts.length
+            ? AccountController.accounts[page.selectedAccountIndex] : null
+
     function goToReview() {
-        matchedAccountIndex = controller.matchAccountIndex(accountsController.accounts)
+        matchedAccountIndex = controller.matchAccountIndex(AccountController.accounts)
         selectedAccountIndex = matchedAccountIndex
         page.step = 1
     }
@@ -79,12 +87,11 @@ Item {
                     TapHandler { onTapped: page.closeRequested() }
                 }
                 Text {
-                    text: "New Monthly Snapshot — Import"
+                    text: "Import Transactions"
                     font.pixelSize: 23
                     font.bold: true
                     color: "#cdd6f4"
                 }
-                Text { text: "[MOCK SAVE]"; font.pixelSize: 14; color: "#f38ba8" }
                 Item { Layout.fillWidth: true }
                 Rectangle {
                     visible: controller.statusText.length > 0
@@ -279,14 +286,14 @@ Item {
                             ComboBox {
                                 id: accountBox
                                 Layout.preferredWidth: 260
-                                model: accountsController.accounts
+                                model: AccountController.accounts
                                 textRole: "name"
                                 currentIndex: page.selectedAccountIndex
                                 onActivated: page.selectedAccountIndex = currentIndex
                             }
                             Text {
                                 visible: page.matchedAccountIndex >= 0
-                                text: "✓ matched by account hash / account number"
+                                text: "✓ matched by account hash"
                                 font.pixelSize: 13
                                 color: "#a6e3a1"
                             }
@@ -295,6 +302,76 @@ Item {
                                 text: "⚠ no automatic match — please pick the account"
                                 font.pixelSize: 13
                                 color: "#f9e2af"
+                            }
+                        }
+
+                        // "Not linked" badge — shown whenever the currently
+                        // selected account has zero stored hashes
+                        // (account_hashes table), independent of whether
+                        // *this* statement happened to match it. Lets the
+                        // user notice and fix an unlinked account from
+                        // right here instead of only discovering it on
+                        // AccountsManagePage.qml (see ARCHITECTURE.MD §
+                        // Account Management).
+                        RowLayout {
+                            visible: page.selectedAccount !== null
+                            spacing: 10
+
+                            Rectangle {
+                                visible: page.selectedAccount !== null && !page.selectedAccount.linked
+                                width: notLinkedRow.implicitWidth + 16
+                                height: 24
+                                radius: 12
+                                color: "#3d3320"
+                                border.color: "#5a4d2d"
+                                RowLayout {
+                                    id: notLinkedRow
+                                    anchors.centerIn: parent
+                                    spacing: 6
+                                    Text {
+                                        text: "⚠ Not linked — no hash set up for this account"
+                                        font.pixelSize: 13
+                                        color: "#f9e2af"
+                                    }
+                                }
+                            }
+                            Rectangle {
+                                visible: page.selectedAccount !== null && page.selectedAccount.linked
+                                width: linkedRow.implicitWidth + 16
+                                height: 24
+                                radius: 12
+                                color: "#1a3328"
+                                border.color: "#2d5a45"
+                                RowLayout {
+                                    id: linkedRow
+                                    anchors.centerIn: parent
+                                    spacing: 6
+                                    Text {
+                                        text: "✓ Linked (" + page.selectedAccount.hashCount + " hash"
+                                            + (page.selectedAccount.hashCount === 1 ? "" : "es") + ")"
+                                        font.pixelSize: 13
+                                        color: "#a6e3a1"
+                                    }
+                                }
+                            }
+
+                            // Offer to link this statement's fingerprint to
+                            // the selected account right here, when it has
+                            // one to give and the account doesn't have it
+                            // yet — saves a trip to AccountsManagePage.qml.
+                            Rectangle {
+                                visible: controller.statementInfo.accountHashRaw.length > 0
+                                    && page.selectedAccount !== null
+                                    && !AccountController.accountHasHash(page.selectedAccountIndex, controller.statementInfo.accountHashRaw)
+                                width: 150; height: 24; radius: 4
+                                color: linkHover.hovered ? "#264d80" : "#1e3a5f"
+                                border.color: "#89b4fa"
+                                Text { anchors.centerIn: parent; text: "Link this account"; font.pixelSize: 13; color: "#cdd6f4" }
+                                HoverHandler { id: linkHover }
+                                TapHandler {
+                                    onTapped: AccountController.linkAccountHash(
+                                        page.selectedAccountIndex, controller.statementInfo.accountHashRaw)
+                                }
                             }
                         }
                     }
@@ -337,7 +414,7 @@ Item {
                                 required property var modelData
                                 required property int index
                                 Layout.fillWidth: true
-                                Layout.preferredHeight: 36
+                                Layout.preferredHeight: 44
                                 color: index % 2 === 0 ? "transparent" : "#181825"
                                 opacity: modelData.included ? 1.0 : 0.4
 
@@ -360,6 +437,7 @@ Item {
                                     ColorComboBox {
                                         id: categoryBox
                                         Layout.preferredWidth: 115
+                                        Layout.preferredHeight: 36
                                         items: CategoryController.categories
                                         currentName: modelData.category
                                         onNameActivated: (name) => controller.setRowCategory(modelData.index, name)
@@ -367,6 +445,7 @@ Item {
 
                                     ColorComboBox {
                                         Layout.preferredWidth: 115
+                                        Layout.preferredHeight: 36
                                         readonly property var subItems: {
                                             var cat = CategoryController.categories.find(function(c) { return c.name === modelData.category })
                                             return cat ? cat.subcategories : []
@@ -408,17 +487,23 @@ Item {
                     }
                     Item { Layout.fillWidth: true }
                     Rectangle {
-                        width: 140; height: 30; radius: 4
+                        width: 100; height: 30; radius: 4
                         color: saveHover.hovered ? "#264d80" : "#1e3a5f"
                         border.color: "#89b4fa"
-                        Text { anchors.centerIn: parent; text: "Save (mock)"; font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
+                        Text { anchors.centerIn: parent; text: "Save"; font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
                         HoverHandler { id: saveHover }
                         TapHandler {
                             onTapped: {
-                                var label = page.selectedAccountIndex >= 0
-                                    ? accountsController.accounts[page.selectedAccountIndex].name
+                                var accountId = page.selectedAccount !== null ? page.selectedAccount.id : -1
+                                var label = page.selectedAccount !== null
+                                    ? page.selectedAccount.name
                                     : "(no account selected)"
-                                controller.save(label)
+                                controller.save(accountId, label)
+                                // Pick up the transactions/hash write this
+                                // just made — see AccountController.reload()
+                                // doc comment (no C++-to-C++ singleton
+                                // coupling between the two controllers).
+                                AccountController.reload()
                             }
                         }
                     }

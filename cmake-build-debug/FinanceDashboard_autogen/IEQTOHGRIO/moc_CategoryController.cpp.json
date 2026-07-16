@@ -203,6 +203,13 @@
                     "lineNumber": 97,
                     "name": "removeSubcategory",
                     "returnType": "void"
+                },
+                {
+                    "access": "public",
+                    "index": 12,
+                    "lineNumber": 106,
+                    "name": "reload",
+                    "returnType": "void"
                 }
             ],
             "object": true,
@@ -230,7 +237,7 @@
                 {
                     "access": "public",
                     "index": 0,
-                    "lineNumber": 100,
+                    "lineNumber": 109,
                     "name": "categoriesChanged",
                     "returnType": "void"
                 }

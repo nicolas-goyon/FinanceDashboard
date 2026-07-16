@@ -114,6 +114,44 @@ ComboBox {
         }
     }
 
+    // Custom drop-down arrow, following the Canvas-based indicator from the
+    // same "Customizing ComboBox" doc example referenced above (its x/y
+    // formula — `control.width - width - control.padding` — is copied
+    // as-is). The Basic style default indicator is a fixed-color PNG
+    // (ColorImage, tinted via control.palette.dark) which reads fine on the
+    // app's dark theme but disappears against light category colors now
+    // that the background carries the color; painting it ourselves lets it
+    // use the same readableTextColor() contrast check as the label text, so
+    // it switches to dark on bright backgrounds and stays light otherwise.
+    indicator: Canvas {
+        id: canvas
+        x: control.mirrored ? control.padding : control.width - width - control.padding
+        y: control.topPadding + (control.availableHeight - height) / 2
+        width: 10
+        height: 12
+        contextType: "2d"
+
+        property color arrowColor: control.currentTextColor
+        onArrowColorChanged: requestPaint()
+        Component.onCompleted: requestPaint()
+
+        onPaint: {
+            context.reset()
+            // Up-pointing triangle
+            context.moveTo(width / 2, 0)
+            context.lineTo(width, 4.5)
+            context.lineTo(0, 4.5)
+            context.closePath()
+            // Down-pointing triangle
+            context.moveTo(width / 2, height)
+            context.lineTo(width, height - 4.5)
+            context.lineTo(0, height - 4.5)
+            context.closePath()
+            context.fillStyle = canvas.arrowColor
+            context.fill()
+        }
+    }
+
     contentItem: Text {
         // No extra indicator-width reservation here: the Basic style's own
         // ComboBox.qml already sets control.rightPadding to

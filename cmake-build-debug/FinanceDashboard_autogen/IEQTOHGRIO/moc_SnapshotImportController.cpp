@@ -61,6 +61,7 @@ template <> constexpr inline auto SnapshotImportController::qt_create_metaobject
         "accounts",
         "reset",
         "save",
+        "accountId",
         "accountLabel",
         "templates",
         "hasParsed",
@@ -105,31 +106,31 @@ template <> constexpr inline auto SnapshotImportController::qt_create_metaobject
         // Method 'reset'
         QtMocHelpers::MethodData<void()>(21, 4, QMC::AccessPublic, QMetaType::Void),
         // Method 'save'
-        QtMocHelpers::MethodData<void(const QString &)>(22, 4, QMC::AccessPublic, QMetaType::Void, {{
-            { QMetaType::QString, 23 },
+        QtMocHelpers::MethodData<void(int, const QString &)>(22, 4, QMC::AccessPublic, QMetaType::Void, {{
+            { QMetaType::Int, 23 }, { QMetaType::QString, 24 },
         }}),
     };
     QtMocHelpers::UintData qt_properties {
         // property 'templates'
-        QtMocHelpers::PropertyData<QVariantList>(24, 0x80000000 | 19, QMC::DefaultPropertyFlags | QMC::EnumOrFlag | QMC::Constant),
+        QtMocHelpers::PropertyData<QVariantList>(25, 0x80000000 | 19, QMC::DefaultPropertyFlags | QMC::EnumOrFlag | QMC::Constant),
         // property 'hasParsed'
-        QtMocHelpers::PropertyData<bool>(25, QMetaType::Bool, QMC::DefaultPropertyFlags, 0),
-        // property 'lastParseFailed'
         QtMocHelpers::PropertyData<bool>(26, QMetaType::Bool, QMC::DefaultPropertyFlags, 0),
+        // property 'lastParseFailed'
+        QtMocHelpers::PropertyData<bool>(27, QMetaType::Bool, QMC::DefaultPropertyFlags, 0),
         // property 'sourceFileName'
-        QtMocHelpers::PropertyData<QString>(27, QMetaType::QString, QMC::DefaultPropertyFlags, 0),
+        QtMocHelpers::PropertyData<QString>(28, QMetaType::QString, QMC::DefaultPropertyFlags, 0),
         // property 'statementInfo'
-        QtMocHelpers::PropertyData<QVariantMap>(28, 0x80000000 | 29, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 0),
+        QtMocHelpers::PropertyData<QVariantMap>(29, 0x80000000 | 30, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 0),
         // property 'transactionRows'
-        QtMocHelpers::PropertyData<QVariantList>(30, 0x80000000 | 19, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 0),
+        QtMocHelpers::PropertyData<QVariantList>(31, 0x80000000 | 19, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 0),
         // property 'logEntries'
-        QtMocHelpers::PropertyData<QVariantList>(31, 0x80000000 | 19, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 1),
+        QtMocHelpers::PropertyData<QVariantList>(32, 0x80000000 | 19, QMC::DefaultPropertyFlags | QMC::EnumOrFlag, 1),
         // property 'errorCount'
-        QtMocHelpers::PropertyData<int>(32, QMetaType::Int, QMC::DefaultPropertyFlags, 1),
-        // property 'warningCount'
         QtMocHelpers::PropertyData<int>(33, QMetaType::Int, QMC::DefaultPropertyFlags, 1),
+        // property 'warningCount'
+        QtMocHelpers::PropertyData<int>(34, QMetaType::Int, QMC::DefaultPropertyFlags, 1),
         // property 'statusText'
-        QtMocHelpers::PropertyData<QString>(34, QMetaType::QString, QMC::DefaultPropertyFlags, 2),
+        QtMocHelpers::PropertyData<QString>(35, QMetaType::QString, QMC::DefaultPropertyFlags, 2),
     };
     QtMocHelpers::UintData qt_enums {
     };
@@ -165,7 +166,7 @@ void SnapshotImportController::qt_static_metacall(QObject *_o, QMetaObject::Call
         case 7: { int _r = _t->matchAccountIndex((*reinterpret_cast<std::add_pointer_t<QVariantList>>(_a[1])));
             if (_a[0]) *reinterpret_cast<int*>(_a[0]) = std::move(_r); }  break;
         case 8: _t->reset(); break;
-        case 9: _t->save((*reinterpret_cast<std::add_pointer_t<QString>>(_a[1]))); break;
+        case 9: _t->save((*reinterpret_cast<std::add_pointer_t<int>>(_a[1])),(*reinterpret_cast<std::add_pointer_t<QString>>(_a[2]))); break;
         default: ;
         }
     }

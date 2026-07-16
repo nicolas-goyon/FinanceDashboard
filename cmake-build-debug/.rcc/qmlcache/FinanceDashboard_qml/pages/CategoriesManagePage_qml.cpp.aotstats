@@ -10,7 +10,7 @@
                             "column": 5,
                             "durationMicroseconds": 0,
                             "functionName": "colorToHex",
-                            "line": 28,
+                            "line": 31,
                             "message": "Functions without type annotations won't be compiled"
                         },
                         {
@@ -18,7 +18,7 @@
                             "column": 23,
                             "durationMicroseconds": 0,
                             "functionName": "contentWidth",
-                            "line": 38,
+                            "line": 41,
                             "message": "Could not find property \"contentWidth\"."
                         },
                         {
@@ -26,7 +26,7 @@
                             "column": 23,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 37,
+                            "line": 40,
                             "message": "Could not find property \"fill\"."
                         },
                         {
@@ -34,7 +34,7 @@
                             "column": 20,
                             "durationMicroseconds": 0,
                             "functionName": "width",
-                            "line": 43,
+                            "line": 46,
                             "message": ""
                         },
                         {
@@ -42,7 +42,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 51,
+                            "line": 54,
                             "message": ""
                         },
                         {
@@ -50,7 +50,7 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 53,
+                            "line": 56,
                             "message": ""
                         },
                         {
@@ -58,7 +58,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 59,
+                            "line": 62,
                             "message": ""
                         },
                         {
@@ -66,7 +66,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 71,
+                            "line": 73,
                             "message": ""
                         },
                         {
@@ -74,7 +74,7 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 74,
+                            "line": 76,
                             "message": ""
                         },
                         {
@@ -82,7 +82,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 81,
+                            "line": 83,
                             "message": "Cannot retrieve a non-object type by ID: categoryDialog"
                         },
                         {
@@ -90,7 +90,7 @@
                             "column": 27,
                             "durationMicroseconds": 0,
                             "functionName": "wrapMode",
-                            "line": 87,
+                            "line": 89,
                             "message": ""
                         },
                         {
@@ -98,7 +98,7 @@
                             "column": 23,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 88,
+                            "line": 90,
                             "message": ""
                         },
                         {
@@ -106,7 +106,7 @@
                             "column": 33,
                             "durationMicroseconds": 0,
                             "functionName": "implicitHeight",
-                            "line": 98,
+                            "line": 100,
                             "message": ""
                         },
                         {
@@ -114,7 +114,7 @@
                             "column": 24,
                             "durationMicroseconds": 0,
                             "functionName": "title",
-                            "line": 99,
+                            "line": 101,
                             "message": "Cannot use shadowable base type for further lookups: CategoryController::categories with type QVariantList"
                         },
                         {
@@ -122,7 +122,7 @@
                             "column": 35,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 103,
+                            "line": 105,
                             "message": ""
                         },
                         {
@@ -130,7 +130,7 @@
                             "column": 34,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 107,
+                            "line": 109,
                             "message": "Cannot use shadowable base type for further lookups: CategoryController::categories with type QVariantList"
                         },
                         {
@@ -138,7 +138,7 @@
                             "column": 32,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 114,
+                            "line": 116,
                             "message": ""
                         },
                         {
@@ -146,7 +146,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 129,
+                            "line": 131,
                             "message": "Cannot load property color from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/CategoriesManagePage.qml)::modelData with type QVariant."
                         },
                         {
@@ -154,7 +154,7 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 133,
+                            "line": 135,
                             "message": "Cannot load property name from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/CategoriesManagePage.qml)::modelData with type QVariant."
                         },
                         {
@@ -162,7 +162,7 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 139,
+                            "line": 141,
                             "message": "Cannot load property subcategories from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/CategoriesManagePage.qml)::modelData with type QVariant."
                         },
                         {
@@ -170,7 +170,7 @@
                             "column": 62,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 150,
+                            "line": 152,
                             "message": ""
                         },
                         {
@@ -178,7 +178,7 @@
                             "column": 51,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 152,
+                            "line": 154,
                             "message": "Cannot access value for name categoryDialog"
                         },
                         {
@@ -186,7 +186,7 @@
                             "column": 62,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 159,
+                            "line": 161,
                             "message": ""
                         },
                         {
@@ -194,7 +194,7 @@
                             "column": 51,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 161,
+                            "line": 163,
                             "message": "Cannot access value for name subcategoryDialog"
                         },
                         {
@@ -202,7 +202,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 168,
+                            "line": 170,
                             "message": ""
                         },
                         {
@@ -210,7 +210,7 @@
                             "column": 51,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 169,
+                            "line": 171,
                             "message": ""
                         },
                         {
@@ -218,7 +218,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 175,
+                            "line": 177,
                             "message": ""
                         },
                         {
@@ -226,23 +226,23 @@
                             "column": 59,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 171,
+                            "line": 173,
                             "message": ""
                         },
                         {
-                            "codegenResult": 0,
+                            "codegenResult": 2,
                             "column": 60,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 178,
-                            "message": ""
+                            "line": 180,
+                            "message": "Cannot access value for name deleteCategoryDialog"
                         },
                         {
                             "codegenResult": 2,
                             "column": 40,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 184,
+                            "line": 186,
                             "message": "Cannot load property subcategories from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/CategoriesManagePage.qml)::modelData with type QVariant."
                         },
                         {
@@ -250,7 +250,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 195,
+                            "line": 197,
                             "message": "Cannot load property color from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/CategoriesManagePage.qml)::modelData with type QVariant."
                         },
                         {
@@ -258,7 +258,7 @@
                             "column": 47,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 200,
+                            "line": 202,
                             "message": "Cannot load property name from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/CategoriesManagePage.qml)::modelData with type QVariant."
                         },
                         {
@@ -266,7 +266,7 @@
                             "column": 66,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 208,
+                            "line": 210,
                             "message": ""
                         },
                         {
@@ -274,7 +274,7 @@
                             "column": 55,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 210,
+                            "line": 212,
                             "message": "Cannot access value for name subcategoryDialog"
                         },
                         {
@@ -282,7 +282,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 215,
+                            "line": 217,
                             "message": ""
                         },
                         {
@@ -290,7 +290,7 @@
                             "column": 55,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 216,
+                            "line": 218,
                             "message": ""
                         },
                         {
@@ -298,7 +298,7 @@
                             "column": 52,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 222,
+                            "line": 224,
                             "message": ""
                         },
                         {
@@ -306,7 +306,7 @@
                             "column": 63,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 218,
+                            "line": 220,
                             "message": ""
                         },
                         {
@@ -314,7 +314,7 @@
                             "column": 64,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 225,
+                            "line": 227,
                             "message": "Cannot access value for name catRow"
                         },
                         {
@@ -322,7 +322,7 @@
                             "column": 9,
                             "durationMicroseconds": 0,
                             "functionName": "openFor",
-                            "line": 251,
+                            "line": 253,
                             "message": "Functions without type annotations won't be compiled"
                         },
                         {
@@ -330,7 +330,7 @@
                             "column": 27,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 243,
+                            "line": 245,
                             "message": "Could not find property \"centerIn\"."
                         },
                         {
@@ -338,7 +338,7 @@
                             "column": 23,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 264,
+                            "line": 266,
                             "message": "Cannot access value for name categoryDialog"
                         },
                         {
@@ -346,7 +346,7 @@
                             "column": 39,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 283,
+                            "line": 285,
                             "message": "Cannot access value for name nameField"
                         },
                         {
@@ -354,7 +354,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 293,
+                            "line": 295,
                             "message": "Cannot access value for name categoryDialog"
                         },
                         {
@@ -362,7 +362,7 @@
                             "column": 35,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 297,
+                            "line": 299,
                             "message": "Cannot access value for name categoryColorDialog"
                         },
                         {
@@ -370,7 +370,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 305,
+                            "line": 307,
                             "message": "Cannot access value for name catColorHover"
                         },
                         {
@@ -378,7 +378,7 @@
                             "column": 46,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 307,
+                            "line": 309,
                             "message": ""
                         },
                         {
@@ -386,7 +386,7 @@
                             "column": 35,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 310,
+                            "line": 312,
                             "message": "Cannot access value for name categoryColorDialog"
                         },
                         {
@@ -394,7 +394,7 @@
                             "column": 30,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 316,
+                            "line": 318,
                             "message": "Cannot access value for name categoryDialog"
                         },
                         {
@@ -402,7 +402,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 324,
+                            "line": 326,
                             "message": "Cannot access value for name catCancelHover"
                         },
                         {
@@ -410,7 +410,7 @@
                             "column": 46,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 326,
+                            "line": 328,
                             "message": ""
                         },
                         {
@@ -418,7 +418,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 328,
+                            "line": 330,
                             "message": "Cannot access value for name categoryDialog"
                         },
                         {
@@ -426,7 +426,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 332,
+                            "line": 334,
                             "message": "Cannot access value for name catSaveHover"
                         },
                         {
@@ -434,7 +434,7 @@
                             "column": 31,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 336,
+                            "line": 338,
                             "message": "Cannot access value for name categoryDialog"
                         },
                         {
@@ -442,7 +442,7 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 335,
+                            "line": 337,
                             "message": ""
                         },
                         {
@@ -450,7 +450,7 @@
                             "column": 35,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 343,
+                            "line": 345,
                             "message": "Cannot access value for name nameField"
                         },
                         {
@@ -458,7 +458,7 @@
                             "column": 9,
                             "durationMicroseconds": 0,
                             "functionName": "openFor",
-                            "line": 373,
+                            "line": 375,
                             "message": "Functions without type annotations won't be compiled"
                         },
                         {
@@ -466,7 +466,7 @@
                             "column": 27,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 364,
+                            "line": 366,
                             "message": "Could not find property \"centerIn\"."
                         },
                         {
@@ -474,7 +474,7 @@
                             "column": 23,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 387,
+                            "line": 389,
                             "message": "Cannot access value for name subcategoryDialog"
                         },
                         {
@@ -482,7 +482,7 @@
                             "column": 39,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 406,
+                            "line": 408,
                             "message": "Cannot access value for name subNameField"
                         },
                         {
@@ -490,7 +490,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 416,
+                            "line": 418,
                             "message": "Cannot access value for name subcategoryDialog"
                         },
                         {
@@ -498,7 +498,7 @@
                             "column": 35,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 420,
+                            "line": 422,
                             "message": "Cannot access value for name subcategoryColorDialog"
                         },
                         {
@@ -506,7 +506,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 428,
+                            "line": 430,
                             "message": "Cannot access value for name subColorHover"
                         },
                         {
@@ -514,7 +514,7 @@
                             "column": 46,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 430,
+                            "line": 432,
                             "message": ""
                         },
                         {
@@ -522,7 +522,7 @@
                             "column": 35,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 433,
+                            "line": 435,
                             "message": "Cannot access value for name subcategoryColorDialog"
                         },
                         {
@@ -530,7 +530,7 @@
                             "column": 30,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 439,
+                            "line": 441,
                             "message": "Cannot access value for name subcategoryDialog"
                         },
                         {
@@ -538,7 +538,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 447,
+                            "line": 449,
                             "message": "Cannot access value for name subCancelHover"
                         },
                         {
@@ -546,7 +546,7 @@
                             "column": 46,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 449,
+                            "line": 451,
                             "message": ""
                         },
                         {
@@ -554,7 +554,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 451,
+                            "line": 453,
                             "message": "Cannot access value for name subcategoryDialog"
                         },
                         {
@@ -562,7 +562,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 455,
+                            "line": 457,
                             "message": "Cannot access value for name subSaveHover"
                         },
                         {
@@ -570,7 +570,7 @@
                             "column": 31,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 459,
+                            "line": 461,
                             "message": "Cannot access value for name subcategoryDialog"
                         },
                         {
@@ -578,23 +578,103 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 458,
+                            "line": 460,
                             "message": ""
                         },
                         {
                             "codegenResult": 2,
                             "column": 35,
-                            "durationMicroseconds": 1000,
+                            "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 466,
+                            "line": 468,
                             "message": "Cannot access value for name subNameField"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 9,
+                            "durationMicroseconds": 0,
+                            "functionName": "openFor",
+                            "line": 501,
+                            "message": "Functions without type annotations won't be compiled"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 27,
+                            "durationMicroseconds": 0,
+                            "functionName": "centerIn",
+                            "line": 493,
+                            "message": "Could not find property \"centerIn\"."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 27,
+                            "durationMicroseconds": 0,
+                            "functionName": "wrapMode",
+                            "line": 521,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 23,
+                            "durationMicroseconds": 0,
+                            "functionName": "text",
+                            "line": 522,
+                            "message": "Cannot access value for name deleteCategoryDialog"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 28,
+                            "durationMicroseconds": 0,
+                            "functionName": "color",
+                            "line": 533,
+                            "message": "Cannot access value for name delCancelHover"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 46,
+                            "durationMicroseconds": 0,
+                            "functionName": "centerIn",
+                            "line": 535,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 44,
+                            "durationMicroseconds": 0,
+                            "functionName": "onTapped",
+                            "line": 537,
+                            "message": "Cannot access value for name deleteCategoryDialog"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 28,
+                            "durationMicroseconds": 0,
+                            "functionName": "color",
+                            "line": 541,
+                            "message": "Cannot access value for name delConfirmHover"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 46,
+                            "durationMicroseconds": 0,
+                            "functionName": "centerIn",
+                            "line": 543,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 35,
+                            "durationMicroseconds": 0,
+                            "functionName": "onTapped",
+                            "line": 546,
+                            "message": "Cannot access value for name deleteCategoryDialog"
                         },
                         {
                             "codegenResult": 2,
                             "column": 21,
                             "durationMicroseconds": 0,
                             "functionName": "onAccepted",
-                            "line": 492,
+                            "line": 564,
                             "message": "Cannot retrieve a non-object type by ID: categoryDialog"
                         },
                         {
@@ -602,7 +682,7 @@
                             "column": 21,
                             "durationMicroseconds": 0,
                             "functionName": "onAccepted",
-                            "line": 498,
+                            "line": 570,
                             "message": "Cannot retrieve a non-object type by ID: subcategoryDialog"
                         }
                     ],

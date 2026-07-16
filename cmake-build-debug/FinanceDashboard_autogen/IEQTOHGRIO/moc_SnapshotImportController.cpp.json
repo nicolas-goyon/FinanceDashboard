@@ -8,7 +8,7 @@
                 }
             ],
             "className": "SnapshotImportController",
-            "lineNumber": 28,
+            "lineNumber": 31,
             "methods": [
                 {
                     "access": "public",
@@ -23,7 +23,7 @@
                         }
                     ],
                     "index": 3,
-                    "lineNumber": 78,
+                    "lineNumber": 83,
                     "name": "parseFile",
                     "returnType": "void"
                 },
@@ -40,7 +40,7 @@
                         }
                     ],
                     "index": 4,
-                    "lineNumber": 81,
+                    "lineNumber": 86,
                     "name": "setRowCategory",
                     "returnType": "void"
                 },
@@ -57,7 +57,7 @@
                         }
                     ],
                     "index": 5,
-                    "lineNumber": 82,
+                    "lineNumber": 87,
                     "name": "setRowSubcategory",
                     "returnType": "void"
                 },
@@ -74,7 +74,7 @@
                         }
                     ],
                     "index": 6,
-                    "lineNumber": 83,
+                    "lineNumber": 88,
                     "name": "setRowIncluded",
                     "returnType": "void"
                 },
@@ -88,14 +88,14 @@
                     ],
                     "index": 7,
                     "isConst": true,
-                    "lineNumber": 93,
+                    "lineNumber": 102,
                     "name": "matchAccountIndex",
                     "returnType": "int"
                 },
                 {
                     "access": "public",
                     "index": 8,
-                    "lineNumber": 96,
+                    "lineNumber": 105,
                     "name": "reset",
                     "returnType": "void"
                 },
@@ -103,12 +103,16 @@
                     "access": "public",
                     "arguments": [
                         {
+                            "name": "accountId",
+                            "type": "int"
+                        },
+                        {
                             "name": "accountLabel",
                             "type": "QString"
                         }
                     ],
                     "index": 9,
-                    "lineNumber": 99,
+                    "lineNumber": 118,
                     "name": "save",
                     "returnType": "void"
                 }
@@ -120,7 +124,7 @@
                     "designable": true,
                     "final": false,
                     "index": 0,
-                    "lineNumber": 34,
+                    "lineNumber": 37,
                     "name": "templates",
                     "override": false,
                     "read": "templates",
@@ -136,7 +140,7 @@
                     "designable": true,
                     "final": false,
                     "index": 1,
-                    "lineNumber": 38,
+                    "lineNumber": 41,
                     "name": "hasParsed",
                     "notify": "statementChanged",
                     "override": false,
@@ -153,7 +157,7 @@
                     "designable": true,
                     "final": false,
                     "index": 2,
-                    "lineNumber": 40,
+                    "lineNumber": 43,
                     "name": "lastParseFailed",
                     "notify": "statementChanged",
                     "override": false,
@@ -170,7 +174,7 @@
                     "designable": true,
                     "final": false,
                     "index": 3,
-                    "lineNumber": 41,
+                    "lineNumber": 44,
                     "name": "sourceFileName",
                     "notify": "statementChanged",
                     "override": false,
@@ -187,7 +191,7 @@
                     "designable": true,
                     "final": false,
                     "index": 4,
-                    "lineNumber": 47,
+                    "lineNumber": 52,
                     "name": "statementInfo",
                     "notify": "statementChanged",
                     "override": false,
@@ -204,7 +208,7 @@
                     "designable": true,
                     "final": false,
                     "index": 5,
-                    "lineNumber": 50,
+                    "lineNumber": 55,
                     "name": "transactionRows",
                     "notify": "statementChanged",
                     "override": false,
@@ -221,7 +225,7 @@
                     "designable": true,
                     "final": false,
                     "index": 6,
-                    "lineNumber": 53,
+                    "lineNumber": 58,
                     "name": "logEntries",
                     "notify": "logChanged",
                     "override": false,
@@ -238,7 +242,7 @@
                     "designable": true,
                     "final": false,
                     "index": 7,
-                    "lineNumber": 54,
+                    "lineNumber": 59,
                     "name": "errorCount",
                     "notify": "logChanged",
                     "override": false,
@@ -255,7 +259,7 @@
                     "designable": true,
                     "final": false,
                     "index": 8,
-                    "lineNumber": 55,
+                    "lineNumber": 60,
                     "name": "warningCount",
                     "notify": "logChanged",
                     "override": false,
@@ -272,7 +276,7 @@
                     "designable": true,
                     "final": false,
                     "index": 9,
-                    "lineNumber": 57,
+                    "lineNumber": 62,
                     "name": "statusText",
                     "notify": "statusChanged",
                     "override": false,
@@ -290,21 +294,21 @@
                 {
                     "access": "public",
                     "index": 0,
-                    "lineNumber": 102,
+                    "lineNumber": 121,
                     "name": "statementChanged",
                     "returnType": "void"
                 },
                 {
                     "access": "public",
                     "index": 1,
-                    "lineNumber": 103,
+                    "lineNumber": 122,
                     "name": "logChanged",
                     "returnType": "void"
                 },
                 {
                     "access": "public",
                     "index": 2,
-                    "lineNumber": 104,
+                    "lineNumber": 123,
                     "name": "statusChanged",
                     "returnType": "void"
                 }

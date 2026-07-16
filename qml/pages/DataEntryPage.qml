@@ -4,22 +4,31 @@ import QtQuick.Layouts
 import FinanceDashboard
 
 // ── Data Entry / Reports — PROJECT.md page 6 ──────────────────────────────────
-// Monthly snapshot per account (with account management) · transaction entry
-// with manual category/subcategory picker (CategoryController — see Data
-// Entry → "Manage Categories" / CategoriesManagePage.qml) · history · annual
-// summary
-// [MOCK — DataEntryController; nothing is persisted in the UI pass]
+// Monthly snapshot per account · transaction entry with manual category/
+// subcategory picker (CategoryController — see Data Entry → "Manage
+// Categories" / CategoriesManagePage.qml) · history · annual summary.
+// Accounts come from AccountController (QML_SINGLETON — see ARCHITECTURE.MD
+// § Account Management); add/edit/remove account UI moved to
+// AccountsManagePage.qml (Data Entry → "Manage Accounts") so it isn't
+// duplicated here — this page only lists accounts + lets you key in each
+// one's balance for the snapshot.
+// [MOCK — DataEntryController; the snapshot/transaction forms are not
+// persisted yet, only the accounts list itself is real]
 
 Item {
     id: page
 
     DataEntryController { id: controller }
 
-    readonly property var typeColors: ({
-        "Checking": { bg: "#1e3a5f", fg: "#89b4fa" },
-        "Savings":  { bg: "#1a3328", fg: "#a6e3a1" },
-        "Trading":  { bg: "#2d2440", fg: "#cba6f7" }
-    })
+    // Badge color now comes from the account's *category* (Day-to-day,
+    // Savings, Investments, Urgent savings, …) via
+    // AccountController.accountCategoryColor() — replaces the old fixed
+    // Checking/Savings/Trading type→color map, which no longer matches the
+    // real (DB-managed, open-ended) category list.
+    function categoryBadgeColor(categoryName) {
+        var hex = AccountController.accountCategoryColor(categoryName)
+        return hex.length > 0 ? hex : "#6c7086"
+    }
 
     ScrollView {
         anchors.fill: parent
@@ -85,15 +94,14 @@ Item {
                             RowLayout {
                                 anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                 spacing: 10
-                                Text { Layout.preferredWidth: 80;  text: "TYPE";    font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                                Text { Layout.fillWidth: true;     text: "ACCOUNT"; font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                                Text { Layout.preferredWidth: 150; text: "BALANCE"; font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                                Item { Layout.preferredWidth: 26 }
+                                Text { Layout.preferredWidth: 110; text: "CATEGORY"; font.pixelSize: 13; font.bold: true; color: "#6c7086" }
+                                Text { Layout.fillWidth: true;     text: "ACCOUNT";  font.pixelSize: 13; font.bold: true; color: "#6c7086" }
+                                Text { Layout.preferredWidth: 150; text: "BALANCE";  font.pixelSize: 13; font.bold: true; color: "#6c7086" }
                             }
                         }
 
                         Repeater {
-                            model: controller.accounts
+                            model: AccountController.accounts
                             delegate: Rectangle {
                                 id: accountRow
                                 required property var modelData
@@ -107,23 +115,33 @@ Item {
                                     spacing: 10
 
                                     Rectangle {
-                                        Layout.preferredWidth: 80
+                                        Layout.preferredWidth: 110
                                         Layout.preferredHeight: 20
                                         radius: 10
-                                        color: page.typeColors[accountRow.modelData.type].bg
+                                        color: Qt.rgba(1, 1, 1, 0.08)
+                                        border.color: page.categoryBadgeColor(accountRow.modelData.category)
                                         Text {
                                             anchors.centerIn: parent
-                                            text: accountRow.modelData.type
-                                            font.pixelSize: 13
-                                            color: page.typeColors[accountRow.modelData.type].fg
+                                            text: accountRow.modelData.category.length > 0 ? accountRow.modelData.category : "—"
+                                            font.pixelSize: 12
+                                            color: page.categoryBadgeColor(accountRow.modelData.category)
+                                            elide: Text.ElideRight
                                         }
                                     }
-                                    Text {
+                                    ColumnLayout {
                                         Layout.fillWidth: true
-                                        text: accountRow.modelData.name
-                                        font.pixelSize: 15
-                                        color: "#cdd6f4"
-                                        elide: Text.ElideRight
+                                        spacing: 0
+                                        Text {
+                                            text: accountRow.modelData.name
+                                            font.pixelSize: 15
+                                            color: "#cdd6f4"
+                                            elide: Text.ElideRight
+                                        }
+                                        Text {
+                                            text: accountRow.modelData.type
+                                            font.pixelSize: 12
+                                            color: "#6c7086"
+                                        }
                                     }
                                     TextField {
                                         id: balanceField
@@ -140,47 +158,25 @@ Item {
                                             border.color: balanceField.activeFocus ? "#a6e3a1" : "#313244"
                                         }
                                     }
-                                    Rectangle {
-                                        Layout.preferredWidth: 26
-                                        Layout.preferredHeight: 26
-                                        radius: 4
-                                        color: removeHover.hovered ? "#3d2028" : "transparent"
-                                        border.color: removeHover.hovered ? "#f38ba8" : "#313244"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "×"
-                                            font.pixelSize: 17
-                                            font.bold: true
-                                            color: removeHover.hovered ? "#f38ba8" : "#6c7086"
-                                        }
-                                        HoverHandler { id: removeHover }
-                                        TapHandler {
-                                            onTapped: controller.removeAccount(accountRow.index)
-                                        }
-                                    }
                                 }
                             }
                         }
 
-                        // Footer: add account + save snapshot
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.topMargin: 6
+                            wrapMode: Text.WordWrap
+                            text: "Add, edit, or remove accounts from Data Entry → \"Manage Accounts\"."
+                            font.pixelSize: 13
+                            color: "#6c7086"
+                        }
+
+                        // Footer: save snapshot
                         RowLayout {
                             Layout.fillWidth: true
                             Layout.topMargin: 10
                             spacing: 10
 
-                            Rectangle {
-                                width: 130; height: 30; radius: 4
-                                color: addAccountHover.hovered ? "#181825" : "transparent"
-                                border.color: "#313244"
-                                Text {
-                                    anchors.centerIn: parent
-                                    text: "＋  Add account"
-                                    font.pixelSize: 15
-                                    color: "#89b4fa"
-                                }
-                                HoverHandler { id: addAccountHover }
-                                TapHandler { onTapped: addAccountDialog.open() }
-                            }
                             Item { Layout.fillWidth: true }
                             Rectangle {
                                 width: 130; height: 30; radius: 4
@@ -392,85 +388,4 @@ Item {
         }
     }
 
-    // ── Add-account dialog ────────────────────────────────────────────────────
-    Popup {
-        id: addAccountDialog
-        anchors.centerIn: parent
-        width: 380
-        padding: 20
-        modal: true
-
-        background: Rectangle {
-            color: "#181825"
-            border.color: "#45475a"
-            radius: 8
-        }
-
-        contentItem: ColumnLayout {
-            spacing: 12
-
-            Text {
-                text: "New account"
-                font.pixelSize: 19
-                font.bold: true
-                color: "#cdd6f4"
-            }
-
-            RowLayout {
-                spacing: 10
-                Text { Layout.preferredWidth: 60; text: "Name"; font.pixelSize: 15; color: "#6c7086" }
-                TextField {
-                    id: accountNameField
-                    Layout.fillWidth: true
-                    placeholderText: "e.g. Livret Jeune"
-                    placeholderTextColor: "#45475a"
-                    color: "#cdd6f4"
-                    font.pixelSize: 15
-                    background: Rectangle {
-                        color: "#11111b"
-                        radius: 4
-                        border.color: accountNameField.activeFocus ? "#89b4fa" : "#313244"
-                    }
-                }
-            }
-            RowLayout {
-                spacing: 10
-                Text { Layout.preferredWidth: 60; text: "Type"; font.pixelSize: 15; color: "#6c7086" }
-                ComboBox {
-                    id: accountTypeField
-                    Layout.fillWidth: true
-                    model: controller.accountTypes
-                }
-            }
-
-            RowLayout {
-                Layout.topMargin: 6
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 80; height: 30; radius: 4
-                    color: accCancelHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Cancel"; font.pixelSize: 15; color: "#cdd6f4" }
-                    HoverHandler { id: accCancelHover }
-                    TapHandler { onTapped: addAccountDialog.close() }
-                }
-                Rectangle {
-                    width: 80; height: 30; radius: 4
-                    color: accAddHover.hovered ? "#264d80" : "#1e3a5f"
-                    border.color: "#89b4fa"
-                    Text { anchors.centerIn: parent; text: "Add"; font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
-                    HoverHandler { id: accAddHover }
-                    TapHandler {
-                        onTapped: {
-                            var trimmed = accountNameField.text.trim()
-                            if (trimmed.length === 0)
-                                return
-                            controller.addAccount(trimmed, accountTypeField.currentText)
-                            addAccountDialog.close()
-                        }
-                    }
-                }
-            }
-        }
-    }
 }

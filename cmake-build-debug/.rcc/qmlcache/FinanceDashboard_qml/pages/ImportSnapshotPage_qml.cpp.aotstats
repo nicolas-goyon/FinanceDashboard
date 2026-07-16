@@ -10,15 +10,23 @@
                             "column": 9,
                             "durationMicroseconds": 0,
                             "functionName": "currentTemplate",
-                            "line": 32,
+                            "line": 35,
                             "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 9,
+                            "durationMicroseconds": 0,
+                            "functionName": "selectedAccount",
+                            "line": 41,
+                            "message": "Cannot use shadowable base type for further lookups: AccountController::accounts with type QVariantList"
                         },
                         {
                             "codegenResult": 0,
                             "column": 5,
                             "durationMicroseconds": 0,
                             "functionName": "goToReview",
-                            "line": 37,
+                            "line": 44,
                             "message": ""
                         },
                         {
@@ -26,7 +34,7 @@
                             "column": 19,
                             "durationMicroseconds": 0,
                             "functionName": "fileMode",
-                            "line": 46,
+                            "line": 53,
                             "message": ""
                         },
                         {
@@ -34,7 +42,7 @@
                             "column": 22,
                             "durationMicroseconds": 0,
                             "functionName": "nameFilters",
-                            "line": 47,
+                            "line": 54,
                             "message": "Cannot load property fileFilter from ImportSnapshotPage::currentTemplate with type QVariant."
                         },
                         {
@@ -42,7 +50,7 @@
                             "column": 21,
                             "durationMicroseconds": 0,
                             "functionName": "onAccepted",
-                            "line": 50,
+                            "line": 57,
                             "message": "Cannot load property id from ImportSnapshotPage::currentTemplate with type QVariant."
                         },
                         {
@@ -50,7 +58,7 @@
                             "column": 23,
                             "durationMicroseconds": 0,
                             "functionName": "contentWidth",
-                            "line": 58,
+                            "line": 65,
                             "message": "Could not find property \"contentWidth\"."
                         },
                         {
@@ -58,7 +66,7 @@
                             "column": 23,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 57,
+                            "line": 64,
                             "message": "Could not find property \"fill\"."
                         },
                         {
@@ -66,7 +74,7 @@
                             "column": 20,
                             "durationMicroseconds": 0,
                             "functionName": "width",
-                            "line": 63,
+                            "line": 70,
                             "message": ""
                         },
                         {
@@ -74,7 +82,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 71,
+                            "line": 78,
                             "message": ""
                         },
                         {
@@ -82,7 +90,7 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 73,
+                            "line": 80,
                             "message": ""
                         },
                         {
@@ -90,7 +98,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 79,
+                            "line": 86,
                             "message": ""
                         },
                         {
@@ -98,7 +106,7 @@
                             "column": 30,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 90,
+                            "line": 96,
                             "message": ""
                         },
                         {
@@ -106,7 +114,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "width",
-                            "line": 91,
+                            "line": 97,
                             "message": ""
                         },
                         {
@@ -114,28 +122,12 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 94,
+                            "line": 100,
                             "message": ""
                         },
                         {
                             "codegenResult": 0,
                             "column": 35,
-                            "durationMicroseconds": 0,
-                            "functionName": "color",
-                            "line": 95,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 31,
-                            "durationMicroseconds": 0,
-                            "functionName": "text",
-                            "line": 99,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 32,
                             "durationMicroseconds": 0,
                             "functionName": "color",
                             "line": 101,
@@ -143,66 +135,10 @@
                         },
                         {
                             "codegenResult": 0,
-                            "column": 43,
-                            "durationMicroseconds": 0,
-                            "functionName": "centerIn",
-                            "line": 98,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 26,
-                            "durationMicroseconds": 0,
-                            "functionName": "visible",
-                            "line": 108,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 33,
-                            "durationMicroseconds": 0,
-                            "functionName": "implicitHeight",
-                            "line": 110,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 35,
-                            "durationMicroseconds": 0,
-                            "functionName": "fill",
-                            "line": 115,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 36,
-                            "durationMicroseconds": 0,
-                            "functionName": "model",
-                            "line": 124,
-                            "message": "Could not find property \"model\"."
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 42,
-                            "durationMicroseconds": 0,
-                            "functionName": "onActivated",
-                            "line": 127,
-                            "message": "Could not find signal \"activated\"."
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 35,
-                            "durationMicroseconds": 0,
-                            "functionName": "wrapMode",
-                            "line": 133,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
                             "column": 31,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 134,
+                            "line": 105,
                             "message": ""
                         },
                         {
@@ -210,31 +146,15 @@
                             "column": 32,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 144,
+                            "line": 107,
                             "message": ""
                         },
                         {
                             "codegenResult": 0,
                             "column": 43,
                             "durationMicroseconds": 0,
-                            "functionName": "alignment",
-                            "line": 142,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 47,
-                            "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 147,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 48,
-                            "durationMicroseconds": 0,
-                            "functionName": "onTapped",
-                            "line": 154,
+                            "line": 104,
                             "message": ""
                         },
                         {
@@ -242,12 +162,92 @@
                             "column": 26,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 161,
+                            "line": 114,
                             "message": ""
                         },
                         {
                             "codegenResult": 0,
-                            "column": 30,
+                            "column": 33,
+                            "durationMicroseconds": 0,
+                            "functionName": "implicitHeight",
+                            "line": 116,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 35,
+                            "durationMicroseconds": 0,
+                            "functionName": "fill",
+                            "line": 121,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 36,
+                            "durationMicroseconds": 0,
+                            "functionName": "model",
+                            "line": 130,
+                            "message": "Could not find property \"model\"."
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 42,
+                            "durationMicroseconds": 0,
+                            "functionName": "onActivated",
+                            "line": 133,
+                            "message": "Could not find signal \"activated\"."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 35,
+                            "durationMicroseconds": 0,
+                            "functionName": "wrapMode",
+                            "line": 139,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 31,
+                            "durationMicroseconds": 0,
+                            "functionName": "text",
+                            "line": 140,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 32,
+                            "durationMicroseconds": 0,
+                            "functionName": "color",
+                            "line": 150,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 43,
+                            "durationMicroseconds": 0,
+                            "functionName": "alignment",
+                            "line": 148,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 47,
+                            "durationMicroseconds": 0,
+                            "functionName": "centerIn",
+                            "line": 153,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 48,
+                            "durationMicroseconds": 0,
+                            "functionName": "onTapped",
+                            "line": 160,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 26,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
                             "line": 167,
@@ -255,9 +255,9 @@
                         },
                         {
                             "codegenResult": 0,
-                            "column": 39,
+                            "column": 30,
                             "durationMicroseconds": 0,
-                            "functionName": "fill",
+                            "functionName": "visible",
                             "line": 173,
                             "message": ""
                         },
@@ -265,25 +265,17 @@
                             "codegenResult": 0,
                             "column": 39,
                             "durationMicroseconds": 0,
-                            "functionName": "wrapMode",
-                            "line": 177,
+                            "functionName": "fill",
+                            "line": 179,
                             "message": ""
                         },
                         {
                             "codegenResult": 0,
-                            "column": 58,
+                            "column": 39,
                             "durationMicroseconds": 0,
-                            "functionName": "centerIn",
-                            "line": 187,
+                            "functionName": "wrapMode",
+                            "line": 183,
                             "message": ""
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 56,
-                            "durationMicroseconds": 0,
-                            "functionName": "onTapped",
-                            "line": 188,
-                            "message": "Cannot retrieve a non-object type by ID: logPopup"
                         },
                         {
                             "codegenResult": 0,
@@ -294,11 +286,27 @@
                             "message": ""
                         },
                         {
-                            "codegenResult": 0,
+                            "codegenResult": 2,
                             "column": 56,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
                             "line": 194,
+                            "message": "Cannot retrieve a non-object type by ID: logPopup"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 58,
+                            "durationMicroseconds": 0,
+                            "functionName": "centerIn",
+                            "line": 199,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 56,
+                            "durationMicroseconds": 0,
+                            "functionName": "onTapped",
+                            "line": 200,
                             "message": ""
                         },
                         {
@@ -306,7 +314,7 @@
                             "column": 30,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 202,
+                            "line": 208,
                             "message": ""
                         },
                         {
@@ -314,7 +322,7 @@
                             "column": 37,
                             "durationMicroseconds": 0,
                             "functionName": "implicitHeight",
-                            "line": 204,
+                            "line": 210,
                             "message": ""
                         },
                         {
@@ -322,7 +330,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "title",
-                            "line": 205,
+                            "line": 211,
                             "message": ""
                         },
                         {
@@ -330,7 +338,7 @@
                             "column": 39,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 209,
+                            "line": 215,
                             "message": ""
                         },
                         {
@@ -338,7 +346,7 @@
                             "column": 42,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 223,
+                            "line": 229,
                             "message": ""
                         },
                         {
@@ -346,7 +354,7 @@
                             "column": 42,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 224,
+                            "line": 230,
                             "message": ""
                         },
                         {
@@ -354,7 +362,7 @@
                             "column": 42,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 225,
+                            "line": 231,
                             "message": ""
                         },
                         {
@@ -362,7 +370,7 @@
                             "column": 42,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 226,
+                            "line": 232,
                             "message": ""
                         },
                         {
@@ -370,7 +378,7 @@
                             "column": 42,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 233,
+                            "line": 239,
                             "message": ""
                         },
                         {
@@ -378,7 +386,7 @@
                             "column": 42,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 234,
+                            "line": 240,
                             "message": ""
                         },
                         {
@@ -386,7 +394,7 @@
                             "column": 42,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 235,
+                            "line": 241,
                             "message": ""
                         },
                         {
@@ -394,7 +402,7 @@
                             "column": 40,
                             "durationMicroseconds": 0,
                             "functionName": "width",
-                            "line": 237,
+                            "line": 243,
                             "message": ""
                         },
                         {
@@ -402,7 +410,7 @@
                             "column": 40,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 240,
+                            "line": 246,
                             "message": ""
                         },
                         {
@@ -410,7 +418,7 @@
                             "column": 55,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 244,
+                            "line": 250,
                             "message": ""
                         },
                         {
@@ -418,7 +426,7 @@
                             "column": 47,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 247,
+                            "line": 253,
                             "message": ""
                         },
                         {
@@ -426,7 +434,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 250,
+                            "line": 256,
                             "message": ""
                         },
                         {
@@ -434,7 +442,7 @@
                             "column": 56,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 253,
+                            "line": 259,
                             "message": "Cannot retrieve a non-object type by ID: logPopup"
                         },
                         {
@@ -442,7 +450,7 @@
                             "column": 42,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 264,
+                            "line": 270,
                             "message": ""
                         },
                         {
@@ -450,7 +458,7 @@
                             "column": 39,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 267,
+                            "line": 273,
                             "message": ""
                         },
                         {
@@ -458,7 +466,7 @@
                             "column": 40,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 282,
+                            "line": 288,
                             "message": "Could not find property \"model\"."
                         },
                         {
@@ -466,7 +474,7 @@
                             "column": 47,
                             "durationMicroseconds": 0,
                             "functionName": "currentIndex",
-                            "line": 284,
+                            "line": 290,
                             "message": "Could not find property \"currentIndex\"."
                         },
                         {
@@ -474,16 +482,8 @@
                             "column": 46,
                             "durationMicroseconds": 0,
                             "functionName": "onActivated",
-                            "line": 285,
+                            "line": 291,
                             "message": "Could not find signal \"activated\"."
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 42,
-                            "durationMicroseconds": 0,
-                            "functionName": "visible",
-                            "line": 288,
-                            "message": ""
                         },
                         {
                             "codegenResult": 0,
@@ -495,10 +495,114 @@
                         },
                         {
                             "codegenResult": 0,
+                            "column": 42,
+                            "durationMicroseconds": 0,
+                            "functionName": "visible",
+                            "line": 300,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 38,
+                            "durationMicroseconds": 0,
+                            "functionName": "visible",
+                            "line": 316,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 42,
+                            "durationMicroseconds": 0,
+                            "functionName": "visible",
+                            "line": 320,
+                            "message": "Cannot load property linked from ImportSnapshotPage::selectedAccount with type QVariant."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 40,
+                            "durationMicroseconds": 0,
+                            "functionName": "width",
+                            "line": 321,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 55,
+                            "durationMicroseconds": 0,
+                            "functionName": "centerIn",
+                            "line": 328,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 42,
+                            "durationMicroseconds": 0,
+                            "functionName": "visible",
+                            "line": 338,
+                            "message": "Cannot load property linked from ImportSnapshotPage::selectedAccount with type QVariant."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 40,
+                            "durationMicroseconds": 0,
+                            "functionName": "width",
+                            "line": 339,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 55,
+                            "durationMicroseconds": 0,
+                            "functionName": "centerIn",
+                            "line": 346,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 47,
+                            "durationMicroseconds": 0,
+                            "functionName": "text",
+                            "line": 349,
+                            "message": "Cannot load property hashCount from ImportSnapshotPage::selectedAccount with type QVariant."
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 42,
+                            "durationMicroseconds": 0,
+                            "functionName": "visible",
+                            "line": 362,
+                            "message": "Cannot load property length from QVariantMap::accountHashRaw with type QVariant."
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 40,
+                            "durationMicroseconds": 0,
+                            "functionName": "color",
+                            "line": 366,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 58,
+                            "durationMicroseconds": 0,
+                            "functionName": "centerIn",
+                            "line": 368,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 47,
+                            "durationMicroseconds": 0,
+                            "functionName": "onTapped",
+                            "line": 371,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
                             "column": 30,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 305,
+                            "line": 381,
                             "message": ""
                         },
                         {
@@ -506,7 +610,7 @@
                             "column": 37,
                             "durationMicroseconds": 0,
                             "functionName": "implicitHeight",
-                            "line": 307,
+                            "line": 383,
                             "message": ""
                         },
                         {
@@ -514,7 +618,7 @@
                             "column": 39,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 312,
+                            "line": 388,
                             "message": ""
                         },
                         {
@@ -522,7 +626,7 @@
                             "column": 49,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 321,
+                            "line": 397,
                             "message": ""
                         },
                         {
@@ -530,7 +634,7 @@
                             "column": 163,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 325,
+                            "line": 401,
                             "message": ""
                         },
                         {
@@ -538,7 +642,7 @@
                             "column": 163,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 326,
+                            "line": 402,
                             "message": ""
                         },
                         {
@@ -546,7 +650,7 @@
                             "column": 163,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 327,
+                            "line": 403,
                             "message": ""
                         },
                         {
@@ -554,7 +658,7 @@
                             "column": 163,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 330,
+                            "line": 406,
                             "message": ""
                         },
                         {
@@ -562,7 +666,7 @@
                             "column": 36,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 335,
+                            "line": 411,
                             "message": ""
                         },
                         {
@@ -570,7 +674,7 @@
                             "column": 40,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 341,
+                            "line": 417,
                             "message": ""
                         },
                         {
@@ -578,7 +682,7 @@
                             "column": 42,
                             "durationMicroseconds": 0,
                             "functionName": "opacity",
-                            "line": 342,
+                            "line": 418,
                             "message": "Cannot load property included from (component in C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/pages/ImportSnapshotPage.qml)::modelData with type QVariant."
                         },
                         {
@@ -586,7 +690,7 @@
                             "column": 53,
                             "durationMicroseconds": 0,
                             "functionName": "fill",
-                            "line": 345,
+                            "line": 421,
                             "message": ""
                         },
                         {
@@ -594,7 +698,7 @@
                             "column": 77,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 348,
+                            "line": 424,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -602,7 +706,7 @@
                             "column": 47,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 351,
+                            "line": 427,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -610,7 +714,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "elide",
-                            "line": 354,
+                            "line": 430,
                             "message": ""
                         },
                         {
@@ -618,7 +722,7 @@
                             "column": 78,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 356,
+                            "line": 432,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -626,7 +730,7 @@
                             "column": 159,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 356,
+                            "line": 432,
                             "message": ""
                         },
                         {
@@ -634,7 +738,7 @@
                             "column": 78,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 357,
+                            "line": 433,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -642,7 +746,7 @@
                             "column": 159,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 357,
+                            "line": 433,
                             "message": ""
                         },
                         {
@@ -650,7 +754,7 @@
                             "column": 78,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 358,
+                            "line": 434,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -658,7 +762,7 @@
                             "column": 160,
                             "durationMicroseconds": 0,
                             "functionName": "horizontalAlignment",
-                            "line": 358,
+                            "line": 434,
                             "message": ""
                         },
                         {
@@ -666,7 +770,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "items",
-                            "line": 363,
+                            "line": 440,
                             "message": ""
                         },
                         {
@@ -674,7 +778,7 @@
                             "column": 54,
                             "durationMicroseconds": 0,
                             "functionName": "currentName",
-                            "line": 364,
+                            "line": 441,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -682,7 +786,7 @@
                             "column": 58,
                             "durationMicroseconds": 0,
                             "functionName": "onNameActivated",
-                            "line": 365,
+                            "line": 442,
                             "message": "Cannot access value for name controller"
                         },
                         {
@@ -690,7 +794,7 @@
                             "column": 58,
                             "durationMicroseconds": 0,
                             "functionName": "onNameActivated",
-                            "line": 365,
+                            "line": 442,
                             "message": ""
                         },
                         {
@@ -698,7 +802,7 @@
                             "column": 73,
                             "durationMicroseconds": 0,
                             "functionName": "subItems",
-                            "line": 370,
+                            "line": 448,
                             "message": "Cannot use shadowable base type for further lookups: CategoryController::categories with type QVariantList"
                         },
                         {
@@ -706,7 +810,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "items",
-                            "line": 374,
+                            "line": 452,
                             "message": ""
                         },
                         {
@@ -714,7 +818,7 @@
                             "column": 50,
                             "durationMicroseconds": 0,
                             "functionName": "enabled",
-                            "line": 375,
+                            "line": 453,
                             "message": "Could not find property \"enabled\"."
                         },
                         {
@@ -722,7 +826,7 @@
                             "column": 54,
                             "durationMicroseconds": 0,
                             "functionName": "currentName",
-                            "line": 376,
+                            "line": 454,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -730,7 +834,7 @@
                             "column": 58,
                             "durationMicroseconds": 0,
                             "functionName": "onNameActivated",
-                            "line": 377,
+                            "line": 455,
                             "message": "Cannot access value for name controller"
                         },
                         {
@@ -738,7 +842,7 @@
                             "column": 58,
                             "durationMicroseconds": 0,
                             "functionName": "onNameActivated",
-                            "line": 377,
+                            "line": 455,
                             "message": ""
                         },
                         {
@@ -746,7 +850,7 @@
                             "column": 50,
                             "durationMicroseconds": 0,
                             "functionName": "checked",
-                            "line": 382,
+                            "line": 460,
                             "message": "Could not find property \"checked\"."
                         },
                         {
@@ -754,7 +858,7 @@
                             "column": 59,
                             "durationMicroseconds": 0,
                             "functionName": "onCheckedChanged",
-                            "line": 383,
+                            "line": 461,
                             "message": "Could not find signal \"checkedChanged\"."
                         },
                         {
@@ -762,7 +866,7 @@
                             "column": 30,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 393,
+                            "line": 471,
                             "message": ""
                         },
                         {
@@ -770,7 +874,7 @@
                             "column": 50,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 400,
+                            "line": 478,
                             "message": ""
                         },
                         {
@@ -778,7 +882,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 401,
+                            "line": 479,
                             "message": "Cannot retrieve a non-object type by ID: logPopup"
                         },
                         {
@@ -786,7 +890,7 @@
                             "column": 50,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 406,
+                            "line": 484,
                             "message": ""
                         },
                         {
@@ -794,7 +898,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 407,
+                            "line": 485,
                             "message": ""
                         },
                         {
@@ -802,7 +906,7 @@
                             "column": 32,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 412,
+                            "line": 490,
                             "message": ""
                         },
                         {
@@ -810,7 +914,7 @@
                             "column": 50,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 414,
+                            "line": 492,
                             "message": ""
                         },
                         {
@@ -818,15 +922,15 @@
                             "column": 39,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 417,
-                            "message": "Cannot load property name from conversion to QVariant."
+                            "line": 495,
+                            "message": "Cannot load property id from ImportSnapshotPage::selectedAccount with type QVariant."
                         },
                         {
                             "codegenResult": 2,
                             "column": 27,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 435,
+                            "line": 519,
                             "message": "Could not find property \"centerIn\"."
                         },
                         {
@@ -834,7 +938,7 @@
                             "column": 27,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 455,
+                            "line": 539,
                             "message": "Cannot access value for name controller"
                         },
                         {
@@ -842,7 +946,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "width",
-                            "line": 467,
+                            "line": 551,
                             "message": "Cannot access value for name logPopup"
                         },
                         {
@@ -850,7 +954,7 @@
                             "column": 34,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 471,
+                            "line": 555,
                             "message": "Cannot access value for name controller"
                         },
                         {
@@ -858,7 +962,7 @@
                             "column": 32,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 478,
+                            "line": 562,
                             "message": "Cannot access value for name controller"
                         },
                         {
@@ -866,7 +970,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 488,
+                            "line": 572,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -874,7 +978,7 @@
                             "column": 47,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 492,
+                            "line": 576,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -882,7 +986,7 @@
                             "column": 48,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 494,
+                            "line": 578,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -890,7 +994,7 @@
                             "column": 59,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 491,
+                            "line": 575,
                             "message": ""
                         },
                         {
@@ -898,7 +1002,7 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 499,
+                            "line": 583,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -906,7 +1010,7 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 505,
+                            "line": 589,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -914,7 +1018,7 @@
                             "column": 47,
                             "durationMicroseconds": 0,
                             "functionName": "wrapMode",
-                            "line": 508,
+                            "line": 592,
                             "message": ""
                         },
                         {
@@ -922,7 +1026,7 @@
                             "column": 42,
                             "durationMicroseconds": 0,
                             "functionName": "visible",
-                            "line": 512,
+                            "line": 596,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -930,7 +1034,7 @@
                             "column": 39,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 515,
+                            "line": 599,
                             "message": "Cannot access value for name modelData"
                         },
                         {
@@ -938,7 +1042,7 @@
                             "column": 43,
                             "durationMicroseconds": 0,
                             "functionName": "wrapMode",
-                            "line": 519,
+                            "line": 603,
                             "message": ""
                         },
                         {
@@ -946,7 +1050,7 @@
                             "column": 28,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 531,
+                            "line": 615,
                             "message": "Cannot access value for name logCloseHover"
                         },
                         {
@@ -954,7 +1058,7 @@
                             "column": 46,
                             "durationMicroseconds": 0,
                             "functionName": "centerIn",
-                            "line": 533,
+                            "line": 617,
                             "message": ""
                         },
                         {
@@ -962,7 +1066,7 @@
                             "column": 44,
                             "durationMicroseconds": 0,
                             "functionName": "onTapped",
-                            "line": 535,
+                            "line": 619,
                             "message": "Cannot access value for name logPopup"
                         }
                     ],
