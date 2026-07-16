@@ -60,15 +60,9 @@ Item {
             width: parent.width - 40
             spacing: 16
 
-            RowLayout {
-                Text {
-                    text: "Overview — Net Worth"
-                    font.pixelSize: 23
-                    font.bold: true
-                    color: "#cdd6f4"
-                }
-                Text { text: "[MOCK]"; font.pixelSize: 14; color: "#f38ba8" }
-                Item { Layout.fillWidth: true }
+            PageHeader {
+                title: "Overview — Net Worth"
+                mock: true
             }
 
             // ── KPI cards ─────────────────────────────────────────────────────

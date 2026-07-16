@@ -10,13 +10,19 @@ import FinanceDashboard
 // ARCHITECTURE.MD § Database Management). Backed by
 // DatabaseManagementController (one per page, not a QML_SINGLETON — no
 // state to keep alive). Both actions are destructive and irreversible, so
-// both are gated behind a confirmation dialog first.
+// both are gated behind a confirmation dialog first — both dialogs use the
+// red/danger confirm styling regardless of the trigger button's own color
+// (Reset to Mock Data's trigger is blue/primary, its confirm step is still
+// red, deliberately, since it's just as irreversible as a full reset).
 //
 // After either action, CategoryController.reload() and
 // AccountController.reload() are called here (not by the controller itself
 // — see DatabaseManagementController's class comment) so those singletons'
 // cached lists pick up the wipe/reseed immediately instead of only on next
 // app launch.
+//
+// Built from the shared qml/components/ (PageHeader, StatusBadge,
+// PillButton, ConfirmDialog) — see ARCHITECTURE.MD § Shared Components.
 
 Item {
     id: page
@@ -34,29 +40,13 @@ Item {
         width: parent.width - 40
         spacing: 16
 
-        RowLayout {
-            spacing: 12
-            Text {
-                text: "Database Management"
-                font.pixelSize: 23
-                font.bold: true
-                color: "#cdd6f4"
-            }
-            Item { Layout.fillWidth: true }
-            Rectangle {
+        PageHeader {
+            title: "Database Management"
+
+            StatusBadge {
                 visible: controller.statusText.length > 0
-                width: statusLabel.implicitWidth + 20
-                height: 26
-                radius: 13
-                color: "#1a3328"
-                border.color: "#2d5a45"
-                Text {
-                    id: statusLabel
-                    anchors.centerIn: parent
-                    text: controller.statusText
-                    font.pixelSize: 14
-                    color: "#a6e3a1"
-                }
+                text: controller.statusText
+                variant: "success"
             }
         }
 
@@ -95,13 +85,11 @@ Item {
                             color: "#6c7086"
                         }
                     }
-                    Rectangle {
-                        width: 150; height: 32; radius: 4
-                        color: resetHover.hovered ? "#5a2d36" : "#3d2028"
-                        border.color: "#f38ba8"
-                        Text { anchors.centerIn: parent; text: "Reset Database"; font.pixelSize: 14; font.bold: true; color: "#f38ba8" }
-                        HoverHandler { id: resetHover }
-                        TapHandler { onTapped: confirmDialog.openFor("reset") }
+                    PillButton {
+                        text: "Reset Database"
+                        variant: "danger"
+                        height: 32
+                        onClicked: confirmDialog.openFor("reset")
                     }
                 }
 
@@ -123,13 +111,11 @@ Item {
                             color: "#6c7086"
                         }
                     }
-                    Rectangle {
-                        width: 170; height: 32; radius: 4
-                        color: mockHover.hovered ? "#264d80" : "#1e3a5f"
-                        border.color: "#89b4fa"
-                        Text { anchors.centerIn: parent; text: "Reset to Mock Data"; font.pixelSize: 14; font.bold: true; color: "#cdd6f4" }
-                        HoverHandler { id: mockHover }
-                        TapHandler { onTapped: confirmDialog.openFor("mock") }
+                    PillButton {
+                        text: "Reset to Mock Data"
+                        variant: "primary"
+                        height: 32
+                        onClicked: confirmDialog.openFor("mock")
                     }
                 }
             }
@@ -139,71 +125,27 @@ Item {
     }
 
     // ── Confirmation dialog (shared by both actions) ──────────────────────────
-    Popup {
+    ConfirmDialog {
         id: confirmDialog
-        anchors.centerIn: parent
         width: 380
-        padding: 20
-        modal: true
 
         property string mode: "reset" // "reset" | "mock"
 
-        function openFor(m) { mode = m; open() }
+        function openFor(m) {
+            mode = m
+            dialogTitle = m === "reset" ? "Reset the database?" : "Reset to mock data?"
+            message = m === "reset"
+                ? "This permanently deletes every account, category, hash, and transaction. This cannot be undone."
+                : "This permanently deletes everything currently stored, then reloads the default demo data. This cannot be undone."
+            confirmText = m === "reset" ? "Reset" : "Reset to mock"
+            open()
+        }
 
-        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
-
-        contentItem: ColumnLayout {
-            spacing: 14
-
-            Text {
-                text: confirmDialog.mode === "reset" ? "Reset the database?" : "Reset to mock data?"
-                font.pixelSize: 19
-                font.bold: true
-                color: "#cdd6f4"
-            }
-            Text {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                text: confirmDialog.mode === "reset"
-                    ? "This permanently deletes every account, category, hash, and transaction. This cannot be undone."
-                    : "This permanently deletes everything currently stored, then reloads the default demo data. This cannot be undone."
-                font.pixelSize: 14
-                color: "#a6adc8"
-            }
-            RowLayout {
-                Layout.topMargin: 6
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 80; height: 30; radius: 4
-                    color: cancelHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Cancel"; font.pixelSize: 15; color: "#cdd6f4" }
-                    HoverHandler { id: cancelHover }
-                    TapHandler { onTapped: confirmDialog.close() }
-                }
-                Rectangle {
-                    width: 140; height: 30; radius: 4
-                    color: confirmHover.hovered ? "#5a2d36" : "#3d2028"
-                    border.color: "#f38ba8"
-                    Text {
-                        anchors.centerIn: parent
-                        text: confirmDialog.mode === "reset" ? "Reset" : "Reset to mock"
-                        font.pixelSize: 15
-                        font.bold: true
-                        color: "#f38ba8"
-                    }
-                    HoverHandler { id: confirmHover }
-                    TapHandler {
-                        onTapped: {
-                            if (confirmDialog.mode === "reset")
-                                controller.resetDatabase()
-                            else
-                                controller.resetToMock()
-                            confirmDialog.close()
-                        }
-                    }
-                }
-            }
+        onConfirmed: {
+            if (mode === "reset")
+                controller.resetDatabase()
+            else
+                controller.resetToMock()
         }
     }
 }

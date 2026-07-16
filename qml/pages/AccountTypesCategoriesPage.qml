@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Dialogs
 import FinanceDashboard
 
 // ── Account Types & Categories — Account Management → "Account types & categories" ──
@@ -17,6 +16,13 @@ import FinanceDashboard
 // types/categories); unrelated lists despite the similar CRUD shape.
 // Backed by AccountController (QML_SINGLETON) — same instance
 // AccountsManagePage.qml reads the lists from when populating its pickers.
+//
+// Built from the shared qml/components/ (PageHeader, PillButton,
+// GhostButton, FormDialog, FormRow, ColorPickerRow, ConfirmDialog,
+// EmptyState) — see ARCHITECTURE.MD § Shared Components. The chip
+// edit/remove glyphs here used to be bare Text+TapHandler with no hover
+// feedback at all (unlike every other Edit/Remove button in the app);
+// GhostButton gives them the same hover affordance as everywhere else.
 
 Item {
     id: page
@@ -24,16 +30,6 @@ Item {
     signal closeRequested()
 
     readonly property color defaultNewColor: "#89b4fa"
-
-    // color -> "#rrggbb" — same helper as CategoriesManagePage.qml (avoids
-    // relying on the undocumented format of color.toString()).
-    function colorToHex(c) {
-        function channel(v) {
-            var h = Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16)
-            return h.length === 1 ? "0" + h : h
-        }
-        return "#" + channel(c.r) + channel(c.g) + channel(c.b)
-    }
 
     ScrollView {
         anchors.fill: parent
@@ -45,43 +41,20 @@ Item {
             width: parent.width - 40
             spacing: 16
 
-            // ── Header ────────────────────────────────────────────────────────
-            RowLayout {
-                spacing: 12
-                Rectangle {
-                    width: 26; height: 26; radius: 4
-                    color: backHover.hovered ? "#181825" : "transparent"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "←"
-                        font.pixelSize: 19
-                        color: "#89b4fa"
-                    }
-                    HoverHandler { id: backHover }
-                    TapHandler { onTapped: page.closeRequested() }
+            PageHeader {
+                showBack: true
+                title: "Account Types & Categories"
+                onBackClicked: page.closeRequested()
+
+                PillButton {
+                    text: "＋  Add type"
+                    variant: "primary"
+                    onClicked: typeDialog.openFor(-1, "")
                 }
-                Text {
-                    text: "Account Types & Categories"
-                    font.pixelSize: 23
-                    font.bold: true
-                    color: "#cdd6f4"
-                }
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 130; height: 30; radius: 4
-                    color: addTypeHover.hovered ? "#264d80" : "#1e3a5f"
-                    border.color: "#89b4fa"
-                    Text { anchors.centerIn: parent; text: "＋  Add type"; font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
-                    HoverHandler { id: addTypeHover }
-                    TapHandler { onTapped: typeDialog.openFor(-1, "") }
-                }
-                Rectangle {
-                    width: 170; height: 30; radius: 4
-                    color: addCatHover.hovered ? "#264d80" : "#1e3a5f"
-                    border.color: "#89b4fa"
-                    Text { anchors.centerIn: parent; text: "＋  Add category"; font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
-                    HoverHandler { id: addCatHover }
-                    TapHandler { onTapped: categoryDialog.openFor(-1, "", page.defaultNewColor) }
+                PillButton {
+                    text: "＋  Add category"
+                    variant: "primary"
+                    onClicked: categoryDialog.openFor(-1, "", page.defaultNewColor)
                 }
             }
 
@@ -107,11 +80,9 @@ Item {
                     anchors.fill: parent
                     spacing: 10
 
-                    Text {
+                    EmptyState {
                         visible: AccountController.accountTypes.length === 0
-                        text: "No account types yet — add one above."
-                        font.pixelSize: 15
-                        color: "#6c7086"
+                        message: "No account types yet — add one above."
                     }
 
                     Flow {
@@ -133,20 +104,21 @@ Item {
                                 RowLayout {
                                     id: typeChipRow
                                     anchors.centerIn: parent
-                                    spacing: 8
+                                    spacing: 6
                                     Text { text: typeChip.modelData.name; font.pixelSize: 14; color: "#cdd6f4" }
-                                    Text {
+                                    GhostButton {
                                         text: "✎"
-                                        font.pixelSize: 13
-                                        color: "#89b4fa"
-                                        TapHandler { onTapped: typeDialog.openFor(typeChip.index, typeChip.modelData.name) }
+                                        textColor: "#89b4fa"
+                                        horizontalPadding: 5
+                                        onClicked: typeDialog.openFor(typeChip.index, typeChip.modelData.name)
                                     }
-                                    Text {
+                                    GhostButton {
                                         text: "×"
-                                        font.pixelSize: 15
-                                        font.bold: true
-                                        color: "#f38ba8"
-                                        TapHandler { onTapped: deleteTypeDialog.openFor(typeChip.index, typeChip.modelData.name) }
+                                        variant: "danger"
+                                        fontSize: 15
+                                        bold: true
+                                        horizontalPadding: 5
+                                        onClicked: deleteTypeDialog.openFor(typeChip.index, typeChip.modelData.name)
                                     }
                                 }
                             }
@@ -166,11 +138,9 @@ Item {
                     anchors.fill: parent
                     spacing: 10
 
-                    Text {
+                    EmptyState {
                         visible: AccountController.accountCategories.length === 0
-                        text: "No account categories yet — add one above."
-                        font.pixelSize: 15
-                        color: "#6c7086"
+                        message: "No account categories yet — add one above."
                     }
 
                     Flow {
@@ -192,29 +162,26 @@ Item {
                                 RowLayout {
                                     id: chipRow
                                     anchors.centerIn: parent
-                                    spacing: 8
+                                    spacing: 6
                                     Rectangle {
                                         width: 14; height: 14; radius: 7
                                         color: catChip.modelData.color
                                         border.color: "#313244"
                                     }
                                     Text { text: catChip.modelData.name; font.pixelSize: 14; color: "#cdd6f4" }
-                                    Text {
+                                    GhostButton {
                                         text: "✎"
-                                        font.pixelSize: 13
-                                        color: "#89b4fa"
-                                        TapHandler {
-                                            onTapped: categoryDialog.openFor(catChip.index, catChip.modelData.name, catChip.modelData.color)
-                                        }
+                                        textColor: "#89b4fa"
+                                        horizontalPadding: 5
+                                        onClicked: categoryDialog.openFor(catChip.index, catChip.modelData.name, catChip.modelData.color)
                                     }
-                                    Text {
+                                    GhostButton {
                                         text: "×"
-                                        font.pixelSize: 15
-                                        font.bold: true
-                                        color: "#f38ba8"
-                                        TapHandler {
-                                            onTapped: deleteCategoryDialog.openFor(catChip.index, catChip.modelData.name)
-                                        }
+                                        variant: "danger"
+                                        fontSize: 15
+                                        bold: true
+                                        horizontalPadding: 5
+                                        onClicked: deleteCategoryDialog.openFor(catChip.index, catChip.modelData.name)
                                     }
                                 }
                             }
@@ -228,314 +195,101 @@ Item {
     }
 
     // ── Add / edit type dialog ────────────────────────────────────────────────
-    Popup {
+    FormDialog {
         id: typeDialog
-        anchors.centerIn: parent
+        dialogTitle: typeDialog.editIndex < 0 ? "New account type" : "Edit account type"
+        saveText: typeDialog.editIndex < 0 ? "Add" : "Save"
         width: 360
-        padding: 20
-        modal: true
 
         property int editIndex: -1
 
-        function openFor(idx, name) { editIndex = idx; typeNameField.text = name; open() }
+        function openFor(idx, name) { editIndex = idx; typeNameRow.text = name; open() }
 
-        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
+        FormRow { id: typeNameRow; label: "Name"; labelWidth: 50; placeholderText: "e.g. PEA" }
 
-        contentItem: ColumnLayout {
-            spacing: 14
-            Text {
-                text: typeDialog.editIndex < 0 ? "New account type" : "Edit account type"
-                font.pixelSize: 19
-                font.bold: true
-                color: "#cdd6f4"
+        onSaveClicked: {
+            var trimmed = typeNameRow.text.trim()
+            if (trimmed.length === 0)
+                return
+            if (editIndex < 0) {
+                AccountController.addAccountType(trimmed)
+            } else {
+                AccountController.renameAccountType(editIndex, trimmed)
             }
-            RowLayout {
-                spacing: 10
-                Text { Layout.preferredWidth: 50; text: "Name"; font.pixelSize: 15; color: "#6c7086" }
-                TextField {
-                    id: typeNameField
-                    Layout.fillWidth: true
-                    placeholderText: "e.g. PEA"
-                    placeholderTextColor: "#45475a"
-                    color: "#cdd6f4"
-                    font.pixelSize: 15
-                    background: Rectangle { color: "#11111b"; radius: 4; border.color: typeNameField.activeFocus ? "#89b4fa" : "#313244" }
-                }
-            }
-            RowLayout {
-                Layout.topMargin: 6
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 80; height: 30; radius: 4
-                    color: typeCancelHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Cancel"; font.pixelSize: 15; color: "#cdd6f4" }
-                    HoverHandler { id: typeCancelHover }
-                    TapHandler { onTapped: typeDialog.close() }
-                }
-                Rectangle {
-                    width: 90; height: 30; radius: 4
-                    color: typeSaveHover.hovered ? "#264d80" : "#1e3a5f"
-                    border.color: "#89b4fa"
-                    Text {
-                        anchors.centerIn: parent
-                        text: typeDialog.editIndex < 0 ? "Add" : "Save"
-                        font.pixelSize: 15
-                        font.bold: true
-                        color: "#cdd6f4"
-                    }
-                    HoverHandler { id: typeSaveHover }
-                    TapHandler {
-                        onTapped: {
-                            var trimmed = typeNameField.text.trim()
-                            if (trimmed.length === 0)
-                                return
-                            if (typeDialog.editIndex < 0) {
-                                AccountController.addAccountType(trimmed)
-                            } else {
-                                AccountController.renameAccountType(typeDialog.editIndex, trimmed)
-                            }
-                            typeDialog.close()
-                        }
-                    }
-                }
-            }
+            close()
         }
     }
 
     // ── Delete type confirmation ──────────────────────────────────────────────
-    Popup {
+    ConfirmDialog {
         id: deleteTypeDialog
-        anchors.centerIn: parent
-        width: 340
-        padding: 20
-        modal: true
+        dialogTitle: "Delete account type?"
+        confirmText: "Delete"
 
         property int typeIndex: -1
-        property string typeName: ""
 
-        function openFor(idx, name) { typeIndex = idx; typeName = name; open() }
-
-        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
-
-        contentItem: ColumnLayout {
-            spacing: 14
-            Text { text: "Delete account type?"; font.pixelSize: 19; font.bold: true; color: "#cdd6f4" }
-            Text {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                text: "This removes “" + deleteTypeDialog.typeName + "” from the list. Accounts already using "
-                    + "it keep the name as plain text. This cannot be undone."
-                font.pixelSize: 14
-                color: "#a6adc8"
-            }
-            RowLayout {
-                Layout.topMargin: 6
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 80; height: 30; radius: 4
-                    color: delTypeCancelHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Cancel"; font.pixelSize: 15; color: "#cdd6f4" }
-                    HoverHandler { id: delTypeCancelHover }
-                    TapHandler { onTapped: deleteTypeDialog.close() }
-                }
-                Rectangle {
-                    width: 90; height: 30; radius: 4
-                    color: delTypeConfirmHover.hovered ? "#5a2d36" : "#3d2028"
-                    border.color: "#f38ba8"
-                    Text { anchors.centerIn: parent; text: "Delete"; font.pixelSize: 15; font.bold: true; color: "#f38ba8" }
-                    HoverHandler { id: delTypeConfirmHover }
-                    TapHandler {
-                        onTapped: {
-                            AccountController.removeAccountType(deleteTypeDialog.typeIndex)
-                            deleteTypeDialog.close()
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ── Add / edit category dialog ──────────────────────────────────────────
-    Popup {
-        id: categoryDialog
-        anchors.centerIn: parent
-        width: 380
-        padding: 20
-        modal: true
-
-        property int editIndex: -1
-        property string selectedColor: "#89b4fa"
-
-        function openFor(idx, name, color) {
-            editIndex = idx
-            catNameField.text = name
-            selectedColor = color
+        function openFor(idx, name) {
+            typeIndex = idx
+            message = "This removes “" + name + "” from the list. Accounts already using "
+                + "it keep the name as plain text. This cannot be undone."
             open()
         }
 
-        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
+        onConfirmed: AccountController.removeAccountType(deleteTypeDialog.typeIndex)
+    }
 
-        contentItem: ColumnLayout {
-            spacing: 14
+    // ── Add / edit category dialog ──────────────────────────────────────────
+    FormDialog {
+        id: categoryDialog
+        dialogTitle: categoryDialog.editIndex < 0 ? "New account category" : "Edit account category"
+        saveText: categoryDialog.editIndex < 0 ? "Add" : "Save"
 
-            Text {
-                text: categoryDialog.editIndex < 0 ? "New account category" : "Edit account category"
-                font.pixelSize: 19
-                font.bold: true
-                color: "#cdd6f4"
-            }
+        property int editIndex: -1
 
-            RowLayout {
-                spacing: 10
-                Text { Layout.preferredWidth: 50; text: "Name"; font.pixelSize: 15; color: "#6c7086" }
-                TextField {
-                    id: catNameField
-                    Layout.fillWidth: true
-                    placeholderText: "e.g. Urgent savings"
-                    placeholderTextColor: "#45475a"
-                    color: "#cdd6f4"
-                    font.pixelSize: 15
-                    background: Rectangle {
-                        color: "#11111b"
-                        radius: 4
-                        border.color: catNameField.activeFocus ? "#89b4fa" : "#313244"
-                    }
-                }
-            }
+        function openFor(idx, name, color) {
+            editIndex = idx
+            catNameRow.text = name
+            colorRow.selectedColor = color
+            open()
+        }
 
+        FormRow { id: catNameRow; label: "Name"; labelWidth: 50; placeholderText: "e.g. Urgent savings" }
+
+        ColumnLayout {
+            spacing: 8
             Text { text: "Color"; font.pixelSize: 15; color: "#6c7086" }
-            RowLayout {
-                spacing: 10
-                Rectangle {
-                    width: 32; height: 32; radius: 16
-                    color: categoryDialog.selectedColor
-                    border.width: 2
-                    border.color: "#45475a"
-                    TapHandler {
-                        onTapped: {
-                            categoryColorDialog.selectedColor = categoryDialog.selectedColor
-                            categoryColorDialog.open()
-                        }
-                    }
-                }
-                Rectangle {
-                    width: 110; height: 26; radius: 4
-                    color: catColorHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Choose color…"; font.pixelSize: 14; color: "#cdd6f4" }
-                    HoverHandler { id: catColorHover }
-                    TapHandler {
-                        onTapped: {
-                            categoryColorDialog.selectedColor = categoryDialog.selectedColor
-                            categoryColorDialog.open()
-                        }
-                    }
-                }
-                Text { text: categoryDialog.selectedColor; font.pixelSize: 14; color: "#6c7086" }
-            }
+            ColorPickerRow { id: colorRow; dialogTitle: "Choose category color" }
+        }
 
-            RowLayout {
-                Layout.topMargin: 6
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 80; height: 30; radius: 4
-                    color: catCancelHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Cancel"; font.pixelSize: 15; color: "#cdd6f4" }
-                    HoverHandler { id: catCancelHover }
-                    TapHandler { onTapped: categoryDialog.close() }
-                }
-                Rectangle {
-                    width: 90; height: 30; radius: 4
-                    color: catSaveHover.hovered ? "#264d80" : "#1e3a5f"
-                    border.color: "#89b4fa"
-                    Text {
-                        anchors.centerIn: parent
-                        text: categoryDialog.editIndex < 0 ? "Add" : "Save"
-                        font.pixelSize: 15
-                        font.bold: true
-                        color: "#cdd6f4"
-                    }
-                    HoverHandler { id: catSaveHover }
-                    TapHandler {
-                        onTapped: {
-                            var trimmed = catNameField.text.trim()
-                            if (trimmed.length === 0)
-                                return
-                            if (categoryDialog.editIndex < 0) {
-                                AccountController.addAccountCategory(trimmed, categoryDialog.selectedColor)
-                            } else {
-                                AccountController.renameAccountCategory(categoryDialog.editIndex, trimmed)
-                                AccountController.setAccountCategoryColor(categoryDialog.editIndex, categoryDialog.selectedColor)
-                            }
-                            categoryDialog.close()
-                        }
-                    }
-                }
+        onSaveClicked: {
+            var trimmed = catNameRow.text.trim()
+            if (trimmed.length === 0)
+                return
+            if (editIndex < 0) {
+                AccountController.addAccountCategory(trimmed, colorRow.selectedColor)
+            } else {
+                AccountController.renameAccountCategory(editIndex, trimmed)
+                AccountController.setAccountCategoryColor(editIndex, colorRow.selectedColor)
             }
+            close()
         }
     }
 
     // ── Delete category confirmation ────────────────────────────────────────
-    Popup {
+    ConfirmDialog {
         id: deleteCategoryDialog
-        anchors.centerIn: parent
-        width: 340
-        padding: 20
-        modal: true
+        dialogTitle: "Delete account category?"
+        confirmText: "Delete"
 
         property int categoryIndex: -1
-        property string categoryName: ""
 
-        function openFor(idx, name) { categoryIndex = idx; categoryName = name; open() }
-
-        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
-
-        contentItem: ColumnLayout {
-            spacing: 14
-            Text { text: "Delete account category?"; font.pixelSize: 19; font.bold: true; color: "#cdd6f4" }
-            Text {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                text: "This removes “" + deleteCategoryDialog.categoryName + "” from the list. Accounts "
-                    + "already using it keep the name as plain text. This cannot be undone."
-                font.pixelSize: 14
-                color: "#a6adc8"
-            }
-            RowLayout {
-                Layout.topMargin: 6
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 80; height: 30; radius: 4
-                    color: delCancelHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Cancel"; font.pixelSize: 15; color: "#cdd6f4" }
-                    HoverHandler { id: delCancelHover }
-                    TapHandler { onTapped: deleteCategoryDialog.close() }
-                }
-                Rectangle {
-                    width: 90; height: 30; radius: 4
-                    color: delConfirmHover.hovered ? "#5a2d36" : "#3d2028"
-                    border.color: "#f38ba8"
-                    Text { anchors.centerIn: parent; text: "Delete"; font.pixelSize: 15; font.bold: true; color: "#f38ba8" }
-                    HoverHandler { id: delConfirmHover }
-                    TapHandler {
-                        onTapped: {
-                            AccountController.removeAccountCategory(deleteCategoryDialog.categoryIndex)
-                            deleteCategoryDialog.close()
-                        }
-                    }
-                }
-            }
+        function openFor(idx, name) {
+            categoryIndex = idx
+            message = "This removes “" + name + "” from the list. Accounts already using it "
+                + "keep the name as plain text. This cannot be undone."
+            open()
         }
-    }
 
-    // ── Native color picker (categories only — types have no color) ──────────
-    ColorDialog {
-        id: categoryColorDialog
-        title: "Choose category color"
-        onAccepted: categoryDialog.selectedColor = page.colorToHex(selectedColor)
+        onConfirmed: AccountController.removeAccountCategory(deleteCategoryDialog.categoryIndex)
     }
 }

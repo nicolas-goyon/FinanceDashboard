@@ -20,12 +20,7 @@ Item {
         width: parent.width - 40
         spacing: 12
 
-        Text {
-            text: "Account Management"
-            font.pixelSize: 23
-            font.bold: true
-            color: "#cdd6f4"
-        }
+        PageHeader { title: "Account Management" }
 
         Text {
             Layout.fillWidth: true

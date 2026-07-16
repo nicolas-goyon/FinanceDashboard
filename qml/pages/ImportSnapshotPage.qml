@@ -71,42 +71,15 @@ Item {
             width: parent.width - 40
             spacing: 16
 
-            // ── Header ────────────────────────────────────────────────────────
-            RowLayout {
-                spacing: 12
-                Rectangle {
-                    width: 26; height: 26; radius: 4
-                    color: backHover.hovered ? "#181825" : "transparent"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "←"
-                        font.pixelSize: 19
-                        color: "#89b4fa"
-                    }
-                    HoverHandler { id: backHover }
-                    TapHandler { onTapped: page.closeRequested() }
-                }
-                Text {
-                    text: "Import Transactions"
-                    font.pixelSize: 23
-                    font.bold: true
-                    color: "#cdd6f4"
-                }
-                Item { Layout.fillWidth: true }
-                Rectangle {
+            PageHeader {
+                showBack: true
+                title: "Import Transactions"
+                onBackClicked: page.closeRequested()
+
+                StatusBadge {
                     visible: controller.statusText.length > 0
-                    width: statusLabel.implicitWidth + 20
-                    height: 26
-                    radius: 13
-                    color: controller.lastParseFailed ? "#3d2028" : "#1a3328"
-                    border.color: controller.lastParseFailed ? "#5a2d36" : "#2d5a45"
-                    Text {
-                        id: statusLabel
-                        anchors.centerIn: parent
-                        text: controller.statusText
-                        font.pixelSize: 14
-                        color: controller.lastParseFailed ? "#f38ba8" : "#a6e3a1"
-                    }
+                    text: controller.statusText
+                    variant: controller.lastParseFailed ? "danger" : "success"
                 }
             }
 
@@ -145,20 +118,12 @@ Item {
                         color: "#6c7086"
                     }
 
-                    Rectangle {
+                    PillButton {
                         Layout.alignment: Qt.AlignRight
-                        width: 170; height: 32; radius: 4
-                        color: importHover.hovered ? "#264d80" : "#1e3a5f"
-                        border.color: "#89b4fa"
-                        Text {
-                            anchors.centerIn: parent
-                            text: "Choose file & Import"
-                            font.pixelSize: 15
-                            font.bold: true
-                            color: "#cdd6f4"
-                        }
-                        HoverHandler { id: importHover }
-                        TapHandler { onTapped: fileDialog.open() }
+                        text: "Choose file & Import"
+                        variant: "primary"
+                        height: 32
+                        onClicked: fileDialog.open()
                     }
                 }
             }
@@ -188,17 +153,12 @@ Item {
                         }
                         RowLayout {
                             spacing: 10
-                            Rectangle {
-                                width: 90; height: 28; radius: 4
-                                color: "#1e1e2e"; border.color: "#313244"
-                                Text { anchors.centerIn: parent; text: "View log"; font.pixelSize: 14; color: "#cdd6f4" }
-                                TapHandler { onTapped: logPopup.open() }
-                            }
-                            Rectangle {
-                                width: 90; height: 28; radius: 4
-                                color: "#1e1e2e"; border.color: "#313244"
-                                Text { anchors.centerIn: parent; text: "Try again"; font.pixelSize: 14; color: "#cdd6f4" }
-                                TapHandler { onTapped: { controller.reset(); page.step = 0 } }
+                            PillButton { text: "View log"; variant: "neutral"; height: 28; onClicked: logPopup.open() }
+                            PillButton {
+                                text: "Try again"
+                                variant: "neutral"
+                                height: 28
+                                onClicked: { controller.reset(); page.step = 0 }
                             }
                         }
                     }
@@ -240,23 +200,11 @@ Item {
                             Text { text: controller.statementInfo.balanceStartText + " (" + controller.statementInfo.balanceStartDateText + ")"; font.pixelSize: 15; color: "#cdd6f4" }
                             Text { text: controller.statementInfo.balanceEndText + " (" + controller.statementInfo.balanceEndDateText + ")"; font.pixelSize: 15; color: "#cdd6f4" }
                             Text { text: controller.statementInfo.transactionCount; font.pixelSize: 15; color: "#cdd6f4" }
-                            Rectangle {
-                                width: logButtonRow.implicitWidth + 16
-                                height: 22
-                                radius: 11
-                                color: controller.errorCount > 0 ? "#3d2028" : (controller.warningCount > 0 ? "#3d3320" : "#181825")
-                                border.color: "#313244"
-                                RowLayout {
-                                    id: logButtonRow
-                                    anchors.centerIn: parent
-                                    spacing: 6
-                                    Text {
-                                        text: (controller.errorCount + controller.warningCount) === 0
-                                              ? "No issues" : (controller.errorCount + " error(s), " + controller.warningCount + " warning(s)")
-                                        font.pixelSize: 13
-                                        color: controller.errorCount > 0 ? "#f38ba8" : (controller.warningCount > 0 ? "#f9e2af" : "#a6e3a1")
-                                    }
-                                }
+                            StatusBadge {
+                                pillHeight: 22
+                                variant: controller.errorCount > 0 ? "danger" : (controller.warningCount > 0 ? "warning" : "success")
+                                text: (controller.errorCount + controller.warningCount) === 0
+                                      ? "No issues" : (controller.errorCount + " error(s), " + controller.warningCount + " warning(s)")
                                 TapHandler { onTapped: logPopup.open() }
                             }
                         }
@@ -317,61 +265,34 @@ Item {
                             visible: page.selectedAccount !== null
                             spacing: 10
 
-                            Rectangle {
+                            StatusBadge {
                                 visible: page.selectedAccount !== null && !page.selectedAccount.linked
-                                width: notLinkedRow.implicitWidth + 16
-                                height: 24
-                                radius: 12
-                                color: "#3d3320"
-                                border.color: "#5a4d2d"
-                                RowLayout {
-                                    id: notLinkedRow
-                                    anchors.centerIn: parent
-                                    spacing: 6
-                                    Text {
-                                        text: "⚠ Not linked — no hash set up for this account"
-                                        font.pixelSize: 13
-                                        color: "#f9e2af"
-                                    }
-                                }
+                                pillHeight: 24
+                                variant: "warning"
+                                text: "⚠ Not linked — no hash set up for this account"
                             }
-                            Rectangle {
+                            StatusBadge {
                                 visible: page.selectedAccount !== null && page.selectedAccount.linked
-                                width: linkedRow.implicitWidth + 16
-                                height: 24
-                                radius: 12
-                                color: "#1a3328"
-                                border.color: "#2d5a45"
-                                RowLayout {
-                                    id: linkedRow
-                                    anchors.centerIn: parent
-                                    spacing: 6
-                                    Text {
-                                        text: "✓ Linked (" + page.selectedAccount.hashCount + " hash"
-                                            + (page.selectedAccount.hashCount === 1 ? "" : "es") + ")"
-                                        font.pixelSize: 13
-                                        color: "#a6e3a1"
-                                    }
-                                }
+                                pillHeight: 24
+                                variant: "success"
+                                text: "✓ Linked (" + page.selectedAccount.hashCount + " hash"
+                                    + (page.selectedAccount.hashCount === 1 ? "" : "es") + ")"
                             }
 
                             // Offer to link this statement's fingerprint to
                             // the selected account right here, when it has
                             // one to give and the account doesn't have it
                             // yet — saves a trip to AccountsManagePage.qml.
-                            Rectangle {
+                            PillButton {
                                 visible: controller.statementInfo.accountHashRaw.length > 0
                                     && page.selectedAccount !== null
                                     && !AccountController.accountHasHash(page.selectedAccountIndex, controller.statementInfo.accountHashRaw)
-                                width: 150; height: 24; radius: 4
-                                color: linkHover.hovered ? "#264d80" : "#1e3a5f"
-                                border.color: "#89b4fa"
-                                Text { anchors.centerIn: parent; text: "Link this account"; font.pixelSize: 13; color: "#cdd6f4" }
-                                HoverHandler { id: linkHover }
-                                TapHandler {
-                                    onTapped: AccountController.linkAccountHash(
-                                        page.selectedAccountIndex, controller.statementInfo.accountHashRaw)
-                                }
+                                text: "Link this account"
+                                variant: "primary"
+                                height: 24
+                                fontSize: 13
+                                onClicked: AccountController.linkAccountHash(
+                                    page.selectedAccountIndex, controller.statementInfo.accountHashRaw)
                             }
                         }
                     }
@@ -473,38 +394,27 @@ Item {
                     Layout.fillWidth: true
                     spacing: 10
 
-                    Rectangle {
-                        width: 130; height: 30; radius: 4
-                        color: "#1e1e2e"; border.color: "#313244"
-                        Text { anchors.centerIn: parent; text: "View log"; font.pixelSize: 15; color: "#cdd6f4" }
-                        TapHandler { onTapped: logPopup.open() }
-                    }
-                    Rectangle {
-                        width: 150; height: 30; radius: 4
-                        color: "#1e1e2e"; border.color: "#313244"
-                        Text { anchors.centerIn: parent; text: "Import another file"; font.pixelSize: 15; color: "#cdd6f4" }
-                        TapHandler { onTapped: { controller.reset(); page.step = 0 } }
+                    PillButton { text: "View log"; variant: "neutral"; onClicked: logPopup.open() }
+                    PillButton {
+                        text: "Import another file"
+                        variant: "neutral"
+                        onClicked: { controller.reset(); page.step = 0 }
                     }
                     Item { Layout.fillWidth: true }
-                    Rectangle {
-                        width: 100; height: 30; radius: 4
-                        color: saveHover.hovered ? "#264d80" : "#1e3a5f"
-                        border.color: "#89b4fa"
-                        Text { anchors.centerIn: parent; text: "Save"; font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
-                        HoverHandler { id: saveHover }
-                        TapHandler {
-                            onTapped: {
-                                var accountId = page.selectedAccount !== null ? page.selectedAccount.id : -1
-                                var label = page.selectedAccount !== null
-                                    ? page.selectedAccount.name
-                                    : "(no account selected)"
-                                controller.save(accountId, label)
-                                // Pick up the transactions/hash write this
-                                // just made — see AccountController.reload()
-                                // doc comment (no C++-to-C++ singleton
-                                // coupling between the two controllers).
-                                AccountController.reload()
-                            }
+                    PillButton {
+                        text: "Save"
+                        variant: "primary"
+                        onClicked: {
+                            var accountId = page.selectedAccount !== null ? page.selectedAccount.id : -1
+                            var label = page.selectedAccount !== null
+                                ? page.selectedAccount.name
+                                : "(no account selected)"
+                            controller.save(accountId, label)
+                            // Pick up the transactions/hash write this
+                            // just made — see AccountController.reload()
+                            // doc comment (no C++-to-C++ singleton
+                            // coupling between the two controllers).
+                            AccountController.reload()
                         }
                     }
                 }
@@ -552,11 +462,9 @@ Item {
                     width: logPopup.width - 32
                     spacing: 6
 
-                    Text {
+                    EmptyState {
                         visible: controller.logEntries.length === 0
-                        text: "No log entries."
-                        font.pixelSize: 15
-                        color: "#6c7086"
+                        message: "No log entries."
                     }
 
                     Repeater {
@@ -568,17 +476,16 @@ Item {
 
                             RowLayout {
                                 spacing: 8
-                                Rectangle {
-                                    width: 62; height: 18; radius: 9
-                                    color: modelData.level === "Error" ? "#3d2028"
-                                         : modelData.level === "Warning" ? "#3d3320" : "#1e1e2e"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: modelData.level
-                                        font.pixelSize: 12
-                                        color: modelData.level === "Error" ? "#f38ba8"
-                                             : modelData.level === "Warning" ? "#f9e2af" : "#a6e3a1"
-                                    }
+                                StatusBadge {
+                                    pillHeight: 18
+                                    // "Info" (anything not Error/Warning) reuses the
+                                    // "success" (green) styling — same semantic this
+                                    // level already used everywhere else (a positive/
+                                    // neutral log signal), now a full pill instead of
+                                    // the old grey-bg/green-text hybrid.
+                                    variant: modelData.level === "Error" ? "danger"
+                                           : modelData.level === "Warning" ? "warning" : "success"
+                                    text: modelData.level
                                 }
                                 Text {
                                     text: "L" + modelData.line
@@ -611,14 +518,7 @@ Item {
             RowLayout {
                 Layout.topMargin: 6
                 Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 90; height: 30; radius: 4
-                    color: logCloseHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Close"; font.pixelSize: 15; color: "#cdd6f4" }
-                    HoverHandler { id: logCloseHover }
-                    TapHandler { onTapped: logPopup.close() }
-                }
+                PillButton { text: "Close"; variant: "neutral"; onClicked: logPopup.close() }
             }
         }
     }

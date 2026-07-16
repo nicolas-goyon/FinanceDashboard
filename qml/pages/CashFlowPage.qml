@@ -22,16 +22,10 @@ Item {
             width: parent.width - 40
             spacing: 16
 
-            RowLayout {
-                spacing: 12
-                Text {
-                    text: "Cash Flow"
-                    font.pixelSize: 23
-                    font.bold: true
-                    color: "#cdd6f4"
-                }
-                Text { text: "[MOCK]"; font.pixelSize: 14; color: "#f38ba8" }
-                Item { Layout.fillWidth: true }
+            PageHeader {
+                title: "Cash Flow"
+                mock: true
+
                 Text { text: "Month:"; font.pixelSize: 15; color: "#6c7086" }
                 ComboBox {
                     id: monthSelector
@@ -216,7 +210,10 @@ Item {
                                 required property int index
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 40
-                                color: index % 2 === 0 ? "#181825" : "transparent"
+                                // Zebra parity matches every other striped list
+                                // in the app (odd rows tinted) — this one used
+                                // to be inverted, the only page that was.
+                                color: index % 2 === 0 ? "transparent" : "#181825"
                                 radius: 4
 
                                 RowLayout {
