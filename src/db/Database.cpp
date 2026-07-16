@@ -11,6 +11,11 @@ Database::Database()
     , m_assetEntries(kConnection)
     , m_categoriesTable(kConnection)
     , m_subcategoriesTable(kConnection)
+    , m_accountsTable(kConnection)
+    , m_accountHashesTable(kConnection)
+    , m_accountCategoriesTable(kConnection)
+    , m_accountTypesTable(kConnection)
+    , m_transactionsTable(kConnection)
 {}
 
 Database& Database::instance()
@@ -38,10 +43,15 @@ bool Database::open(const QString& path)
     pragma.exec(QStringLiteral("PRAGMA journal_mode = WAL;"));
 
     // Each table class creates its own schema
-    if (!m_snapshots.createTable()         ||
-        !m_assetEntries.createTable()      ||
-        !m_categoriesTable.createTable()   ||
-        !m_subcategoriesTable.createTable())
+    if (!m_snapshots.createTable()             ||
+        !m_assetEntries.createTable()          ||
+        !m_categoriesTable.createTable()       ||
+        !m_subcategoriesTable.createTable()    ||
+        !m_accountCategoriesTable.createTable()||
+        !m_accountTypesTable.createTable()     ||
+        !m_accountsTable.createTable()         ||
+        !m_accountHashesTable.createTable()    ||
+        !m_transactionsTable.createTable())
     {
         m_lastError = "Failed to create tables.";
         return false;
@@ -189,4 +199,193 @@ bool Database::removeSubcategory(int id)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
     return m_subcategoriesTable.remove(id);
+}
+
+// ── Accounts ──────────────────────────────────────────────────────────────────
+
+QVector<Data::Account> Database::loadAccounts() const
+{
+    QVector<Data::Account> accs = m_accountsTable.all();
+    for (Data::Account& acc : accs)
+        acc.hashes = m_accountHashesTable.allForAccount(acc.id);
+    return accs;
+}
+
+int Database::addAccount(const QString& name, const QString& type, const QString& category,
+                          const QString& currency, const QString& notes)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    return m_accountsTable.insert(name, type, category, currency, notes);
+}
+
+bool Database::updateAccount(int id, const QString& name, const QString& type, const QString& category,
+                              const QString& currency, const QString& notes)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_accountsTable.update(id, name, type, category, currency, notes);
+}
+
+bool Database::removeAccount(int id)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+
+    m_db.transaction();
+
+    // Manual cascade: hashes and transactions first, then the account row
+    // itself — same "delete-then-insert" transaction style as
+    // removeCategory()/saveSnapshot().
+    if (!m_accountHashesTable.removeForAccount(id) ||
+        !m_transactionsTable.removeForAccount(id)  ||
+        !m_accountsTable.remove(id)) {
+        m_db.rollback();
+        m_lastError = "Failed to remove account.";
+        return false;
+    }
+
+    m_db.commit();
+    return true;
+}
+
+int Database::addAccountHash(int accountId, const QString& hash, const QString& source)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    return m_accountHashesTable.insert(accountId, hash, source);
+}
+
+bool Database::removeAccountHash(int id)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_accountHashesTable.remove(id);
+}
+
+bool Database::accountHasHash(int accountId, const QString& hash) const
+{
+    if (!isOpen()) return false;
+    return m_accountHashesTable.existsForAccount(accountId, hash);
+}
+
+// ── Account categories ────────────────────────────────────────────────────────
+
+QVector<Data::AccountCategory> Database::loadAccountCategories() const
+{
+    return m_accountCategoriesTable.all();
+}
+
+int Database::addAccountCategory(const QString& name, const QString& color)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    return m_accountCategoriesTable.insert(name, color);
+}
+
+bool Database::renameAccountCategory(int id, const QString& newName)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_accountCategoriesTable.rename(id, newName);
+}
+
+bool Database::setAccountCategoryColor(int id, const QString& color)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_accountCategoriesTable.setColor(id, color);
+}
+
+bool Database::removeAccountCategory(int id)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_accountCategoriesTable.remove(id);
+}
+
+// ── Account types ─────────────────────────────────────────────────────────────
+
+QVector<Data::AccountType> Database::loadAccountTypes() const
+{
+    return m_accountTypesTable.all();
+}
+
+int Database::addAccountType(const QString& name)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    return m_accountTypesTable.insert(name);
+}
+
+bool Database::renameAccountType(int id, const QString& newName)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_accountTypesTable.rename(id, newName);
+}
+
+bool Database::removeAccountType(int id)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_accountTypesTable.remove(id);
+}
+
+// ── Transactions ──────────────────────────────────────────────────────────────
+
+bool Database::insertTransactions(int accountId, const QVector<Data::Transaction>& txs)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_transactionsTable.insertBatch(accountId, txs);
+}
+
+QVector<Data::Transaction> Database::transactionsForAccount(int accountId) const
+{
+    if (!isOpen()) return {};
+    return m_transactionsTable.allForAccount(accountId);
+}
+
+int Database::transactionCountForAccount(int accountId) const
+{
+    if (!isOpen()) return 0;
+    return m_transactionsTable.countForAccount(accountId);
+}
+
+// ── Whole-database reset ──────────────────────────────────────────────────────
+
+bool Database::resetAll()
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+
+    m_db.transaction();
+
+    // Drop every table this app owns (children before parents doesn't
+    // actually matter here — no FK constraints are declared anywhere in
+    // this schema — but listed in roughly the same order tables were
+    // introduced for readability).
+    static const char* kTables[] = {
+        "asset_entries", "snapshots",
+        "subcategories", "categories",
+        "account_hashes", "transactions", "accounts",
+        "account_categories", "account_types",
+    };
+
+    QSqlQuery q(m_db);
+    for (const char* table : kTables) {
+        if (!q.exec(QStringLiteral("DROP TABLE IF EXISTS %1;").arg(QLatin1String(table)))) {
+            m_db.rollback();
+            m_lastError = QStringLiteral("Failed to drop table %1: %2")
+                              .arg(QLatin1String(table), q.lastError().text());
+            return false;
+        }
+    }
+
+    // Recreate every table empty (each createTable() is CREATE TABLE IF NOT
+    // EXISTS, so this is safe to call again right after dropping them all).
+    if (!m_snapshots.createTable()             ||
+        !m_assetEntries.createTable()          ||
+        !m_categoriesTable.createTable()       ||
+        !m_subcategoriesTable.createTable()    ||
+        !m_accountCategoriesTable.createTable()||
+        !m_accountTypesTable.createTable()     ||
+        !m_accountsTable.createTable()         ||
+        !m_accountHashesTable.createTable()    ||
+        !m_transactionsTable.createTable())
+    {
+        m_db.rollback();
+        m_lastError = "Failed to recreate tables after reset.";
+        return false;
+    }
+
+    m_db.commit();
+    return true;
 }

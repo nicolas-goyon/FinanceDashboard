@@ -24,6 +24,8 @@ qt_add_executable(FinanceDashboard
     src/models/ImportedStatement.h
     src/models/ImportLog.h
     src/models/Category.h
+    src/models/Account.h
+    src/models/Transaction.h
     src/db/tables/SnapshotsTable.h
     src/db/tables/SnapshotsTable.cpp
     src/db/tables/AssetEntriesTable.h
@@ -32,11 +34,22 @@ qt_add_executable(FinanceDashboard
     src/db/tables/CategoriesTable.cpp
     src/db/tables/SubcategoriesTable.h
     src/db/tables/SubcategoriesTable.cpp
+    src/db/tables/AccountsTable.h
+    src/db/tables/AccountsTable.cpp
+    src/db/tables/AccountHashesTable.h
+    src/db/tables/AccountHashesTable.cpp
+    src/db/tables/AccountCategoriesTable.h
+    src/db/tables/AccountCategoriesTable.cpp
+    src/db/tables/AccountTypesTable.h
+    src/db/tables/AccountTypesTable.cpp
+    src/db/tables/TransactionsTable.h
+    src/db/tables/TransactionsTable.cpp
     src/db/Database.h
     src/db/Database.cpp
     src/utils/Formatter.h
     src/utils/FileFinder.h
     src/utils/JsonReader.h
+    src/utils/AccountHashing.h
     # Statement-import template system (see ARCHITECTURE.MD § Statement Import).
     # UI-independent — no QML_ELEMENT here, that's SnapshotImportController below.
     src/import/ImportTemplate.h
@@ -63,12 +76,14 @@ qt_add_qml_module(FinanceDashboard
         src/controllers/investments/InvestmentsController.cpp
         src/controllers/projects/ProjectsController.h
         src/controllers/projects/ProjectsController.cpp
-        src/controllers/dataentry/DataEntryController.h
-        src/controllers/dataentry/DataEntryController.cpp
         src/controllers/dataentry/SnapshotImportController.h
         src/controllers/dataentry/SnapshotImportController.cpp
         src/controllers/dataentry/CategoryController.h
         src/controllers/dataentry/CategoryController.cpp
+        src/controllers/dataentry/AccountController.h
+        src/controllers/dataentry/AccountController.cpp
+        src/controllers/database/DatabaseManagementController.h
+        src/controllers/database/DatabaseManagementController.cpp
     QML_FILES
         qml/Main.qml
         qml/components/KpiCard.qml
@@ -83,19 +98,32 @@ qt_add_qml_module(FinanceDashboard
         qml/pages/SavingsPage.qml
         qml/pages/InvestmentsPage.qml
         qml/pages/ProjectsPage.qml
-        qml/pages/DataEntryPage.qml
+        qml/pages/TransactionsManagementPage.qml
+        qml/pages/AccountManagementLandingPage.qml
+        qml/pages/DatabaseManagementPage.qml
         qml/pages/OtherLegacyPage.qml
         qml/pages/ImportSnapshotPage.qml
         qml/pages/CategoriesManagePage.qml
+        qml/pages/AccountsManagePage.qml
+        qml/pages/AccountTypesCategoriesPage.qml
+        qml/pages/AccountTransactionsPage.qml
 )
 
 # NOTE — previous generation (qml/tabs/* + their controllers) is unregistered.
 # The files stay on disk as reference (EntryController, DatabaseController and
 # AnalyticsController will be reused when wiring the Data Entry page to the DB).
 
+# NOTE — src/controllers/dataentry/DataEntryController.h/.cpp and
+# qml/pages/DataEntryPage.qml are likewise unregistered (superseded by the
+# Transactions Management / Account Management / Database Management split —
+# see ARCHITECTURE.MD § Transactions Management). Left on disk rather than
+# deleted, per this project's established convention for superseded files
+# (same as qml/tabs/* above).
+
 # NOTE — qml/pages/ImportSnapshotPage.qml (FileDialog) and
-# qml/pages/CategoriesManagePage.qml (ColorDialog) import QtQuick.Dialogs,
-# used only from QML (no C++ API call), so qt_add_qml_module's import scanning
+# qml/pages/CategoriesManagePage.qml / qml/pages/AccountsManagePage.qml
+# (ColorDialog) import QtQuick.Dialogs, used only from QML (no C++ API call),
+# so qt_add_qml_module's import scanning
 # should resolve/deploy it automatically without an explicit find_package/link
 # step — same as other QML-only modules here. If the build fails to find the
 # QtQuick.Dialogs plugin, add "QuickDialogs2" to the find_package(Qt6 ...) line
@@ -112,6 +140,7 @@ target_include_directories(FinanceDashboard PRIVATE
     src/controllers/investments
     src/controllers/projects
     src/controllers/dataentry
+    src/controllers/database
 )
 
 target_link_libraries(FinanceDashboard PRIVATE

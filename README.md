@@ -17,9 +17,13 @@ Finance Dashboard is a standalone desktop application for monitoring portfolio d
 | **Savings** | Balance lines per account, progress toward livret ceilings and goals, yearly interest, blended yield |
 | **Investments** | Portfolio value vs cumulative deposits (the gap is real P&L), allocation, monthly performance |
 | **Projects** | Per-project goal tracking with projection vs target, plus a loan simulator (real annuity math) |
-| **Data Entry** | Monthly snapshot form, transaction entry with a manual category/subcategory picker, history, annual summary |
-| ↳ **New Monthly Snapshot** (import) | Import a bank statement file (CSV today, more formats later), review/edit/categorize the parsed transactions, check parse warnings/errors in a log popup. Parsing is real; saving is still mock (see `ARCHITECTURE.MD § Statement Import`). |
+| **Transactions Management** | Minimal placeholder landing page pointing at its two sidebar actions below (see `ARCHITECTURE.MD § Transactions Management`). |
+| ↳ **Import Transactions** (renamed from "New Monthly Snapshot") | Import a bank statement file (CSV today, more formats later), review/edit/categorize the parsed transactions, check parse warnings/errors in a log popup, match against a real account by its stored hash fingerprint (with a "not linked yet" badge + inline link action). Parsing and saving are both real — saved transactions land in the `transactions` table (see `ARCHITECTURE.MD § Statement Import`). |
 | ↳ **Manage Categories** | Add, rename, recolor, and remove categories and subcategories used everywhere a transaction gets classified. SQLite-backed — the list now persists across restarts (see `ARCHITECTURE.MD § Category Management`). |
+| **Account Management** | Minimal placeholder landing page pointing at its two sidebar actions below (see `ARCHITECTURE.MD § Account Management`). |
+| ↳ **Manage Accounts** | Add, edit, and remove accounts (name, type, category, currency selector EUR €/USD $, notes — no IBAN/BIC/account number stored, removed for security); manage each account's linked hash fingerprints; a "Transactions" button opens a full page of an account's saved transactions. SQLite-backed. |
+| ↳ **Account types & categories** | Add/rename/remove account types (CCP, Livret A, LDDS, PEL, Assurance Vie, PEA, CTO, Other, …) and add/rename/recolor/remove account categories (Day-to-day, Savings, Investments, Urgent savings, …). SQLite-backed. |
+| **Database Management** | Reset the local database to empty, or wipe and reseed default categories/accounts/types plus a few sample transactions — useful when the schema changes during development. Both actions require confirmation and are irreversible (see `ARCHITECTURE.MD § Database Management`). |
 
 ---
 
@@ -81,7 +85,10 @@ FinanceDashboard/
 │   ├── Main.qml            # App shell — sidebar (collapsible categories) + StackLayout
 │   ├── components/         # SidebarCategory.qml, ChartCard.qml, KpiCard.qml, ...
 │   ├── pages/              # OverviewPage, CashFlowPage, ..., OtherLegacyPage,
-│   │                       # ImportSnapshotPage, CategoriesManagePage
+│   │                       # ImportSnapshotPage, CategoriesManagePage,
+│   │                       # TransactionsManagementPage, AccountManagementLandingPage,
+│   │                       # AccountsManagePage, AccountTransactionsPage,
+│   │                       # AccountTypesCategoriesPage, DatabaseManagementPage
 │   └── tabs/               # One .qml per tab (+ EntryCategory.qml component)
 └── src/
     ├── main.cpp            # QGuiApplication + QQuickStyle::setStyle("Basic") + QQmlApplicationEngine
@@ -92,15 +99,22 @@ FinanceDashboard/
     │   ├── savings/        #   SavingsController
     │   ├── investments/    #   InvestmentsController
     │   ├── projects/       #   ProjectsController
-    │   ├── dataentry/      #   DataEntryController, SnapshotImportController,
-    │   │                   #   CategoryController (QML_SINGLETON — category/subcategory
-    │   │                   #   CRUD, SQLite-backed)
+    │   ├── dataentry/      #   SnapshotImportController, CategoryController
+    │   │                   #   (QML_SINGLETON — category/subcategory CRUD, SQLite-backed),
+    │   │                   #   AccountController (QML_SINGLETON — account/account-type/
+    │   │                   #   account-category/hash CRUD, SQLite-backed). Also holds the
+    │   │                   #   unregistered, superseded DataEntryController.h/.cpp.
+    │   ├── database/       #   DatabaseManagementController (QML_ELEMENT — reset/reseed
+    │   │                   #   the SQLite file)
     │   └── legacy/         #   Unregistered previous-gen controllers, kept as reference
     ├── import/             # Statement-import template system (ImportTemplate + templates)
-    ├── models/             # Data structs (JSON-compatible where noted; Category.h is not)
+    ├── models/             # Data structs (JSON-compatible where noted; Category.h/
+    │                       # Account.h/Transaction.h are not)
     ├── db/                 # SQLite layer (Database singleton + table classes, incl.
-    │                       # categories/subcategories)
-    ├── utils/              # Formatter / FileFinder / JsonReader (header-only)
+    │                       # categories/subcategories, accounts/account_hashes/
+    │                       # account_categories/account_types, transactions;
+    │                       # Database::resetAll() wipes+recreates every table)
+    ├── utils/              # Formatter / FileFinder / JsonReader / AccountHashing (header-only)
     ├── data/               # Debug/sample data factory
     ├── MainWindow.* , tabs/  # LEGACY Widgets UI — not compiled, kept as porting reference
     └── ...
