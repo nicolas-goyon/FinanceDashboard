@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/qt/qml/FinanceDashboard">
+    <file alias="qmldir">C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/FinanceDashboard/qmldir</file>
+  </qresource>
+</RCC>
+

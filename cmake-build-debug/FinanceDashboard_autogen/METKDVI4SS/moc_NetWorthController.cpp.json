@@ -1,0 +1,220 @@
+{
+    "classes": [
+        {
+            "classInfos": [
+                {
+                    "name": "QML.Element",
+                    "value": "auto"
+                }
+            ],
+            "className": "NetWorthController",
+            "lineNumber": 14,
+            "methods": [
+                {
+                    "access": "public",
+                    "index": 0,
+                    "isConst": true,
+                    "lineNumber": 50,
+                    "name": "timestamps",
+                    "returnType": "QVariantList"
+                },
+                {
+                    "access": "public",
+                    "index": 1,
+                    "isConst": true,
+                    "lineNumber": 51,
+                    "name": "checkingBound",
+                    "returnType": "QVariantList"
+                },
+                {
+                    "access": "public",
+                    "index": 2,
+                    "isConst": true,
+                    "lineNumber": 52,
+                    "name": "savingsBound",
+                    "returnType": "QVariantList"
+                },
+                {
+                    "access": "public",
+                    "index": 3,
+                    "isConst": true,
+                    "lineNumber": 53,
+                    "name": "tradingBound",
+                    "returnType": "QVariantList"
+                }
+            ],
+            "object": true,
+            "properties": [
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "index": 0,
+                    "lineNumber": 20,
+                    "name": "kpis",
+                    "override": false,
+                    "read": "kpis",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QVariantList",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "index": 1,
+                    "lineNumber": 22,
+                    "name": "allocation",
+                    "override": false,
+                    "read": "allocation",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QVariantList",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "index": 2,
+                    "lineNumber": 24,
+                    "name": "monthLabels",
+                    "override": false,
+                    "read": "monthLabels",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QStringList",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "index": 3,
+                    "lineNumber": 26,
+                    "name": "netGains",
+                    "override": false,
+                    "read": "netGains",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QVariantList",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "index": 4,
+                    "lineNumber": 27,
+                    "name": "netLosses",
+                    "override": false,
+                    "read": "netLosses",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "QVariantList",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "index": 5,
+                    "lineNumber": 28,
+                    "name": "netChangeMax",
+                    "override": false,
+                    "read": "netChangeMax",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "double",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "index": 6,
+                    "lineNumber": 29,
+                    "name": "netChangeMin",
+                    "override": false,
+                    "read": "netChangeMin",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "double",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "index": 7,
+                    "lineNumber": 31,
+                    "name": "maxTotal",
+                    "override": false,
+                    "read": "maxTotal",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "double",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "index": 8,
+                    "lineNumber": 32,
+                    "name": "minTimeMs",
+                    "override": false,
+                    "read": "minTimeMs",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "double",
+                    "user": false,
+                    "virtual": false
+                },
+                {
+                    "constant": true,
+                    "designable": true,
+                    "final": false,
+                    "index": 9,
+                    "lineNumber": 33,
+                    "name": "maxTimeMs",
+                    "override": false,
+                    "read": "maxTimeMs",
+                    "required": false,
+                    "scriptable": true,
+                    "stored": true,
+                    "type": "double",
+                    "user": false,
+                    "virtual": false
+                }
+            ],
+            "qualifiedClassName": "NetWorthController",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QObject"
+                }
+            ]
+        }
+    ],
+    "inputFile": "NetWorthController.h",
+    "outputRevision": 69
+}

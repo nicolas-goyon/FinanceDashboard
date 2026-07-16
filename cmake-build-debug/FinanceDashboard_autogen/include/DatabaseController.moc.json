@@ -1,0 +1,18 @@
+{
+    "classes": [
+        {
+            "className": "DbTableModel",
+            "lineNumber": 17,
+            "object": true,
+            "qualifiedClassName": "DbTableModel",
+            "superClasses": [
+                {
+                    "access": "public",
+                    "name": "QSqlTableModel"
+                }
+            ]
+        }
+    ],
+    "inputFile": "DatabaseController.cpp",
+    "outputRevision": 69
+}

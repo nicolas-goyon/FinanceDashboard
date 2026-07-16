@@ -1,0 +1,15 @@
+-rootPath
+C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard
+-cmake-output
+-output-file
+C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.qt/qml_imports/FinanceDashboard_conf.cmake
+-importPath
+C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug
+-importPath
+C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/FinanceDashboard
+-importPath
+C:/Qt/6.11.1/mingw_64/qml
+-qrcFiles
+C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.qt/rcc/qmake_FinanceDashboard.qrc
+C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.qt/rcc/FinanceDashboard_raw_qml_0.qrc
+C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-build-debug/.qt/rcc/FinanceDashboard_raw_qml_0_extra_qmldirs.qrc
