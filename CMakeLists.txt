@@ -1,0 +1,137 @@
+cmake_minimum_required(VERSION 3.20)
+project(FinanceDashboard VERSION 0.2.0 LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+# Qt Quick / QML + Qt Graphs (2D). Qt Charts and Widgets are no longer used.
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2)
+
+qt_standard_project_setup(REQUIRES 6.8)
+
+# QTP0004: auto-generate qmldir for QML files in subdirectories
+qt_policy(SET QTP0004 NEW)
+
+# ── Executable — entry point + UI-independent C++ (db / models / utils) ───────
+qt_add_executable(FinanceDashboard
+    src/main.cpp
+    src/data/DebugData.h
+    src/data/DebugData.cpp
+    src/models/PortfolioData.h
+    src/models/PortfolioData.cpp
+    src/models/AssetEntry.h
+    src/models/AssetEntry.cpp
+    src/models/ImportedStatement.h
+    src/models/ImportLog.h
+    src/db/tables/SnapshotsTable.h
+    src/db/tables/SnapshotsTable.cpp
+    src/db/tables/AssetEntriesTable.h
+    src/db/tables/AssetEntriesTable.cpp
+    src/db/Database.h
+    src/db/Database.cpp
+    src/utils/Formatter.h
+    src/utils/FileFinder.h
+    src/utils/JsonReader.h
+    # Statement-import template system (see ARCHITECTURE.MD § Statement Import).
+    # UI-independent — no QML_ELEMENT here, that's SnapshotImportController below.
+    src/import/ImportTemplate.h
+    src/import/ImportTemplateRegistry.h
+    src/import/ImportTemplateRegistry.cpp
+    src/import/CheckingCsvTemplateV1.h
+    src/import/CheckingCsvTemplateV1.cpp
+)
+
+# ── QML module — controllers (QML_ELEMENT) + QML UI ───────────────────────────
+qt_add_qml_module(FinanceDashboard
+    URI FinanceDashboard
+    VERSION 1.0
+    SOURCES
+        # PROJECT.md pages (mock data — UI pass)
+        # One subfolder per page/domain under src/controllers/ (see ARCHITECTURE.MD § Directory Map).
+        src/controllers/overview/NetWorthController.h
+        src/controllers/overview/NetWorthController.cpp
+        src/controllers/cashflow/CashFlowController.h
+        src/controllers/cashflow/CashFlowController.cpp
+        src/controllers/savings/SavingsController.h
+        src/controllers/savings/SavingsController.cpp
+        src/controllers/investments/InvestmentsController.h
+        src/controllers/investments/InvestmentsController.cpp
+        src/controllers/projects/ProjectsController.h
+        src/controllers/projects/ProjectsController.cpp
+        src/controllers/dataentry/DataEntryController.h
+        src/controllers/dataentry/DataEntryController.cpp
+        src/controllers/dataentry/SnapshotImportController.h
+        src/controllers/dataentry/SnapshotImportController.cpp
+        src/controllers/dataentry/CategoryController.h
+        src/controllers/dataentry/CategoryController.cpp
+    QML_FILES
+        qml/Main.qml
+        qml/components/KpiCard.qml
+        qml/components/ChartCard.qml
+        qml/components/HoverPoint.qml
+        qml/components/HoverBar.qml
+        qml/components/MoneyFlow.qml
+        qml/components/SidebarCategory.qml
+        qml/components/ColorComboBox.qml
+        qml/pages/OverviewPage.qml
+        qml/pages/CashFlowPage.qml
+        qml/pages/SavingsPage.qml
+        qml/pages/InvestmentsPage.qml
+        qml/pages/ProjectsPage.qml
+        qml/pages/DataEntryPage.qml
+        qml/pages/OtherLegacyPage.qml
+        qml/pages/ImportSnapshotPage.qml
+        qml/pages/CategoriesManagePage.qml
+)
+
+# NOTE — previous generation (qml/tabs/* + their controllers) is unregistered.
+# The files stay on disk as reference (EntryController, DatabaseController and
+# AnalyticsController will be reused when wiring the Data Entry page to the DB).
+
+# NOTE — qml/pages/ImportSnapshotPage.qml (FileDialog) and
+# qml/pages/CategoriesManagePage.qml (ColorDialog) import QtQuick.Dialogs,
+# used only from QML (no C++ API call), so qt_add_qml_module's import scanning
+# should resolve/deploy it automatically without an explicit find_package/link
+# step — same as other QML-only modules here. If the build fails to find the
+# QtQuick.Dialogs plugin, add "QuickDialogs2" to the find_package(Qt6 ...) line
+# above and Qt6::QuickDialogs2 to target_link_libraries() below.
+
+# Each active controller's subfolder must be on the include path so the
+# auto-generated qml type registration .cpp can find the headers by basename
+# (legacy/ is excluded — those controllers aren't in SOURCES above, not compiled).
+target_include_directories(FinanceDashboard PRIVATE
+    src
+    src/controllers/overview
+    src/controllers/cashflow
+    src/controllers/savings
+    src/controllers/investments
+    src/controllers/projects
+    src/controllers/dataentry
+)
+
+target_link_libraries(FinanceDashboard PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Quick
+    Qt6::Qml
+    Qt6::Graphs
+    Qt6::Sql
+    Qt6::QuickControls2
+)
+
+target_compile_definitions(FinanceDashboard PRIVATE
+    $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:QT_QML_DEBUG>
+)
+
+# Windows: hide the console window in Release builds
+if(WIN32)
+    set_target_properties(FinanceDashboard PROPERTIES
+        WIN32_EXECUTABLE $<CONFIG:Release>
+    )
+endif()
+
+# ── NOTE — migration in progress ──────────────────────────────────────────────
+# The legacy Qt Widgets UI (src/MainWindow.*, src/tabs/*) is intentionally NOT
+# compiled anymore. The files remain on disk as reference while each tab is
+# ported to QML (see ARCHITECTURE.MD § Migration Status). Delete them once all
+# tabs are ported.
