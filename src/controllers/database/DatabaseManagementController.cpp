@@ -1,0 +1,156 @@
+#include "DatabaseManagementController.h"
+
+#include "db/Database.h"
+#include "models/Transaction.h"
+
+#include <QDate>
+#include <QTimer>
+#include <QVector>
+
+DatabaseManagementController::DatabaseManagementController(QObject* parent)
+    : QObject(parent)
+{}
+
+void DatabaseManagementController::resetDatabase()
+{
+    if (!Database::instance().resetAll()) {
+        setStatus(QStringLiteral("⚠  Reset failed — see application log"));
+        return;
+    }
+    setStatus(QStringLiteral("✓  Database reset — everything cleared"));
+    emit databaseReset();
+}
+
+void DatabaseManagementController::resetToMock()
+{
+    if (!Database::instance().resetAll()) {
+        setStatus(QStringLiteral("⚠  Reset failed — see application log"));
+        return;
+    }
+    seedMockData();
+    setStatus(QStringLiteral("✓  Database reset to mock data"));
+    emit databaseReset();
+}
+
+void DatabaseManagementController::seedMockData()
+{
+    Database& db = Database::instance();
+
+    // Same default category/subcategory list as
+    // CategoryController::seedDefaults() (duplicated here deliberately —
+    // see class comment).
+    struct SeedSub { QString name; QString color; };
+    struct SeedCat { QString name; QString color; QVector<SeedSub> subs; };
+    static const QVector<SeedCat> kCategorySeed = {
+        { "Rent", "#b4befe", {
+            { "Base rent", "#b4befe" },
+            { "Charges",   "#8c9bfd" },
+        } },
+        { "Groceries", "#a6e3a1", {
+            { "Supermarket", "#a6e3a1" },
+            { "Market",      "#88da82" },
+        } },
+        { "Transport", "#89dceb", {
+            { "Public transit", "#89dceb" },
+            { "Fuel",           "#66d2e5" },
+            { "Rideshare",      "#ace6f1" },
+        } },
+        { "Utilities", "#f9e2af", {
+            { "Electricity", "#f9e2af" },
+            { "Internet",    "#f6d489" },
+        } },
+        { "Leisure", "#cba6f7", {
+            { "Restaurants",   "#cba6f7" },
+            { "Subscriptions", "#b581f4" },
+        } },
+        { "Other", "#6c7086", {} },
+    };
+    for (const SeedCat& sc : kCategorySeed) {
+        const int catId = db.addCategory(sc.name, sc.color);
+        if (catId < 0)
+            continue;
+        for (const SeedSub& ss : sc.subs)
+            db.addSubcategory(catId, ss.name, ss.color);
+    }
+
+    // Same defaults as AccountController::seedDefaults().
+    struct SeedAccCat { QString name; QString color; };
+    static const QVector<SeedAccCat> kAccountCategorySeed = {
+        { "Day-to-day",     "#89b4fa" },
+        { "Savings",        "#a6e3a1" },
+        { "Investments",    "#cba6f7" },
+        { "Urgent savings", "#f9e2af" },
+    };
+    for (const SeedAccCat& sc : kAccountCategorySeed)
+        db.addAccountCategory(sc.name, sc.color);
+
+    static const QVector<QString> kAccountTypeSeed = {
+        "CCP", "Livret A", "LDDS", "PEL", "Assurance Vie", "PEA", "CTO", "Other",
+    };
+    for (const QString& name : kAccountTypeSeed)
+        db.addAccountType(name);
+
+    struct SeedAcc { QString name, type, category, currency, notes; };
+    static const QVector<SeedAcc> kAccountSeed = {
+        { "Checking — Bank A", "CCP",           "Day-to-day",  "EUR", "" },
+        { "Checking — Bank B", "CCP",           "Day-to-day",  "EUR", "" },
+        { "Livret A",          "Livret A",      "Savings",     "EUR", "" },
+        { "LDDS",              "LDDS",          "Savings",     "EUR", "" },
+        { "Assurance Vie",     "Assurance Vie", "Investments", "EUR", "" },
+        { "Trading account",  "CTO",           "Investments", "EUR", "" },
+    };
+    int checkingBankAId = -1;
+    for (const SeedAcc& sa : kAccountSeed) {
+        const int id = db.addAccount(sa.name, sa.type, sa.category, sa.currency, sa.notes);
+        if (sa.name == QLatin1String("Checking — Bank A"))
+            checkingBankAId = id;
+    }
+
+    // A handful of fabricated sample transactions against the first demo
+    // checking account, so the transactions view (Manage Accounts →
+    // Transactions) has something real to show right after a mock reset —
+    // per product request. Dates are relative to today rather than
+    // hardcoded, so they don't look stale months from now.
+    if (checkingBankAId >= 0) {
+        const QDate today = QDate::currentDate();
+        struct SeedTx {
+            int daysAgo; QString description; double debit; double credit;
+            double balanceAfter; QString category; QString subcategory;
+        };
+        static const QVector<SeedTx> kTxSeed = {
+            { 28, "Salary",               0.0,    2800.00, 3120.50, "",           ""             },
+            { 25, "Monthly rent",         950.00,    0.0,   2170.50, "Rent",       "Base rent"    },
+            { 20, "Carrefour",             86.40,    0.0,   2084.10, "Groceries",  "Supermarket"  },
+            { 14, "SNCF ticket",           42.00,    0.0,   2042.10, "Transport",  "Public transit" },
+            { 9,  "EDF electricity",      118.50,    0.0,   1923.60, "Utilities",  "Electricity"  },
+            { 3,  "Cinema + dinner",       64.90,    0.0,   1858.70, "Leisure",    "Restaurants"  },
+        };
+        QVector<Data::Transaction> txs;
+        txs.reserve(kTxSeed.size());
+        for (const SeedTx& st : kTxSeed) {
+            Data::Transaction tx;
+            tx.accountId        = checkingBankAId;
+            tx.operationDate     = today.addDays(-st.daysAgo);
+            tx.confirmationDate  = tx.operationDate;
+            tx.description       = st.description;
+            tx.debit             = st.debit;
+            tx.credit            = st.credit;
+            tx.balanceAfter      = st.balanceAfter;
+            tx.category          = st.category;
+            tx.subcategory       = st.subcategory;
+            tx.sourceTemplate    = QStringLiteral("mock-seed");
+            txs.append(tx);
+        }
+        db.insertTransactions(checkingBankAId, txs);
+    }
+}
+
+void DatabaseManagementController::setStatus(const QString& msg)
+{
+    m_statusText = msg;
+    emit statusChanged();
+    QTimer::singleShot(4000, this, [this]() {
+        m_statusText.clear();
+        emit statusChanged();
+    });
+}

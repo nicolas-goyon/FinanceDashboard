@@ -20,10 +20,13 @@
 // resulting transactions and categories, inspect parse warnings/errors via
 // the log, then Save.
 //
-// Scope for this pass (matches the rest of Data Entry): parsing is REAL,
-// persistence is MOCK — save() only sets statusText, same convention as
-// DataEntryController::saveSnapshot(). DB schema for transactions is a
-// PROJECT.md / ARCHITECTURE.MD TODO (see "Optional categorized transactions").
+// Persistence is REAL as of § Account Management (ARCHITECTURE.MD):
+// save() writes the included rows to the `transactions` table
+// (Database::insertTransactions()) and auto-links the statement's account
+// hash to the chosen account if it isn't already stored there
+// (Database::accountHasHash()/addAccountHash()) — see save()'s doc comment
+// below for the exact contract with the QML side (accounts now come from
+// AccountController, not this class).
 
 class SnapshotImportController : public QObject
 {
@@ -42,8 +45,10 @@ class SnapshotImportController : public QObject
 
     // Formatted header fields — see statementInfo() for the shape. Includes
     // "accountHash" (HMAC-SHA256 of the IBAN keyed by the BIC — see
-    // accountHash() in the .cpp), the same fingerprint matchAccountIndex()
-    // uses to find the target account, shown here so it's visible/auditable.
+    // AccountHashing::compute(), src/utils/AccountHashing.h), the same
+    // fingerprint matchAccountIndex() uses to find the target account, shown
+    // here so it's visible/auditable ("accountHashRaw" is the same value
+    // un-prettified, for the "Link this account" action).
     Q_PROPERTY(QVariantMap statementInfo READ statementInfo NOTIFY statementChanged)
     // [{ index, confirmationDate, operationDate, description, debitText,
     //    creditText, balanceText, category, subcategory, included }]
@@ -82,21 +87,35 @@ public:
     Q_INVOKABLE void setRowSubcategory(int row, const QString& subcategory);
     Q_INVOKABLE void setRowIncluded(int row, bool included);
 
-    // Given the Data Entry accounts list ([{name, type, iban, bic, number}, ...]),
-    // returns the index of the account matching this statement, or -1 if none
-    // matched (caller should ask the user). Doesn't compare IBAN/BIC fields
-    // directly: both sides are folded into an accountHash() fingerprint first
-    // and only the fingerprints are compared (mocks a lookup-by-fingerprint
-    // DB call — see accountHash() in the .cpp and § Statement Import in
-    // ARCHITECTURE.MD). Falls back to a direct account-number match when no
-    // hash is available on one side (e.g. an account with no IBAN on file).
+    // Given AccountController.accounts ([{id, name, type, category,
+    // hashes: [{hash, ...}], ...}, ...]), returns the index of the account
+    // matching this statement, or -1 if none matched (caller should ask the
+    // user). Doesn't compare IBAN/BIC fields directly — accounts don't even
+    // store those (removed for security, see § Account Management): the
+    // statement's IBAN/BIC is folded into a fingerprint (AccountHashing::
+    // compute(), § Statement Import in ARCHITECTURE.MD) and compared against
+    // each candidate account's *stored* hashes list (account_hashes table,
+    // via AccountController). No account-number fallback anymore — hash is
+    // the only match path, so an account with none stored just shows as
+    // unmatched until linked (see the "not linked" badge / "Link this
+    // account" action on ImportSnapshotPage.qml).
     Q_INVOKABLE int matchAccountIndex(const QVariantList& accounts) const;
 
     // Clears the parsed statement and returns to the file/template picker.
     Q_INVOKABLE void reset();
 
-    // Mock save — see class comment. accountLabel is only used for the status message.
-    Q_INVOKABLE void save(const QString& accountLabel);
+    // Persists every included transaction row to the `transactions` table
+    // for `accountId` (a real AccountController account id — QML passes
+    // AccountController.accounts[selectedIndex].id) via
+    // Database::insertTransactions(). Also auto-links this statement's
+    // account hash to that account (Database::addAccountHash(), source
+    // "auto") if it isn't stored there yet, so future imports of the same
+    // account auto-match. accountId < 0 (nothing selected) fails without
+    // writing anything. accountLabel is only used for the status message.
+    // The QML side must call AccountController.reload() afterward so the
+    // singleton's cached accounts/hashes pick up this write (see
+    // AccountController::reload() doc comment).
+    Q_INVOKABLE void save(int accountId, const QString& accountLabel);
 
 signals:
     void statementChanged();
@@ -106,10 +125,6 @@ signals:
 private:
     void setStatus(const QString& msg);
 
-    // See the .cpp for the rationale — HMAC-SHA256 of the IBAN keyed by the
-    // BIC, used instead of direct IBAN/BIC comparisons for account matching.
-    static QString accountHash(const QString& iban, const QString& bic);
-
     QVariantList m_templates;
 
     Data::ImportedStatement       m_statement;
@@ -117,6 +132,7 @@ private:
     bool    m_hasParsed{false};
     bool    m_lastParseFailed{false};
     QString m_sourceFileName;
+    QString m_templateId; // last parseFile()'s templateId — stored on saved transactions as source_template
 
     QString m_statusText;
 };

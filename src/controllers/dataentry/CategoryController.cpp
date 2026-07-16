@@ -16,6 +16,13 @@ CategoryController::CategoryController(QObject* parent)
         seedDefaults();
 }
 
+void CategoryController::reload()
+{
+    // Deliberately no reseed-if-empty here — see the header doc comment.
+    m_categories = Database::instance().loadCategories();
+    emit categoriesChanged();
+}
+
 void CategoryController::seedDefaults()
 {
     // Same category names/colors/subcategories as the original in-memory

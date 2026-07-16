@@ -2,10 +2,11 @@
 #include "import/ImportTemplate.h"
 #include "import/ImportTemplateRegistry.h"
 #include "utils/Formatter.h"
+#include "utils/AccountHashing.h"
+#include "db/Database.h"
+#include "models/Transaction.h"
 
-#include <QCryptographicHash>
 #include <QFileInfo>
-#include <QMessageAuthenticationCode>
 #include <QTimer>
 
 namespace {
@@ -15,32 +16,7 @@ QString dateText(const QDate& d)
     return d.isValid() ? d.toString(QStringLiteral("dd/MM/yyyy")) : QStringLiteral("—");
 }
 
-QString normalized(QString s)
-{
-    s = s.trimmed().toUpper();
-    s.remove(QLatin1Char(' '));
-    return s;
-}
-
 } // namespace
-
-// Account "fingerprint" used to find the target account without comparing
-// raw IBAN/BIC values directly: HMAC-SHA256 of the (normalized) IBAN, keyed
-// by the (normalized) BIC. This mocks looking an account up by fingerprint
-// in a backend/DB rather than matching bank identifiers field-by-field — see
-// § Statement Import in ARCHITECTURE.MD. Returns an empty string when there's
-// no IBAN to hash (nothing to match on).
-QString SnapshotImportController::accountHash(const QString& iban, const QString& bic)
-{
-    const QString ibanNorm = normalized(iban);
-    if (ibanNorm.isEmpty())
-        return QString();
-
-    QMessageAuthenticationCode mac(QCryptographicHash::Sha256);
-    mac.setKey(normalized(bic).toUtf8());
-    mac.addData(ibanNorm.toUtf8());
-    return QString::fromLatin1(mac.result().toHex());
-}
 
 SnapshotImportController::SnapshotImportController(QObject* parent)
     : QObject(parent)
@@ -56,7 +32,7 @@ SnapshotImportController::SnapshotImportController(QObject* parent)
 
 QVariantMap SnapshotImportController::statementInfo() const
 {
-    const QString hash = accountHash(m_statement.iban, m_statement.bic);
+    const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
 
     return QVariantMap{
         { "holderName",         m_statement.accountHolderName.isEmpty() ? QStringLiteral("—") : m_statement.accountHolderName },
@@ -65,8 +41,12 @@ QVariantMap SnapshotImportController::statementInfo() const
         { "accountNumber",      m_statement.accountNumber.isEmpty()     ? QStringLiteral("—") : m_statement.accountNumber },
         { "iban",               m_statement.iban.isEmpty()              ? QStringLiteral("—") : m_statement.iban },
         { "bic",                m_statement.bic.isEmpty()               ? QStringLiteral("—") : m_statement.bic },
-        // HMAC-SHA256(iban, key=bic) — see accountHash(). Empty IBAN → "—".
+        // HMAC-SHA256(iban, key=bic) — see AccountHashing::compute(). Empty IBAN → "—".
         { "accountHash",        hash.isEmpty() ? QStringLiteral("—") : hash },
+        // Same value, un-prettified (empty string instead of "—") — what
+        // ImportSnapshotPage.qml's "Link this account" button actually
+        // passes to AccountController.linkAccountHash().
+        { "accountHashRaw",     hash },
         { "periodFromText",     dateText(m_statement.periodFrom) },
         { "periodToText",       dateText(m_statement.periodTo) },
         { "balanceStartText",   Fmt::money(m_statement.balanceStart) },
@@ -136,6 +116,7 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
 {
     m_statement = Data::ImportedStatement{};
     m_log.clear();
+    m_templateId = templateId; // stashed for save()'s Data::Transaction::sourceTemplate
 
     const ImportTemplate* tpl = ImportTemplateRegistry::byId(templateId);
     const QString path = fileUrl.isLocalFile() ? fileUrl.toLocalFile() : fileUrl.toString();
@@ -207,25 +188,24 @@ void SnapshotImportController::setRowIncluded(int row, bool included)
 
 int SnapshotImportController::matchAccountIndex(const QVariantList& accounts) const
 {
-    // Primary match: compare account-hash fingerprints, never raw IBAN/BIC —
-    // see accountHash(). Mocks a lookup-by-fingerprint DB call.
-    const QString targetHash = accountHash(m_statement.iban, m_statement.bic);
-    if (!targetHash.isEmpty()) {
-        for (int i = 0; i < accounts.size(); ++i) {
-            const QVariantMap acc = accounts.at(i).toMap();
-            const QString accHash = accountHash(acc.value("iban").toString(), acc.value("bic").toString());
-            if (!accHash.isEmpty() && accHash == targetHash)
-                return i;
-        }
-    }
+    // Sole match path: compare the statement's fingerprint against each
+    // candidate account's *stored* hashes list (account_hashes table, via
+    // AccountController — see § Account Management). Never raw IBAN/BIC/
+    // account-number comparisons — accounts don't even store those anymore
+    // (removed for security, see § Account Management), so an account only
+    // ever matches if it has actually been linked (see
+    // AccountController::linkAccountHash()/addHash()). No hash on the
+    // statement, or no account with a matching stored hash → -1, caller
+    // shows the manual picker.
+    const QString targetHash = AccountHashing::compute(m_statement.iban, m_statement.bic);
+    if (targetHash.isEmpty())
+        return -1;
 
-    // Fallback: direct account-number match, for accounts with no IBAN on
-    // file to hash against.
-    const QString numberNorm = normalized(m_statement.accountNumber);
-    if (!numberNorm.isEmpty()) {
-        for (int i = 0; i < accounts.size(); ++i) {
-            const QString accNumber = normalized(accounts.at(i).toMap().value("number").toString());
-            if (!accNumber.isEmpty() && accNumber == numberNorm)
+    for (int i = 0; i < accounts.size(); ++i) {
+        const QVariantMap acc = accounts.at(i).toMap();
+        const QVariantList hashes = acc.value("hashes").toList();
+        for (const QVariant& hv : hashes) {
+            if (hv.toMap().value("hash").toString().compare(targetHash, Qt::CaseInsensitive) == 0)
                 return i;
         }
     }
@@ -240,21 +220,52 @@ void SnapshotImportController::reset()
     m_hasParsed = false;
     m_lastParseFailed = false;
     m_sourceFileName.clear();
+    m_templateId.clear();
     emit statementChanged();
     emit logChanged();
 }
 
-void SnapshotImportController::save(const QString& accountLabel)
+void SnapshotImportController::save(int accountId, const QString& accountLabel)
 {
-    // MOCK: doesn't persist — see § Statement Import in ARCHITECTURE.MD
-    int included = 0;
-    for (const Data::ImportedTransaction& tx : m_statement.transactions)
-        if (tx.included)
-            ++included;
+    if (accountId < 0) {
+        setStatus(QStringLiteral("⚠  Please select an account before saving"));
+        return;
+    }
 
-    setStatus(QString("Mock — %1 of %2 transaction(s) would be saved to \"%3\" "
-                       "(not persisted yet — UI pass)")
-                   .arg(included)
+    QVector<Data::Transaction> toSave;
+    toSave.reserve(m_statement.transactions.size());
+    for (const Data::ImportedTransaction& tx : m_statement.transactions) {
+        if (!tx.included)
+            continue;
+        Data::Transaction row;
+        row.accountId         = accountId;
+        row.confirmationDate  = tx.confirmationDate;
+        row.operationDate     = tx.operationDate;
+        row.description        = tx.description;
+        row.debit              = tx.debit;
+        row.credit              = tx.credit;
+        row.balanceAfter        = tx.balanceAfter;
+        row.category            = tx.category;
+        row.subcategory          = tx.subcategory;
+        row.sourceTemplate       = m_templateId;
+        toSave.append(row);
+    }
+
+    if (!Database::instance().insertTransactions(accountId, toSave)) {
+        setStatus(QStringLiteral("⚠  Failed to save transactions — see application log"));
+        return;
+    }
+
+    // Auto-link: if this statement has a computable fingerprint and the
+    // chosen account doesn't have it on file yet, store it now (source
+    // "auto") — future imports of the same account then auto-match (see §
+    // Statement Import / § Account Management in ARCHITECTURE.MD).
+    const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
+    if (!hash.isEmpty() && !Database::instance().accountHasHash(accountId, hash))
+        Database::instance().addAccountHash(accountId, hash, QStringLiteral("auto"));
+
+    setStatus(QString("✓  Saved %1 of %2 transaction(s) to \"%3\"")
+                   .arg(toSave.size())
                    .arg(m_statement.transactions.size())
                    .arg(accountLabel));
 }
