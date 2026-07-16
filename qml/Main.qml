@@ -8,14 +8,28 @@ import QtQuick.Layouts
 //   Overlay0 #6c7086 · Text #cdd6f4 · Blue #89b4fa
 //
 // Layout: left sidebar (collapsible category list) instead of a top TabBar.
-// The first 5 categories mirror the first 5 PROJECT.md pages 1:1. The
-// former 6th ("Data Entry") was restructured into three lighter categories —
-// Transactions Management, Account Management, Database Management — plus
-// the non-spec "Other - To remove" (see ARCHITECTURE.MD § Transactions
-// Management / § Account Management / § Database Management for the
-// rationale). Clicking a category label selects its page; clicking the
-// small arrow expands/collapses its pre-filled action list.
-
+// Each of the 8 categories mirrors a PROJECT.md page or a Transactions/
+// Account/Database Management split page 1:1 (see ARCHITECTURE.MD § App
+// Status). Clicking a category label selects its page; clicking the small
+// arrow expands/collapses its action list without changing the page.
+//
+// ── Navigation model — single source of truth ───────────────────────────────
+// `root.currentViewId` is the ONLY piece of state that says "what's on
+// screen". Every category and every wired action has a matching id in the
+// `categories` array below; both the StackLayout's current page and every
+// overlay's active flag are derived from this one property, and so is the
+// sidebar highlight (SidebarCategory.current / currentActionId, computed by
+// `isCategoryActive()` below). Earlier this app tracked navigation as
+// `currentIndex` (StackLayout position) PLUS five independent
+// `showXxxOverlay` booleans that every entry point had to clear by hand —
+// clicking a sidebar *action* (e.g. "Manage Accounts") only ever flipped an
+// overlay flag and never touched `currentIndex`, so the sidebar kept
+// highlighting whatever category was selected *before*, not the one whose
+// action you were actually looking at. Collapsing all of that into one
+// `currentViewId` string removes the class of bug entirely: there is now
+// exactly one thing to set from any navigation entry point, and the sidebar
+// reads the same value used to pick the visible page. See ARCHITECTURE.MD §
+// Sidebar Navigation.
 ApplicationWindow {
     id: root
     visible: true
@@ -24,66 +38,121 @@ ApplicationWindow {
     title: "Finance Dashboard"
     color: "#11111b"
 
-    property int currentIndex: 0
-
-    // Five sidebar actions are wired up so far, each opening a full-content
-    // overlay (via the Loaders below): "Import Transactions" and "Manage
-    // Categories" under Transactions Management; "Manage Accounts" and
-    // "Account types & categories" under Account Management; plus the
-    // account-scoped Transactions page reached *from* Manage Accounts
-    // (not a sidebar action itself). Database Management has no actions —
-    // its landing page holds the real controls directly.
-    property bool showImportOverlay: false
-    property bool showCategoriesOverlay: false
-    property bool showAccountsOverlay: false
-    property bool showAccountTypesOverlay: false
-    property bool showAccountTransactionsOverlay: false
+    property string currentViewId: "overview"
 
     // Which account (index into AccountController.accounts) the
     // AccountTransactionsPage overlay should show — set right before
-    // showAccountTransactionsOverlay flips true (see the accountsPageComponent
+    // currentViewId becomes "accountTransactions" (see the accountsPage
     // Loader's onViewTransactionsRequested below).
     property int accountTransactionsIndex: -1
 
+    // Overlay views: full-content pages reached from a sidebar action (or,
+    // for "accountTransactions", from a button inside another overlay) that
+    // replace the StackLayout rather than living in it — see the Loaders
+    // below and ARCHITECTURE.MD § Sidebar Navigation → Overlay pages.
+    readonly property var overlayViewIds: [
+        "importTransactions", "manageCategories",
+        "manageAccounts", "accountTypes", "accountTransactions"
+    ]
+    readonly property bool isOverlayView: root.overlayViewIds.indexOf(root.currentViewId) !== -1
+
+    // One entry per StackLayout page, in the same order as its children
+    // below — `stackIndex` looks a category up positionally, same
+    // "array-order = child-order" contract the previous currentIndex model
+    // used, just keyed by id instead of a bare int so callers never juggle
+    // magic numbers.
     readonly property var categories: [
         {
-            label: "Overview",
-            actions: ["Net Worth Trend", "Allocation Breakdown", "Monthly Net Change", "KPI Summary"]
+            id: "overview", label: "Overview",
+            actions: [
+                { id: "netWorthTrend", label: "Net Worth Trend" },
+                { id: "allocationBreakdown", label: "Allocation Breakdown" },
+                { id: "monthlyNetChange", label: "Monthly Net Change" },
+                { id: "kpiSummary", label: "KPI Summary" }
+            ]
         },
         {
-            label: "Cash Flow",
-            actions: ["Income vs Expenses", "Spending by Category", "Category Trends", "Biggest Expenses"]
+            id: "cashflow", label: "Cash Flow",
+            actions: [
+                { id: "incomeVsExpenses", label: "Income vs Expenses" },
+                { id: "spendingByCategory", label: "Spending by Category" },
+                { id: "categoryTrends", label: "Category Trends" },
+                { id: "biggestExpenses", label: "Biggest Expenses" }
+            ]
         },
         {
-            label: "Savings",
-            actions: ["Balance History", "Livret Ceilings & Goals", "Interest Earned", "Blended Yield"]
+            id: "savings", label: "Savings",
+            actions: [
+                { id: "balanceHistory", label: "Balance History" },
+                { id: "livretCeilingsGoals", label: "Livret Ceilings & Goals" },
+                { id: "interestEarned", label: "Interest Earned" },
+                { id: "blendedYield", label: "Blended Yield" }
+            ]
         },
         {
-            label: "Investments",
-            actions: ["Portfolio vs Deposits (P&L)", "Asset Allocation", "Monthly Performance"]
+            id: "investments", label: "Investments",
+            actions: [
+                { id: "portfolioVsDeposits", label: "Portfolio vs Deposits (P&L)" },
+                { id: "assetAllocation", label: "Asset Allocation" },
+                { id: "monthlyPerformance", label: "Monthly Performance" }
+            ]
         },
         {
-            label: "Projects",
-            actions: ["Project Overview", "Loan Simulator", "Save vs Borrow Comparison"]
+            id: "projects", label: "Projects",
+            actions: [
+                { id: "projectOverview", label: "Project Overview" },
+                { id: "loanSimulator", label: "Loan Simulator" },
+                { id: "saveVsBorrowComparison", label: "Save vs Borrow Comparison" }
+            ]
         },
         {
-            label: "Transactions Management",
-            actions: ["Import Transactions", "Manage Categories"]
+            id: "transactionsManagement", label: "Transactions Management",
+            actions: [
+                { id: "importTransactions", label: "Import Transactions" },
+                { id: "manageCategories", label: "Manage Categories" }
+            ]
         },
         {
-            label: "Account Management",
-            actions: ["Manage Accounts", "Account types & categories"]
+            id: "accountManagement", label: "Account Management",
+            actions: [
+                { id: "manageAccounts", label: "Manage Accounts" },
+                { id: "accountTypes", label: "Account types & categories" }
+            ],
+            // Reached only via the "Transactions" button inside Manage
+            // Accounts, not a sidebar action of its own — still belongs to
+            // this category for sidebar-highlight purposes.
+            relatedViewIds: ["accountTransactions"]
         },
         {
-            label: "Database Management",
+            id: "databaseManagement", label: "Database Management",
             actions: []
-        },
-        {
-            label: "Other - To remove",
-            actions: ["AnalyticsTab.qml", "DatabaseTab.qml", "EntryTab.qml", "ImportTab.qml",
-                      "OverviewTab.qml", "PortfolioTab.qml", "PlaceholderTab.qml"]
         }
     ]
+
+    // True if `currentViewId` is this category's own page, one of its
+    // actions, or one of its relatedViewIds — i.e. "the user is currently
+    // anywhere inside this category". Single place that knows how to answer
+    // that question; both the header highlight and the auto-expand behavior
+    // in SidebarCategory read it via the `current` prop below.
+    function isCategoryActive(category) {
+        if (category.id === root.currentViewId)
+            return true
+        for (var i = 0; i < category.actions.length; ++i)
+            if (category.actions[i].id === root.currentViewId)
+                return true
+        return category.relatedViewIds ? category.relatedViewIds.indexOf(root.currentViewId) !== -1 : false
+    }
+
+    // Position of the category whose id === currentViewId, for
+    // StackLayout.currentIndex. Falls back to 0 (Overview) when currentViewId
+    // is an overlay id — harmless since the StackLayout is hidden behind the
+    // overlay in that case anyway (see `isOverlayView` above).
+    readonly property int stackIndex: {
+        for (var i = 0; i < root.categories.length; ++i)
+            if (root.categories[i].id === root.currentViewId)
+                return i
+        return 0
+    }
 
     // ── Sidebar ───────────────────────────────────────────────────────────────
     Rectangle {
@@ -115,54 +184,23 @@ ApplicationWindow {
                     model: root.categories
                     delegate: SidebarCategory {
                         required property var modelData
-                        required property int index
                         Layout.fillWidth: true
                         categoryLabel: modelData.label
                         actions: modelData.actions
-                        current: index === root.currentIndex
-                        onSelected: {
-                            // Clicking a category must return to the sidebar-driven
-                            // StackLayout view even if an overlay page is currently
-                            // open — otherwise the Loader stays on top,
-                            // StackLayout.visible stays false, and currentIndex
-                            // changes invisibly behind it until the overlay's own
-                            // closeRequested() (back arrow) fires. See
-                            // ARCHITECTURE.MD § Sidebar Navigation. Every new
-                            // overlay flag must be added here too.
-                            root.showImportOverlay = false
-                            root.showCategoriesOverlay = false
-                            root.showAccountsOverlay = false
-                            root.showAccountTypesOverlay = false
-                            root.showAccountTransactionsOverlay = false
-                            root.currentIndex = index
-                        }
-                        onActionTriggered: (action) => {
-                            if (modelData.label === "Transactions Management" && action === "Import Transactions") {
-                                root.showCategoriesOverlay = false
-                                root.showAccountsOverlay = false
-                                root.showAccountTypesOverlay = false
-                                root.showAccountTransactionsOverlay = false
-                                root.showImportOverlay = true
-                            } else if (modelData.label === "Transactions Management" && action === "Manage Categories") {
-                                root.showImportOverlay = false
-                                root.showAccountsOverlay = false
-                                root.showAccountTypesOverlay = false
-                                root.showAccountTransactionsOverlay = false
-                                root.showCategoriesOverlay = true
-                            } else if (modelData.label === "Account Management" && action === "Manage Accounts") {
-                                root.showImportOverlay = false
-                                root.showCategoriesOverlay = false
-                                root.showAccountTypesOverlay = false
-                                root.showAccountTransactionsOverlay = false
-                                root.showAccountsOverlay = true
-                            } else if (modelData.label === "Account Management" && action === "Account types & categories") {
-                                root.showImportOverlay = false
-                                root.showCategoriesOverlay = false
-                                root.showAccountsOverlay = false
-                                root.showAccountTransactionsOverlay = false
-                                root.showAccountTypesOverlay = true
+                        current: root.isCategoryActive(modelData)
+                        currentActionId: root.currentViewId
+                        onSelected: root.currentViewId = modelData.id
+                        onActionTriggered: (actionId) => {
+                            // Only actions with a real page behind them
+                            // change the view; every other action on the
+                            // first 5 categories is still a no-op
+                            // placeholder (see ARCHITECTURE.MD § Sidebar
+                            // Navigation). Add a page + its id here (and to
+                            // `categories` above) to wire up a new one.
+                            if (root.overlayViewIds.indexOf(actionId) !== -1
+                                    && actionId !== "accountTransactions") {
+                                root.currentViewId = actionId
                             }
-                            // All other actions are still placeholders (no-op).
                         }
                     }
                 }
@@ -182,9 +220,8 @@ ApplicationWindow {
             top: parent.top; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
-        visible: !root.showImportOverlay && !root.showCategoriesOverlay && !root.showAccountsOverlay
-            && !root.showAccountTypesOverlay && !root.showAccountTransactionsOverlay
-        currentIndex: root.currentIndex
+        visible: !root.isOverlayView
+        currentIndex: root.stackIndex
 
         OverviewPage                  {}
         CashFlowPage                  {}
@@ -194,7 +231,6 @@ ApplicationWindow {
         TransactionsManagementPage    {}
         AccountManagementLandingPage  {}
         DatabaseManagementPage        {}
-        OtherLegacyPage                {}
     }
 
     // ── Overlay — Import Transactions (see SidebarCategory.actionTriggered
@@ -204,7 +240,7 @@ ApplicationWindow {
             top: parent.top; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
-        active: root.showImportOverlay
+        active: root.currentViewId === "importTransactions"
         visible: active
         sourceComponent: importPageComponent
     }
@@ -212,7 +248,7 @@ ApplicationWindow {
     Component {
         id: importPageComponent
         ImportSnapshotPage {
-            onCloseRequested: root.showImportOverlay = false
+            onCloseRequested: root.currentViewId = "transactionsManagement"
         }
     }
 
@@ -223,7 +259,7 @@ ApplicationWindow {
             top: parent.top; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
-        active: root.showCategoriesOverlay
+        active: root.currentViewId === "manageCategories"
         visible: active
         sourceComponent: categoriesPageComponent
     }
@@ -231,7 +267,7 @@ ApplicationWindow {
     Component {
         id: categoriesPageComponent
         CategoriesManagePage {
-            onCloseRequested: root.showCategoriesOverlay = false
+            onCloseRequested: root.currentViewId = "transactionsManagement"
         }
     }
 
@@ -242,7 +278,7 @@ ApplicationWindow {
             top: parent.top; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
-        active: root.showAccountsOverlay
+        active: root.currentViewId === "manageAccounts"
         visible: active
         sourceComponent: accountsPageComponent
     }
@@ -250,14 +286,13 @@ ApplicationWindow {
     Component {
         id: accountsPageComponent
         AccountsManagePage {
-            onCloseRequested: root.showAccountsOverlay = false
+            onCloseRequested: root.currentViewId = "accountManagement"
             // "Transactions" on an account row routes to a full page, not a
             // modal (product decision — see ARCHITECTURE.MD § Account
-            // Management) — swap overlays and remember which account.
+            // Management) — remember which account, then switch views.
             onViewTransactionsRequested: (accountIndex) => {
                 root.accountTransactionsIndex = accountIndex
-                root.showAccountsOverlay = false
-                root.showAccountTransactionsOverlay = true
+                root.currentViewId = "accountTransactions"
             }
         }
     }
@@ -270,7 +305,7 @@ ApplicationWindow {
             top: parent.top; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
-        active: root.showAccountTransactionsOverlay
+        active: root.currentViewId === "accountTransactions"
         visible: active
         sourceComponent: accountTransactionsPageComponent
     }
@@ -281,10 +316,7 @@ ApplicationWindow {
             accountIndex: root.accountTransactionsIndex
             // Back arrow returns to Manage Accounts, not the sidebar view —
             // this page is reached *from* that page, not from the sidebar.
-            onCloseRequested: {
-                root.showAccountTransactionsOverlay = false
-                root.showAccountsOverlay = true
-            }
+            onCloseRequested: root.currentViewId = "manageAccounts"
         }
     }
 
@@ -295,7 +327,7 @@ ApplicationWindow {
             top: parent.top; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
-        active: root.showAccountTypesOverlay
+        active: root.currentViewId === "accountTypes"
         visible: active
         sourceComponent: accountTypesPageComponent
     }
@@ -303,7 +335,7 @@ ApplicationWindow {
     Component {
         id: accountTypesPageComponent
         AccountTypesCategoriesPage {
-            onCloseRequested: root.showAccountTypesOverlay = false
+            onCloseRequested: root.currentViewId = "accountManagement"
         }
     }
 }

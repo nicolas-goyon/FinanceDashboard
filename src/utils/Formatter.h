@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDate>
 #include <QString>
 #include <cmath>
 
@@ -10,6 +11,7 @@
 //   QString s = Fmt::money(12345.6);       // "12 345,60 €"
 //   QString s = Fmt::money(-500.0, true);  // "-500,00 €"
 //   QString s = Fmt::money(80.5,   true);  // "+80,50 €"
+//   QString s = Fmt::dateOrDash(someDate); // "16/07/2026" or "—" if invalid
 
 namespace Fmt {
 
@@ -63,6 +65,15 @@ inline QString money(double value, bool showPlus = false)
                            : QStringLiteral(" $");        // " $"
 
     return sign + amount + symbol;
+}
+
+/// Display-format a date as "dd/MM/yyyy", or "—" when invalid/unset.
+/// Hoisted here from two byte-for-byte-identical anonymous-namespace
+/// dateText() helpers (SnapshotImportController.cpp, AccountController.cpp)
+/// — see ARCHITECTURE.MD § Shared Components.
+inline QString dateOrDash(const QDate& d)
+{
+    return d.isValid() ? d.toString(QStringLiteral("dd/MM/yyyy")) : QStringLiteral("—");
 }
 
 } // namespace Fmt

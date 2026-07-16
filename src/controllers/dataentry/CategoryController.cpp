@@ -4,6 +4,7 @@
 
 #include <QColor>
 #include <QSet>
+#include <QTimer>
 #include <QVariantMap>
 
 CategoryController::CategoryController(QObject* parent)
@@ -21,6 +22,16 @@ void CategoryController::reload()
     // Deliberately no reseed-if-empty here — see the header doc comment.
     m_categories = Database::instance().loadCategories();
     emit categoriesChanged();
+}
+
+void CategoryController::setStatus(const QString& msg)
+{
+    m_statusText = msg;
+    emit statusChanged();
+    QTimer::singleShot(3000, this, [this]() {
+        m_statusText.clear();
+        emit statusChanged();
+    });
 }
 
 void CategoryController::seedDefaults()
@@ -171,12 +182,16 @@ void CategoryController::addCategory(const QString& name, const QString& color)
     if (trimmed.isEmpty())
         return;
     for (const Data::Category& cat : m_categories)
-        if (cat.name.compare(trimmed, Qt::CaseInsensitive) == 0)
+        if (cat.name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(QStringLiteral("⚠  A category with this name already exists"));
             return; // no duplicate names
+        }
 
     const int id = Database::instance().addCategory(trimmed, color);
-    if (id < 0)
+    if (id < 0) {
+        setStatus(QStringLiteral("⚠  Could not save the category"));
         return; // DB write failed — nothing to show, avoid a phantom entry
+    }
 
     Data::Category cat;
     cat.id    = id;
@@ -184,6 +199,7 @@ void CategoryController::addCategory(const QString& name, const QString& color)
     cat.color = color;
     m_categories.append(cat);
     emit categoriesChanged();
+    setStatus(QStringLiteral("✓  Category added"));
 }
 
 void CategoryController::renameCategory(int index, const QString& newName)
@@ -193,10 +209,13 @@ void CategoryController::renameCategory(int index, const QString& newName)
     const QString trimmed = newName.trimmed();
     if (trimmed.isEmpty() || trimmed == m_categories[index].name)
         return;
-    if (!Database::instance().renameCategory(m_categories[index].id, trimmed))
+    if (!Database::instance().renameCategory(m_categories[index].id, trimmed)) {
+        setStatus(QStringLiteral("⚠  Could not rename the category"));
         return;
+    }
     m_categories[index].name = trimmed;
     emit categoriesChanged();
+    setStatus(QStringLiteral("✓  Category renamed"));
 }
 
 void CategoryController::setCategoryColor(int index, const QString& color)
@@ -215,10 +234,13 @@ void CategoryController::removeCategory(int index)
 {
     if (index < 0 || index >= m_categories.size())
         return;
-    if (!Database::instance().removeCategory(m_categories[index].id))
+    if (!Database::instance().removeCategory(m_categories[index].id)) {
+        setStatus(QStringLiteral("⚠  Could not remove the category"));
         return;
+    }
     m_categories.removeAt(index);
     emit categoriesChanged();
+    setStatus(QStringLiteral("✓  Category removed"));
 }
 
 void CategoryController::addSubcategory(int categoryIndex, const QString& name, const QString& color)
@@ -230,15 +252,20 @@ void CategoryController::addSubcategory(int categoryIndex, const QString& name, 
         return;
     Data::Category& cat = m_categories[categoryIndex];
     for (const Data::Subcategory& sub : cat.subcategories)
-        if (sub.name.compare(trimmed, Qt::CaseInsensitive) == 0)
+        if (sub.name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(QStringLiteral("⚠  A subcategory with this name already exists"));
             return; // no duplicate names within the same category
+        }
 
     const int id = Database::instance().addSubcategory(cat.id, trimmed, color);
-    if (id < 0)
+    if (id < 0) {
+        setStatus(QStringLiteral("⚠  Could not save the subcategory"));
         return;
+    }
 
     cat.subcategories.append(Data::Subcategory{ id, trimmed, color });
     emit categoriesChanged();
+    setStatus(QStringLiteral("✓  Subcategory added"));
 }
 
 void CategoryController::renameSubcategory(int categoryIndex, int subIndex, const QString& newName)
@@ -251,10 +278,13 @@ void CategoryController::renameSubcategory(int categoryIndex, int subIndex, cons
     const QString trimmed = newName.trimmed();
     if (trimmed.isEmpty() || trimmed == cat.subcategories[subIndex].name)
         return;
-    if (!Database::instance().renameSubcategory(cat.subcategories[subIndex].id, trimmed))
+    if (!Database::instance().renameSubcategory(cat.subcategories[subIndex].id, trimmed)) {
+        setStatus(QStringLiteral("⚠  Could not rename the subcategory"));
         return;
+    }
     cat.subcategories[subIndex].name = trimmed;
     emit categoriesChanged();
+    setStatus(QStringLiteral("✓  Subcategory renamed"));
 }
 
 void CategoryController::setSubcategoryColor(int categoryIndex, int subIndex, const QString& color)
@@ -279,8 +309,11 @@ void CategoryController::removeSubcategory(int categoryIndex, int subIndex)
     Data::Category& cat = m_categories[categoryIndex];
     if (subIndex < 0 || subIndex >= cat.subcategories.size())
         return;
-    if (!Database::instance().removeSubcategory(cat.subcategories[subIndex].id))
+    if (!Database::instance().removeSubcategory(cat.subcategories[subIndex].id)) {
+        setStatus(QStringLiteral("⚠  Could not remove the subcategory"));
         return;
+    }
     cat.subcategories.removeAt(subIndex);
     emit categoriesChanged();
+    setStatus(QStringLiteral("✓  Subcategory removed"));
 }

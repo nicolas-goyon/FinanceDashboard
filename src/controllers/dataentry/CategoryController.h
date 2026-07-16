@@ -12,9 +12,9 @@
 //
 // Session-wide source of truth for the category / subcategory list, each with
 // its own color. Backs qml/pages/CategoriesManagePage.qml (add/rename/recolor/
-// remove) and is read from wherever a transaction gets categorized: the "Add
-// transaction" form on DataEntryPage.qml and the review table on
-// ImportSnapshotPage.qml (see § Category Management in ARCHITECTURE.MD).
+// remove) and is read from wherever a transaction gets categorized: the
+// review table on ImportSnapshotPage.qml (see § Category Management in
+// ARCHITECTURE.MD).
 //
 // QML_SINGLETON (unlike every other controller here, which is instantiated
 // per-page): categories are a cross-cutting concept edited from one page and
@@ -31,7 +31,7 @@
 // succeeded, so a failed DB write never produces a phantom in-memory-only
 // entry that would vanish on the next reload.
 //
-// Lives in src/controllers/dataentry/ alongside DataEntryController and
+// Lives in src/controllers/dataentry/ alongside AccountController and
 // SnapshotImportController — grouped by domain (Data Entry) like every other
 // controller folder, rather than its own single-class subfolder. Being a
 // QML_SINGLETON is a registration detail (the macro), not a reason for a
@@ -56,11 +56,13 @@ class CategoryController : public QObject
     QML_SINGLETON
 
     Q_PROPERTY(QVariantList categories READ categories NOTIFY categoriesChanged)
+    Q_PROPERTY(QString      statusText READ statusText NOTIFY statusChanged)
 
 public:
     explicit CategoryController(QObject* parent = nullptr);
 
     QVariantList categories() const;
+    QString      statusText() const { return m_statusText; }
 
     // Convenience lookups (used to fill a color swatch given only names,
     // e.g. a transaction row that stores category/subcategory as strings).
@@ -107,6 +109,7 @@ public:
 
 signals:
     void categoriesChanged();
+    void statusChanged();
 
 private:
     // Seeds the original mock category/subcategory list into the DB (and
@@ -115,5 +118,14 @@ private:
     // Database::loadCategories() comes back empty.
     void seedDefaults();
 
+    // Sets a transient status message (e.g. "duplicate name" / "removed"),
+    // auto-clearing after 3s — same pattern and timing as
+    // AccountController::setStatus(), added here so both QML_SINGLETON
+    // controllers with near-identical CRUD shapes give the same user
+    // feedback on success/failure instead of CategoryController silently
+    // no-op'ing (see ARCHITECTURE.MD § Shared Components).
+    void setStatus(const QString& msg);
+
     QVector<Data::Category> m_categories;
+    QString m_statusText;
 };
