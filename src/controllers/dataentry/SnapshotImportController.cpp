@@ -9,15 +9,6 @@
 #include <QFileInfo>
 #include <QTimer>
 
-namespace {
-
-QString dateText(const QDate& d)
-{
-    return d.isValid() ? d.toString(QStringLiteral("dd/MM/yyyy")) : QStringLiteral("—");
-}
-
-} // namespace
-
 SnapshotImportController::SnapshotImportController(QObject* parent)
     : QObject(parent)
 {
@@ -47,12 +38,12 @@ QVariantMap SnapshotImportController::statementInfo() const
         // ImportSnapshotPage.qml's "Link this account" button actually
         // passes to AccountController.linkAccountHash().
         { "accountHashRaw",     hash },
-        { "periodFromText",     dateText(m_statement.periodFrom) },
-        { "periodToText",       dateText(m_statement.periodTo) },
+        { "periodFromText",     Fmt::dateOrDash(m_statement.periodFrom) },
+        { "periodToText",       Fmt::dateOrDash(m_statement.periodTo) },
         { "balanceStartText",   Fmt::money(m_statement.balanceStart) },
-        { "balanceStartDateText", dateText(m_statement.balanceStartDate) },
+        { "balanceStartDateText", Fmt::dateOrDash(m_statement.balanceStartDate) },
         { "balanceEndText",     Fmt::money(m_statement.balanceEnd) },
-        { "balanceEndDateText", dateText(m_statement.balanceEndDate) },
+        { "balanceEndDateText", Fmt::dateOrDash(m_statement.balanceEndDate) },
         { "transactionCount",   m_statement.transactions.size() },
     };
 }
@@ -65,8 +56,8 @@ QVariantList SnapshotImportController::transactionRows() const
         const Data::ImportedTransaction& tx = m_statement.transactions.at(i);
         rows.append(QVariantMap{
             { "index",             i },
-            { "confirmationDate",  dateText(tx.confirmationDate) },
-            { "operationDate",     dateText(tx.operationDate) },
+            { "confirmationDate",  Fmt::dateOrDash(tx.confirmationDate) },
+            { "operationDate",     Fmt::dateOrDash(tx.operationDate) },
             { "description",       tx.description },
             { "debitText",         tx.debit  > 0.0 ? Fmt::money(-tx.debit) : QStringLiteral("—") },
             { "creditText",        tx.credit > 0.0 ? Fmt::money(tx.credit, true) : QStringLiteral("—") },
@@ -238,16 +229,16 @@ void SnapshotImportController::save(int accountId, const QString& accountLabel)
         if (!tx.included)
             continue;
         Data::Transaction row;
-        row.accountId         = accountId;
-        row.confirmationDate  = tx.confirmationDate;
-        row.operationDate     = tx.operationDate;
-        row.description        = tx.description;
-        row.debit              = tx.debit;
-        row.credit              = tx.credit;
-        row.balanceAfter        = tx.balanceAfter;
-        row.category            = tx.category;
-        row.subcategory          = tx.subcategory;
-        row.sourceTemplate       = m_templateId;
+        row.accountId        = accountId;
+        row.confirmationDate = tx.confirmationDate;
+        row.operationDate    = tx.operationDate;
+        row.description      = tx.description;
+        row.debit            = tx.debit;
+        row.credit           = tx.credit;
+        row.balanceAfter     = tx.balanceAfter;
+        row.category         = tx.category;
+        row.subcategory      = tx.subcategory;
+        row.sourceTemplate   = m_templateId;
         toSave.append(row);
     }
 

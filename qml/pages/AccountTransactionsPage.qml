@@ -40,28 +40,11 @@ Item {
             width: parent.width - 40
             spacing: 16
 
-            // ── Header ────────────────────────────────────────────────────────
-            RowLayout {
-                spacing: 12
-                Rectangle {
-                    width: 26; height: 26; radius: 4
-                    color: backHover.hovered ? "#181825" : "transparent"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "←"
-                        font.pixelSize: 19
-                        color: "#89b4fa"
-                    }
-                    HoverHandler { id: backHover }
-                    TapHandler { onTapped: page.closeRequested() }
-                }
-                Text {
-                    text: "Transactions" + (page.account !== null ? " — " + page.account.name : "")
-                    font.pixelSize: 23
-                    font.bold: true
-                    color: "#cdd6f4"
-                }
-                Item { Layout.fillWidth: true }
+            PageHeader {
+                showBack: true
+                title: "Transactions" + (page.account !== null ? " — " + page.account.name : "")
+                onBackClicked: page.closeRequested()
+
                 Text { text: page.rows.length + " row(s)"; font.pixelSize: 14; color: "#6c7086" }
             }
 
@@ -101,12 +84,10 @@ Item {
                         }
                     }
 
-                    Text {
+                    EmptyState {
                         visible: page.rows.length === 0
                         Layout.topMargin: 10
-                        text: "No transactions saved for this account yet."
-                        font.pixelSize: 15
-                        color: "#6c7086"
+                        message: "No transactions saved for this account yet."
                     }
 
                     Repeater {

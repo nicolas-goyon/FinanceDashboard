@@ -42,12 +42,29 @@ The app was restructured around the 6 pages from **PROJECT.md**. Current state: 
 | ↳ Account types & categories | `AccountController` (`QML_SINGLETON`) | add/rename/remove account types · add/rename/recolor/remove account categories — see § Account Management | **REAL** (SQLite-backed, `account_types`/`account_categories` tables) |
 | Database Management | `DatabaseManagementController` | "Reset Database" (wipe to empty) / "Reset to Mock Data" (wipe + reseed + sample transactions), both behind a confirmation dialog — see § Database Management | **REAL** (operates directly on the SQLite file via `Database::resetAll()`) |
 
-**Previous generations kept on disk but NOT compiled/registered:**
-- `qml/tabs/*` + `EntryController`, `DatabaseController`, `AnalyticsController`, `OverviewController`, `PortfolioController`, `ImportController` — the ported snapshot tabs. **Reuse these when wiring Data Entry / real DB** (they already do save/load/diff against `Database`).
-- `src/MainWindow.*`, `src/tabs/*` — the original Qt Widgets app.
-- `src/controllers/dataentry/DataEntryController.h/.cpp`, `qml/pages/DataEntryPage.qml` — superseded by the Transactions Management / Account Management / Database Management split (see § Transactions Management). Left on disk unregistered rather than deleted, same convention as the two bullets above.
+**Previous-generation code removed (milestone cleanup pass):** the ported snapshot tabs
+(`qml/tabs/*`, `EntryController`, `DatabaseController`, `AnalyticsController`,
+`OverviewController`, `PortfolioController`, `ImportController`), the original Qt Widgets app
+(`src/MainWindow.*`, `src/tabs/*`), and the superseded `DataEntryController.h/.cpp` /
+`DataEntryPage.qml` are no longer on disk at all — previously kept unregistered "as
+reference," now deleted outright since the QML/Qt-Graphs rewrite is the only UI going
+forward and nothing referenced them (see git history before this pass if the old Widgets
+version is ever needed again). The "Other - To remove" sidebar category that listed the
+`qml/tabs/*` files is gone too, along with `qml/pages/OtherLegacyPage.qml`.
 
 The `db/`, `models/`, `utils/` layers are still compiled and `main.cpp` still opens the SQLite DB — ready for the wiring phase. **Categories/subcategories, accounts/account-hashes/account-types/account-categories, and transactions are now wired to the real DB** (see § Category Management, § Account Management); the 5 page controllers (Overview/Cash Flow/Savings/Investments/Projects) are still MOCK.
+
+**Milestone cleanup pass (this revision):** fixed the sidebar not showing the current
+page/overlay (see § Sidebar Navigation — replaced `currentIndex` + five independent
+`showXxxOverlay` booleans with one `currentViewId` source of truth); extracted a shared QML
+component library (see § Shared Components) and rebuilt every CRUD/dialog-heavy page on top
+of it, fixing several small drift bugs along the way (a badge color typo and a missing
+border on `ProjectsPage.qml`'s off-track badge, an inverted zebra-stripe on
+`CashFlowPage.qml`, a handful of buttons with no hover feedback); deleted all previous-
+generation code (see above); added `CategoryController.statusText` for parity with
+`AccountController` (both are the app's two `QML_SINGLETON`s with near-identical CRUD
+shapes — `CategoryController` used to fail silently); hoisted a duplicated
+`dateText()`/date-formatting helper into `Fmt::dateOrDash()`.
 
 ---
 
@@ -65,24 +82,34 @@ FinanceDashboard/
 │
 ├── qml/                    — ALL UI. No business logic here.
 │   ├── Main.qml            — ApplicationWindow + left sidebar (collapsible category
-│   │                         list, see § Sidebar Navigation) + StackLayout.
-│   ├── components/
+│   │                         list, see § Sidebar Navigation) + StackLayout, all driven
+│   │                         by one `currentViewId` source of truth.
+│   ├── components/         — Shared building blocks (see § Shared Components for the
+│   │   │                     dialog/button/badge family added in the cleanup pass).
 │   │   ├── KpiCard.qml     — LABEL / value / sub stat card.
 │   │   ├── ChartCard.qml   — Titled card hosting a chart (default property slot).
 │   │   ├── SidebarCategory.qml — One collapsible sidebar entry (see § Sidebar Navigation).
-│   │   └── ColorComboBox.qml — ComboBox that fills its own background (field and
-│   │                         each dropdown row) with the item's color, with text
-│   │                         color and drop-down arrow (a custom Canvas indicator)
-│   │                         both picked per-item for contrast. Used for the
-│   │                         category/subcategory pickers on ImportSnapshotPage.qml
-│   │                         (see § Statement Import).
+│   │   ├── ColorComboBox.qml — ComboBox that fills its own background (field and
+│   │   │                     each dropdown row) with the item's color, with text
+│   │   │                     color and drop-down arrow (a custom Canvas indicator)
+│   │   │                     both picked per-item for contrast. Used for the
+│   │   │                     category/subcategory pickers on ImportSnapshotPage.qml
+│   │   │                     (see § Statement Import).
+│   │   ├── PageHeader.qml  — Shared page-header row (back arrow, title, "[MOCK]"
+│   │   │                     marker, trailing content slot) — see § Shared Components.
+│   │   ├── PillButton.qml  — The big colored action button (primary/neutral/danger).
+│   │   ├── GhostButton.qml — Small bordered inline-row action (Edit/Remove/etc).
+│   │   ├── StatusBadge.qml — Colored pill for status/state indicators.
+│   │   ├── FormRow.qml     — Label + TextField row for dialogs.
+│   │   ├── ColorPickerRow.qml — Swatch + "Choose color…" + hex text + owns its ColorDialog.
+│   │   ├── FormDialog.qml  — Shared add/edit Popup shell (title + form rows + Cancel/Save).
+│   │   ├── ConfirmDialog.qml — Shared destructive-confirmation Popup shell.
+│   │   └── EmptyState.qml  — "No … yet" placeholder text.
 │   ├── pages/              — One .qml per PROJECT.md page (see status table above),
-│   │   │                     plus OtherLegacyPage.qml and the Transactions/Account/
-│   │   │                     Database Management pages (none of these three are a
-│   │   │                     PROJECT.md page on their own).
+│   │   │                     plus the Transactions/Account/Database Management pages
+│   │   │                     (none of these three are a PROJECT.md page on their own).
 │   │   ├── OverviewPage.qml, CashFlowPage.qml, SavingsPage.qml,
 │   │   ├── InvestmentsPage.qml, ProjectsPage.qml
-│   │   ├── OtherLegacyPage.qml — lists the unregistered qml/tabs/* files below.
 │   │   ├── TransactionsManagementPage.qml — "Transactions Management" category's own
 │   │   │                         landing page. Minimal placeholder (header + text
 │   │   │                         pointing at its two sidebar actions below) — see
@@ -115,9 +142,6 @@ FinanceDashboard/
 │   │                             page (no sidebar actions — the real "Reset
 │   │                             Database"/"Reset to Mock Data" buttons live
 │   │                             directly on this page) — see § Database Management.
-│   └── tabs/               — PREVIOUS GENERATION (unregistered) — snapshot tabs,
-│                             kept as reference for the DB wiring phase. Surfaced
-│                             in the UI under sidebar category "Other - To remove".
 │
 ├── src/
 │   ├── main.cpp            — QGuiApplication + QQuickStyle::setStyle("Basic") +
@@ -162,14 +186,13 @@ FinanceDashboard/
 │   │   │   reset-vs-reseed design and why this controller duplicates seed values
 │   │   │   instead of calling into CategoryController/AccountController's private
 │   │   │   `seedDefaults()`.
-│   │   └── legacy/ (unregistered) AnalyticsController, EntryController, DatabaseController,
-│   │       OverviewController, PortfolioController, ImportController — previous
-│   │       generation; EntryController/DatabaseController already talk to the real DB.
-│   │       Not in CMakeLists.txt SOURCES, not on the include path, not compiled.
-│   │       (Note: this legacy ImportController — JSON portfolio import — is unrelated
-│   │       to SnapshotImportController; names collide conceptually only, not in code.
-│   │       Also unrelated to the new DatabaseManagementController, which resets the
-│   │       whole app's SQLite file rather than importing JSON.)
+│   │   ~~└── legacy/~~ — deleted in the milestone cleanup pass (AnalyticsController,
+│   │       EntryController, DatabaseController, OverviewController, PortfolioController,
+│   │       ImportController — the previous-generation controllers; none were ever in
+│   │       CMakeLists.txt SOURCES or on the include path, so removing them changed
+│   │       nothing about what compiles). If a legacy `ImportController` (JSON portfolio
+│   │       import) is ever needed again, it's unrelated to `SnapshotImportController` —
+│   │       names collided conceptually only, never in code.
 │   │
 │   ├── import/              — Statement-import template system (REAL logic, UI-independent,
 │   │   │                     no QML_ELEMENT). See § Statement Import.
@@ -177,13 +200,13 @@ FinanceDashboard/
 │   │   ├── ImportTemplateRegistry.h/.cpp — Static list of available templates.
 │   │   └── CheckingCsvTemplateV1.h/.cpp  — First template (checking-account CSV export).
 │   │
-│   ├── data/
-│   │   └── DebugData.h/.cpp    — Mock/sample data factory. No external deps.
-│   │
 │   ├── models/
-│   │   ├── PortfolioData.h/.cpp    — DataPoint + PortfolioSummary structs (JSON import).
-│   │   ├── AssetEntry.h/.cpp       — AssetEntry + FinancialSnapshot structs.
-│   │   │                             Both implement fromJson/toJson for JsonReader compat.
+│   │   ├── AssetEntry.h/.cpp       — AssetEntry + FinancialSnapshot structs (still compiled,
+│   │   │                             backs `SnapshotsTable`/`AssetEntriesTable` in `db/` —
+│   │   │                             see the note at the bottom of § Component
+│   │   │                             Responsibilities: this whole snapshot subsystem has no
+│   │   │                             current UI/controller consumer, kept out of this pass's
+│   │   │                             deletions since it's DB-schema-level, not UI code).
 │   │   ├── ImportedStatement.h     — ImportedTransaction + ImportedStatement (header-only,
 │   │   │                             staging data for the import review screen, no DB yet).
 │   │   ├── ImportLog.h             — ImportLogEntry (header-only) — parse warnings/errors.
@@ -219,17 +242,19 @@ FinanceDashboard/
 │   │       └── TransactionsTable.h/.cpp     — All SQL for the `transactions` table.
 │   │
 │   ├── utils/
-│   │   ├── Formatter.h        — Header-only display utilities (namespace Fmt).
-│   │   ├── FileFinder.h       — Header-only file-location helpers.
-│   │   ├── JsonReader.h       — Header-only generic JSON deserializer.
+│   │   ├── Formatter.h        — Header-only display utilities (namespace Fmt):
+│   │   │                        Fmt::money() (French-locale currency) and
+│   │   │                        Fmt::dateOrDash() ("dd/MM/yyyy" or "—") — the latter
+│   │   │                        hoisted out of two duplicated dateText() helpers in
+│   │   │                        AccountController.cpp/SnapshotImportController.cpp.
 │   │   └── AccountHashing.h   — Header-only HMAC-SHA256(IBAN, key=BIC) fingerprint,
 │   │                            shared by AccountController and
 │   │                            SnapshotImportController — see § Statement Import.
 │   │   (CategoryKeywords.h removed — keyword auto-suggestion replaced by the
 │   │    user-managed CategoryController list, see § Category Management.)
 │   │
-│   ├── MainWindow.h/.cpp   — LEGACY (not compiled). Reference for QML shell.
-│   └── tabs/               — LEGACY (not compiled). Reference for tab ports.
+│   ~~├── MainWindow.h/.cpp~~ — deleted in the milestone cleanup pass (was LEGACY,
+│   ~~└── tabs/~~              not compiled; both were the original Qt Widgets app).
 │
 └── resources/              — Placeholder. Add .qrc file + icons here when needed.
 ```
@@ -238,20 +263,113 @@ FinanceDashboard/
 
 ## Sidebar Navigation
 
-`Main.qml` replaced the old top `TabBar` with a left sidebar (`qml/components/SidebarCategory.qml`, repeated via a `Repeater` over `Main.qml`'s `categories` array). The first 5 entries mirror 1:1 with a PROJECT.md page. The former 6th ("Data Entry") was split into three lighter categories — **Transactions Management**, **Account Management**, **Database Management** — once the product asked for account management, hash management, and a schema-reset tool to be reachable independently rather than bundled under one page (see § Transactions Management / § Account Management / § Database Management). A 9th non-spec entry rounds out the list:
+`Main.qml` replaced the old top `TabBar` with a left sidebar (`qml/components/SidebarCategory.qml`, repeated via a `Repeater` over `Main.qml`'s `categories` array). The 8 entries mirror the first 5 PROJECT.md pages 1:1, plus **Transactions Management**, **Account Management**, **Database Management** — the former 6th PROJECT.md page ("Data Entry") split into three lighter categories once the product asked for account management, hash management, and a schema-reset tool to be reachable independently rather than bundled under one page (see § Transactions Management / § Account Management / § Database Management).
 
-- **Category header** (label) — click selects the category and drives `StackLayout.currentIndex` (`Main.qml`'s `root.currentIndex`). Highlighted with a left accent bar (`#89b4fa`) + bold text when active.
-- **Arrow toggle** — a separate `MouseArea` (28px, right side of the header row) expands/collapses the category's action list *without* changing the selected page. State is local (`SidebarCategory.expanded`), not persisted.
-- **Action list** — pre-filled `Text` labels (`categories[i].actions` in `Main.qml`). Clicking any action emits `SidebarCategory.actionTriggered(action)`; **four are wired up so far**: Transactions Management → "Import Transactions" (see § Statement Import) and "Manage Categories" (see § Category Management); Account Management → "Manage Accounts" and "Account types & categories" (see § Account Management). Database Management has no actions at all — its landing page holds the real controls directly (see § Database Management). Every other action on the first 5 categories is still a no-op placeholder. `Main.qml`'s `Repeater` delegate is where new actions get wired: add a condition to the `onActionTriggered` handler.
-- **"Other - To remove"** — last category, not a PROJECT.md page. Lists the unregistered `qml/tabs/*.qml` legacy files (see Directory Map) as a reminder they're cleanup candidates. Renders `qml/pages/OtherLegacyPage.qml` when selected.
+### Single source of truth: `currentViewId`
 
-To add a new sidebar category: append `{ label, actions }` to `Main.qml`'s `categories` array, and add the matching page as the next child of the `StackLayout` (order must match array order — `StackLayout.currentIndex` is a plain array index, no id-based lookup).
+**Fixed in the milestone cleanup pass — the sidebar used to fail to highlight the current page whenever an overlay was open.** The previous model tracked navigation as `root.currentIndex` (a `StackLayout` position) *plus* five independent `property bool showXxxOverlay` flags, each of which every navigation entry point had to clear by hand. Clicking a sidebar *action* (e.g. "Manage Accounts") only ever flipped its own overlay flag — it never touched `currentIndex` — so the sidebar kept highlighting whichever category/page was selected *before*, not "Account Management," the whole time an overlay was open. There was no single place that answered "what's on screen right now."
 
-**Overlay pages** (full-content pages reached from an action, not a category — e.g. ImportSnapshotPage, CategoriesManagePage, AccountsManagePage, AccountTypesCategoriesPage, AccountTransactionsPage): `Main.qml` uses one `Loader` per overlay, anchored over the same content area as the `StackLayout`, each gated by its own `property bool showXxxOverlay` and toggled visible/hidden alongside the `StackLayout` (`StackLayout.visible` checks all five: `showImportOverlay`, `showCategoriesOverlay`, `showAccountsOverlay`, `showAccountTypesOverlay`, `showAccountTransactionsOverlay`). Opening one overlay also clears every other one so only one shows at a time. Each overlay page emits a `closeRequested()` signal to clear its own flag and return to the previous view. This is the pattern to copy for the next wired-up action.
+This is now `root.currentViewId: string` — the **one** property that says what's on screen. Every category and every wired action has a matching id (e.g. `"overview"`, `"transactionsManagement"`, `"importTransactions"`, `"manageAccounts"`):
 
-  `AccountTransactionsPage` is reached from *inside* `AccountsManagePage` (its "Transactions" button, not a sidebar action) via `AccountsManagePage.viewTransactionsRequested(accountIndex)` — `Main.qml` stores the index in `root.accountTransactionsIndex`, flips `showAccountsOverlay` off and `showAccountTransactionsOverlay` on, and passes the index down as `AccountTransactionsPage.accountIndex`. Its own `closeRequested()` returns to `showAccountsOverlay` (Manage Accounts), not to the sidebar-driven `StackLayout` — it was reached from that page, not from the sidebar, so the back arrow should go back to where the user came from.
+- **Category header** (label) — click sets `root.currentViewId = category.id`. Highlighted with a left accent bar (`#89b4fa`) + bold text whenever `currentViewId` is the category's own id, one of its `actions[].id`, or one of its `relatedViewIds` (see below) — computed once by `Main.qml`'s `isCategoryActive(category)` and handed down as `SidebarCategory.current`, rather than each entry point maintaining its own "am I selected" logic.
+- **Arrow toggle** — a separate `MouseArea` (28px, right side of the header row) expands/collapses the category's action list *without* changing `currentViewId`. `SidebarCategory.expanded` auto-flips true the moment the category becomes active (`onCurrentChanged`), so navigating in from elsewhere (e.g. the "Transactions" button inside Manage Accounts) always reveals which action put you there — the user can still collapse/expand freely afterward.
+- **Action list** — `{ id, label }` objects (`categories[i].actions` in `Main.qml`; every category's actions are this shape now, including the still-unwired placeholders on the first 5 PROJECT.md categories, for one consistent shape app-wide). Clicking an action emits `SidebarCategory.actionTriggered(actionId)`; the row for the *currently active* action is highlighted the same way the category header is (accent bar + bold + blue text via `SidebarCategory.currentActionId`), not just the category. **Four actions are wired up so far**: Transactions Management → `"importTransactions"` (see § Statement Import) and `"manageCategories"` (see § Category Management); Account Management → `"manageAccounts"` and `"accountTypes"` (see § Account Management). Database Management has no actions at all — its landing page holds the real controls directly (see § Database Management). Every other action on the first 5 categories is still a no-op placeholder — `Main.qml`'s `onActionTriggered` only sets `currentViewId` when the id is in `root.overlayViewIds`.
 
-  **Important gotcha (fixed once, keep it fixed):** the sidebar's category `onSelected` handler (clicking "Overview", "Cash Flow", etc.) must *also* clear all five `showXxxOverlay` flags before setting `root.currentIndex`. If it only sets `currentIndex`, the `StackLayout` stays invisible behind whichever overlay `Loader` is still `active`, so clicking a category while an overlay is open looks like nothing happened — the page only updates once the user hits the overlay's own back arrow (`closeRequested()`). Any future navigation entry point (new sidebar action, new overlay, breadcrumbs, etc.) needs the same "clear every other navigation flag" discipline — there is no single source of truth for "current view" here, just parallel booleans + `currentIndex`, so every entry point must reset all of them by hand.
+To add a new sidebar category: append `{ id, label, actions }` to `Main.qml`'s `categories` array, and add the matching page as the next child of the `StackLayout` (order must still match array order — `stackIndex` looks a category up by id, but positionally, same "array order = child order" contract as before, just keyed by id instead of a bare int so callers never juggle magic numbers).
+
+**Overlay pages** (full-content pages reached from an action, not a category — e.g. ImportSnapshotPage, CategoriesManagePage, AccountsManagePage, AccountTypesCategoriesPage, AccountTransactionsPage): `Main.qml` uses one `Loader` per overlay, anchored over the same content area as the `StackLayout`, each gated by `active: root.currentViewId === "someId"`. `root.overlayViewIds` lists every id that means "show an overlay, not the StackLayout" (`importTransactions`, `manageCategories`, `manageAccounts`, `accountTypes`, `accountTransactions`); `StackLayout.visible: !root.isOverlayView` reads that one list instead of checking five booleans by hand. Each overlay page emits a `closeRequested()` signal that sets `root.currentViewId` back to wherever "close" should land — this is the pattern to copy for the next wired-up action.
+
+  `AccountTransactionsPage` is reached from *inside* `AccountsManagePage` (its "Transactions" button, not a sidebar action) via `AccountsManagePage.viewTransactionsRequested(accountIndex)` — `Main.qml` stores the index in `root.accountTransactionsIndex` and sets `root.currentViewId = "accountTransactions"`. Its own `closeRequested()` sets `currentViewId` back to `"manageAccounts"`, not to the sidebar-driven `StackLayout` — it was reached from that page, not from the sidebar, so the back arrow should go back to where the user came from. Because `"accountTransactions"` is never one of any category's `actions[].id` (it's not a sidebar action), the **Account Management** category declares it in a `relatedViewIds: ["accountTransactions"]` array instead — `isCategoryActive()` checks that too, so the sidebar still highlights "Account Management" while this page is open.
+
+  **The gotcha this replaced is now structurally impossible to reintroduce**: every navigation entry point (category click, action click, "Transactions" button, every overlay's `closeRequested()`) does exactly one thing — assign `root.currentViewId` — instead of remembering to clear four *other* flags first. There is nothing left to forget.
+
+---
+
+## Shared Components
+
+Added in the milestone cleanup pass to answer "the files are huge, make new pages faster to
+build" and "homogenize the UI." Before this, `CategoriesManagePage.qml`,
+`AccountsManagePage.qml`, and `AccountTypesCategoriesPage.qml` each hand-rolled their own
+copy of the same page-header, add/edit-dialog, confirm-dialog, badge, and button patterns —
+consistent in spirit but drifting in the details (a badge color typo, an inverted zebra
+stripe, buttons with no hover feedback on some pages but not others). All of `qml/components/`
+below lives in the same `FinanceDashboard` QML module as every page, so no `import` line is
+needed to use them (same as `SidebarCategory`/`ChartCard`/`KpiCard` before this pass) — just
+reference the type name directly, same convention `Main.qml` already used for pages.
+
+- **`PageHeader.qml`** — `RowLayout`: optional back arrow (`showBack`), `title`, optional
+  bare-red `"[MOCK]"` marker (`mock: true`, styled to match what the 5 analytics pages
+  already used — not upgraded to a pill, to avoid an unrequested visual change), a stretch,
+  then any caller-supplied trailing content (add buttons, `StatusBadge`s, filters) via the
+  default property (`content`, same slot convention as `ChartCard.content`). `showBack:
+  true` on pages reached by drilling into a sidebar action (Categories/Accounts/
+  AccountTypes/Import/AccountTransactions management pages); left `false` on top-level
+  category pages and the 5 mock analytics pages. `backClicked()` signal — caller decides
+  what "back" means (usually `closeRequested()`, sometimes returns to a different overlay,
+  see § Sidebar Navigation).
+- **`PillButton.qml`** — the big colored action button (Add/Save/Cancel/Delete in dialogs,
+  "+ Add X" header buttons, Database Management's trigger buttons, Import's "Choose
+  file"/"Save"/"Link this account"). `variant: "primary" | "neutral" | "danger"`; width is
+  implicit (label + padding) unless the caller sets an explicit `width`/`height` — every
+  page used to hand-pick its own pixel width for what was conceptually the same button.
+  `fontSize`/`bold`/`horizontalPadding` are overridable for the handful of smaller/denser
+  instances (e.g. the 24px-tall "Link this account" button on `ImportSnapshotPage.qml`).
+- **`GhostButton.qml`** — small bordered inline-row action ("✎ Edit", "＋ Subcategory", "＋
+  Add hash", "Transactions", and the "×" remove square). `variant: "neutral"` keeps the
+  caller's `textColor` at rest and adds a grey hover tint; `variant: "danger"` mutes the
+  text to grey at rest and flashes red on hover (matches the "×" remove buttons' original
+  behavior exactly). The chip edit/remove glyphs on `AccountTypesCategoriesPage.qml` used to
+  be bare `Text` + `TapHandler` with **no hover feedback at all**, unlike every other
+  Edit/Remove button in the app — `GhostButton` gives them the same affordance as everywhere
+  else.
+- **`StatusBadge.qml`** — colored pill for every status/state indicator: parse-success/
+  failure pills, the linked/not-linked badge, parse issue-count and log-level badges, and
+  the project on-track/gap badge. `variant: "success" | "warning" | "danger" | "neutral"`;
+  `pillHeight` stays caller-set (the app genuinely uses this at several sizes on purpose —
+  26px status pills, 22-24px inline chips, 18px log-entry badges) with `radius` always half
+  the height so it's always a true pill. Fixed two drift bugs found while extracting this:
+  `ProjectsPage.qml`'s off-track badge used `"#3d1a28"` (a transposed digit — every other
+  danger badge in the app uses `"#3d2028"`) and had no `border.color` set at all, unlike
+  every other badge instance.
+- **`FormRow.qml`** — one "label + TextField" row, styled identically everywhere a dialog
+  needs free-text input. The `TextField` recipe (`bg #11111b`, `border #313244` / focus
+  `#89b4fa`) was already 100% consistent across every dialog before this was extracted —
+  this just removes the copy-paste (including `ProjectsPage.qml`'s page-local `component
+  FormField`, which was the same shape with a wider default label column, now just
+  `FormRow { labelWidth: 150 }`).
+- **`ColorPickerRow.qml`** — 32×32 circle swatch + "Choose color…" pill + hex text, owns its
+  own native `ColorDialog` instance internally (verified against
+  doc.qt.io/qt-6/qml-qtquick-dialogs-colordialog.html). **Deliberately not a shared/singleton
+  `ColorDialog`** — each dialog needs an independent in-progress color, and a declarative
+  binding to a shared instance breaks permanently the first time the user picks a color (see
+  § Category Management) — a fresh `ColorPickerRow` per usage sidesteps that entirely rather
+  than working around it.
+- **`FormDialog.qml`** — shared shell for every add/edit `Popup` (categories, subcategories,
+  accounts, account types, account categories, add-hash, new-project). Caller supplies
+  `dialogTitle`, `saveText`, and form rows via the default property (same `content` slot
+  convention as `ChartCard`/`PageHeader`); `saveClicked()` fires instead of auto-closing, so
+  the caller can validate first and decide whether to actually close — matches every
+  existing dialog's "trim, bail out on empty, otherwise call the controller and close"
+  pattern exactly.
+- **`ConfirmDialog.qml`** — shared shell for every destructive-action confirmation (delete
+  category, delete account, delete account type/category, reset database, reset to mock
+  data). `confirmVariant` defaults to `"danger"` but stays overridable per call — Database
+  Management's "Reset to Mock Data" confirm step deliberately keeps the red/danger styling
+  even though its own trigger button is blue/primary (both actions are equally
+  irreversible), so the override exists for the *next* case where trigger and confirm colors
+  should actually match, rather than hard-coding red everywhere.
+- **`EmptyState.qml`** — "No … yet" placeholder text shown under a list's header when its
+  model is empty. Style was already 100% consistent across every instance.
+
+**Not extracted, and why:** the account/category badge (arbitrary per-category color, not
+one of the 4 `StatusBadge` variants), the hash chips on `AccountsManagePage.qml`, and the
+per-page data tables (`ImportSnapshotPage.qml`'s transaction review table,
+`AccountTransactionsPage.qml`'s read-only table, `ProjectsPage.qml`'s loan-scenario table) —
+each has different columns/widths, so a generic `DataTable` would need more configuration
+surface than it would save in code. `ProjectsPage.qml`'s hoverable project-card list (list
+view) also stays bespoke — it reimplements `ChartCard`'s look but needs click/hover
+affordance `ChartCard` doesn't have; a `hoverable` option on `ChartCard` itself would be the
+next step if a second page needs the same pattern.
 
 ---
 
@@ -404,8 +522,7 @@ Overlay pages).
 Reached from the sidebar (Transactions Management → "Manage Categories"). Lets the user add,
 rename, recolor, and remove categories and their subcategories — the same list read
 everywhere a transaction gets classified (the statement-import review table on
-`ImportSnapshotPage.qml`, and previously the mock "Add transaction" form on the now-
-unregistered `DataEntryPage.qml`).
+`ImportSnapshotPage.qml`).
 
 - **Replaces keyword auto-suggestion.** The previous system (`utils/CategoryKeywords.h`)
   guessed a category by matching hardcoded tokens (e.g. "carrefour" → Groceries) against
@@ -427,6 +544,17 @@ unregistered `DataEntryPage.qml`).
   DB). This distinction matters for `DatabaseManagementController::resetDatabase()` — see §
   Database Management: if `reload()` silently reseeded on empty, "Reset Database" could never
   produce a truly empty database once QML called `reload()` afterward.
+- **`statusText`/`statusChanged()`** — added in the milestone cleanup pass for parity with
+  `AccountController` (both are the app's two `QML_SINGLETON`s with near-identical CRUD
+  shapes). Every CRUD method now calls the private `setStatus(msg)` on both success
+  ("✓ Category added") and failure ("⚠ A category with this name already exists"/"⚠ Could
+  not save the category"), auto-clearing after 3s — before this, `CategoryController` simply
+  returned early on a duplicate name or DB-write failure with zero UI feedback, unlike every
+  equivalent `AccountController` method. Color-only changes (`setCategoryColor`/
+  `setSubcategoryColor`) stay silent on purpose, matching
+  `AccountController::setAccountCategoryColor()`'s existing convention.
+  `CategoriesManagePage.qml`'s header shows it via a `StatusBadge`, same as
+  `AccountsManagePage.qml` already did for `AccountController.statusText`.
 - **Data shape**, rebuilt into a `QVariantList` on every `categories()` read (same
   convention as `SnapshotImportController::transactionRows()` — no separate
   `QAbstractListModel`): `[{ name, color, subcategories: [{ name, color }, ...] }, ...]`.
@@ -757,10 +885,9 @@ controller, no mock content, since both actions already have their own real page
   Category Management.
 
 `src/controllers/dataentry/DataEntryController.h/.cpp` and `qml/pages/DataEntryPage.qml`
-(the old landing page, with its MOCK snapshot form and transaction-entry form) are
-superseded by this split and are unregistered from `CMakeLists.txt` — left on disk rather
-than deleted, per this project's established convention for superseded files (see the
-`qml/tabs/*` note in Directory Map / App Status).
+(the old landing page, with its MOCK snapshot form and transaction-entry form) were
+superseded by this split, and were deleted outright in the milestone cleanup pass — see §
+App Status.
 
 ---
 
@@ -816,34 +943,25 @@ concrete example — dropping iban/bic/number needs exactly this).
 
 ## QML/C++ Boundary — the pattern
 
-Follows the `*DataProvider` pattern from QtGraphsExamples:
+Every active controller (see § App Status's table and § Directory Map's `controllers/`
+listing) follows the `*DataProvider` pattern from QtGraphsExamples:
 
-1. Controller class in `src/controllers/<domain>/`, `Q_OBJECT` + `QML_ELEMENT`.
+1. Controller class in `src/controllers/<domain>/`, `Q_OBJECT` + `QML_ELEMENT` (`QML_SINGLETON`
+   too for `CategoryController`/`AccountController` — see § Category Management / § Account
+   Management for why).
 2. Registered by listing the `.h/.cpp` under `SOURCES` of `qt_add_qml_module` in `CMakeLists.txt`. **The controller's directory must also be on `target_include_directories`** — the auto-generated type-registration `.cpp` includes headers by basename.
-3. Instantiated *in QML* (`AnalyticsController { id: controller }`), not via context properties.
+3. Instantiated *in QML* (`NetWorthController { id: controller }`), not via context properties.
 4. Data crosses the boundary as `Q_PROPERTY` (scalars, with `NOTIFY`) and `Q_INVOKABLE QVariantList` (arrays).
 5. QML never computes: sums, cumulative layers, axis ranges, diffs all come pre-computed from C++.
 
-### `AnalyticsController`
-- `reload()` — reads `Database::listDates()` + `loadSnapshot()`, computes per-category totals and cumulative boundaries (bottom → top: **ETFs, Metals, Coins, Stocks**).
-- `timestamps()` — snapshot dates as ms-since-epoch (X values for `DateTimeAxis`).
-- `etfsBound() / metalsBound() / coinsBound() / stocksBound()` — cumulative upper boundaries (same length as `timestamps()`).
-- Properties: `hasData`, `maxTotal` (peak × 1.12, min 1000), `minTimeMs` / `maxTimeMs` (padded ±12 h when only one snapshot exists so the range is never zero).
+*(The original Qt Widgets app and its ported-to-QML-but-unwired intermediate generation —
+`AnalyticsController`/`AnalyticsTab.qml`, `EntryController`, the legacy `DatabaseController`,
+`OverviewController`, `PortfolioController`, the legacy `ImportController` — were deleted in
+the milestone cleanup pass once nothing referenced them; see § App Status. If you need the
+history of how a specific page/table was first ported to QML, check git log before this
+pass rather than looking for those files on disk.)*
 
-### `AnalyticsTab.qml`
-- Boundary `LineSeries` are declared **outside** `GraphsView` so they are never drawn as lines; each `AreaSeries` references them as `upperSeries`/`lowerSeries` (bottom layer omits `lowerSeries` → fills from 0). This mirrors QtGraphsExamples → `areachart/stacked`.
-- X axis: `DateTimeAxis` (Qt Graphs, verified against Qt 6.11 docs), `labelFormat: "d MMM yy"`.
-- Y axis: `ValueAxis`, `labelFormat: "%.0f €"`.
-- Empty state shown when `!controller.hasData`.
-- `refresh()` — clears the boundary series (`XYSeries.clear()`, verified in 6.11 docs), calls `controller.reload()`, re-appends. Triggered from `Main.qml` when EntryTab or DatabaseTab emit `saved()`.
-
-### Other controllers (same pattern)
-- **`EntryController`** — owns four `CategoryModel`s (`QAbstractListModel`, `QML_ANONYMOUS`; roles: `name`, `valueText`, `diffText`, `diffState`). All parsing (C-locale), diff %, totals and DB save/load in C++. Note: `setRowValue` only emits `dataChanged` for the diff roles — emitting `valueText` would reset the TextField cursor mid-typing. Emits `snapshotSaved()`.
-- **`DatabaseController`** — internal `DbTableModel` (QSqlTableModel subclass, defined in the .cpp with `#include "DatabaseController.moc"`): column 0 read-only, and `setData` remaps `Qt::DisplayRole` → `Qt::EditRole` because QML TableView's edit delegate writes via the `display` role. `OnManualSubmit` buffering with save/revert/refresh, like the legacy tab. Emits `changesSaved()`.
-- **`OverviewController` / `PortfolioController`** — expose pre-formatted `QVariantList`s (debug data, same as legacy).
-- **`ImportController`** — `importFile(path)` → FileFinder + `JsonReader::read<PortfolioSummary>`; exposes summary rows, capped 200-point preview, status. `localPath(url)` converts `FileDialog.selectedFile` (file:// URL) to a local path.
-
-### QML delegate gotcha (learned during the port)
+### QML delegate gotcha (still relevant, general Qt Quick behavior)
 When a TableView/Repeater delegate declares ANY `required property`, model roles are **no longer injected as context properties** — every role used (`display`, etc.) must then be declared as a `required property` too. The `TableView.editDelegate` is a separate component and can still use context roles (matches the Qt docs example).
 
 ---
@@ -908,16 +1026,21 @@ When a TableView/Repeater delegate declares ANY `required property`, model roles
 - See § Account Management for the full schema and CRUD surface — same shape/conventions as `CategoriesTable`/`SubcategoriesTable`. `AccountTypesTable` mirrors `AccountCategoriesTable` minus the color column.
 - `TransactionsTable::insertBatch()` only appends (no delete-then-insert like `AssetEntriesTable`) since multiple statement imports for the same account should accumulate, not overwrite.
 
-### `models/PortfolioData.h/.cpp`
-- `Data::DataPoint` — `{time, value}`; `Data::PortfolioSummary` — top-level portfolio JSON document. Both `JsonReader`-compatible.
-
 ### `utils/`
-- `Formatter.h` — `Fmt::money(double, bool showPlus)` French-locale currency; `Fmt::gCurrency` (EUR/USD). *TODO: expose to QML (wrap in a QML singleton or controller Q_INVOKABLE) so formatting stays in C++.*
-- `FileFinder.h` — `exists()`, `findFirst()`, `findFiles()`.
-- `JsonReader.h` — `read<T>(filePath)` → `std::optional<T>`; `T` needs `static T::fromJson(QJsonObject)`.
+- `Formatter.h` — `Fmt::money(double, bool showPlus)` French-locale currency; `Fmt::dateOrDash(const QDate&)` display date formatting; `Fmt::gCurrency` (EUR/USD). *TODO: expose `Fmt::money` to QML (wrap in a QML singleton or controller Q_INVOKABLE) so formatting stays in C++.*
+- `AccountHashing.h` — HMAC-SHA256(IBAN, key=BIC) fingerprint, see § Statement Import.
 
-### `data/DebugData.h`
-- Factories: `sampleHoldings()`, `sampleSummary()`, `samplePerformance()`. Keep for tests and for Overview/Portfolio until those tabs are wired to the DB.
+**Deleted in the milestone cleanup pass, fully orphaned (zero references anywhere once found,
+not even from `Database`):** `models/PortfolioData.h/.cpp` (`Data::DataPoint`/
+`Data::PortfolioSummary`, JSON portfolio import), `utils/JsonReader.h` (generic JSON
+deserializer `PortfolioData` was the only consumer of), `utils/FileFinder.h` (file-location
+helpers only the legacy `ImportController` called), and `data/DebugData.h/.cpp` (mock
+holdings/summary/performance factories only the legacy `PortfolioController`/
+`OverviewController` read). All four were leftover support code for the deleted legacy
+generation (see § App Status) with no path back into the current app — unlike
+`AssetEntry.h`/`SnapshotsTable`/`AssetEntriesTable` (see § Directory Map's `models/` entry),
+which are still compiled and wired into `Database`, just without a current controller
+reading them; that's a DB-schema-level question out of scope for this pass, left as-is.
 
 ---
 
@@ -961,15 +1084,31 @@ Open `CMakeLists.txt` → auto-configures → press Run.
 
 ---
 
-## Porting a Tab (checklist)
+## Creating a New Sidebar Page (checklist)
 
-1. Read the legacy Widgets file in `src/tabs/` — it is the spec.
-2. Create `src/controllers/<domain>/XxxController.h/.cpp` (`QML_ELEMENT`); move every calculation there. Pick the subfolder matching the page/domain (add a new one if it's a new page), and add that subfolder to `target_include_directories` in CMakeLists.txt.
-3. Create `qml/tabs/XxxTab.qml` — rendering only.
-4. Register both in `CMakeLists.txt` (`SOURCES` + `QML_FILES` of `qt_add_qml_module`).
-5. Replace the `PlaceholderTab` instance in `qml/Main.qml`.
-6. For charts: copy the closest pattern from [QtGraphsExamples](https://github.com/nicolas-goyon/QtGraphsExamples); verify any new property against https://doc.qt.io/qt-6/qtgraphs-index.html — **never invent property names**.
-7. Delete the legacy `src/tabs/` file; update the Migration Status table above.
+Supersedes the old "Porting a Tab" checklist, which described copying a legacy Qt Widgets
+tab — there's nothing left to port (see § App Status). This is the current path for adding a
+page, written to lean on § Shared Components / § Sidebar Navigation so a new page starts
+from the app's existing patterns instead of a blank file:
+
+1. Create `src/controllers/<domain>/XxxController.h/.cpp` (`QML_ELEMENT`; `QML_SINGLETON`
+   only if the data is genuinely cross-cutting — see § Category Management for the
+   reasoning). Pick the subfolder matching the page/domain (add a new one if it's a new
+   domain), and add that subfolder to `target_include_directories` in `CMakeLists.txt`.
+   Follow the `*DataProvider` pattern in § QML/C++ Boundary: QML never computes, it only
+   renders `Q_PROPERTY`/`Q_INVOKABLE QVariantList` output.
+2. Create `qml/pages/XxxPage.qml` — rendering only. Start from `PageHeader` for the title
+   row, `ChartCard`/`KpiCard` for chart/stat sections, and `PillButton`/`GhostButton`/
+   `StatusBadge`/`FormDialog`/`FormRow`/`ColorPickerRow`/`ConfirmDialog`/`EmptyState` for
+   any CRUD/dialog/list UI — see § Shared Components for what each one covers before
+   hand-rolling a button or badge.
+3. Register both in `CMakeLists.txt` (`SOURCES` + `QML_FILES` of `qt_add_qml_module`).
+4. Wire it into navigation (see § Sidebar Navigation): append `{ id, label, actions }` to
+   `Main.qml`'s `categories` array and add the page as the next `StackLayout` child in the
+   same position (for a top-level category page), or add a `currentViewId`-gated `Loader` +
+   `Component` pair following the existing overlay pattern (for an action-triggered page).
+5. For charts: copy the closest pattern from [QtGraphsExamples](https://github.com/nicolas-goyon/QtGraphsExamples); verify any new property against https://doc.qt.io/qt-6/qtgraphs-index.html — **never invent property names**.
+6. Update this file's § App Status table/directory listings and `README.md`'s page table.
 
 ---
 
@@ -987,10 +1126,10 @@ Open `CMakeLists.txt` → auto-configures → press Run.
 
 ## Known Limitations / TODOs
 
-- [ ] **Wire pages to real data** — replace the MOCK generators in the 6 page controllers with DB aggregation. The schema needs to grow: per-account monthly snapshots + categorized transactions (see PROJECT.md). Reuse `EntryController`/`DatabaseController` patterns.
+- [ ] **Wire pages to real data** — replace the MOCK generators in the 5 mock page controllers (Overview/Cash Flow/Savings/Investments/Projects) with DB aggregation. The schema needs to grow: per-account monthly snapshots + categorized transactions (see PROJECT.md).
+- [ ] **The `snapshots`/`asset_entries` DB tables (`SnapshotsTable`, `AssetEntriesTable`, `models/AssetEntry.h`) are still compiled and wired into `Database`, but have had no controller reading or writing them since the legacy `AnalyticsController`/`EntryController` were deleted this pass** (see § App Status / § Component Responsibilities). Decide either to build the "wire pages to real data" item above on top of this existing snapshot schema, or to drop it in favor of the newer per-transaction model (`transactions` table) — right now the app carries a second, currently-dead persistence model alongside the live one. Flagged rather than acted on: dropping a DB table is a bigger call than deleting unused UI/model code, and wasn't part of this pass's scope.
 - [ ] Range selector (12–24 month window) on time charts — PROJECT.md calls for it on all pages.
 - [ ] Loan simulator: add optional insurance (assurance emprunteur) flat % input.
-- [ ] Delete previous-generation files once the new UI is validated: `src/MainWindow.*`, `src/tabs/*`, `qml/tabs/*`.
 - [ ] `Fmt::money` not yet reachable from QML — Y-axis uses `labelFormat: "%.0f €"` instead of French-locale formatting.
 - [ ] Centralize palette in a `Theme.qml` singleton.
 - [ ] No `.qrc` resource file — icons and fonts should be added under `resources/`.
@@ -1000,9 +1139,9 @@ Open `CMakeLists.txt` → auto-configures → press Run.
 - [ ] `qml/pages/ImportSnapshotPage.qml` (`FileDialog`) and `qml/pages/CategoriesManagePage.qml`/`qml/pages/AccountsManagePage.qml` (`ColorDialog`) import `QtQuick.Dialogs` with no explicit `find_package`/`target_link_libraries` for it in `CMakeLists.txt` (relying on `qt_add_qml_module`'s automatic import scanning). If the build can't find the plugin, add `QuickDialogs2` — see the NOTE in `CMakeLists.txt`.
 - [ ] Sidebar action list items are still mostly inert placeholders on the first 5 (PROJECT.md) categories — only Transactions Management → "Import Transactions"/"Manage Categories" and Account Management → "Manage Accounts"/"Account types & categories" are wired; Database Management has no actions (its landing page is the real page) — see § Sidebar Navigation.
 - [ ] `CheckingCsvTemplateV1::parseAmount()` currently has the "€" removal and the final space removal **commented out** (see the `//` lines in the .cpp). As written, an amount like `"1234.56 €"` will fail to convert (the trailing `€` breaks `toDouble()`), and any input relying on space-stripping (e.g. narrow-space-separated thousands not already covered by the two explicit space-char removals above it) won't be cleaned either. This was left as-is per an in-progress edit — revisit once real exported files are available to confirm what actually needs stripping.
-- [ ] `src/controllers/category/` is an empty leftover directory from moving `CategoryController` into `src/controllers/dataentry/` — the sandbox this move was done in couldn't `rmdir` it (mount permission issue). Delete it by hand; it's not referenced by `CMakeLists.txt` or anything else, so it's harmless to the build in the meantime.
 - [ ] `CategoryController::removeCategory()`/`removeSubcategory()` and `AccountController::removeAccountCategory()` delete unconditionally — no foreign keys anywhere in this schema, so nothing breaks, but a transaction/account already using a deleted category/account-category just keeps the stale name as plain text. Needs either a guard (refuse/warn) or an explicit "reassign" step if this proves confusing in practice.
 - [ ] No reordering of categories/subcategories/account-categories — every `all()`/`allForXxx()` reader orders by row id (insertion order) only, no explicit sort-order column. Add one if drag-to-reorder is ever wanted.
 - [ ] **Persisted transactions have no edit/delete UI** — `TransactionsTable` only supports append (`insertBatch`) and read-all-for-account (`allForAccount`); the transactions popup on `AccountsManagePage.qml` is read-only. Add update/delete-by-id + a UI once there's a real need to fix a mis-categorized or duplicate saved transaction.
 - [ ] No migration path for existing SQLite files when the schema changes (e.g. the `accounts` table dropping `iban`/`bic`/`number` in round 2) — the intended workaround during active development is Database Management → "Reset Database"/"Reset to Mock Data" (see § Database Management), which wipes and recreates every table from scratch. Add real migrations before this app has real user data worth preserving across schema changes.
 - [ ] `DatabaseManagementController::seedMockData()` duplicates the same seed values as `CategoryController::seedDefaults()`/`AccountController::seedDefaults()` rather than calling them (both are private) — see § Database Management. If either seed list changes, the other must be updated by hand or the two will drift.
+- [ ] **Not yet componentized (deliberately deferred, see § Shared Components):** a `hoverable`/`onClicked` option on `ChartCard` (would let `ProjectsPage.qml`'s bespoke clickable project cards use the shared component instead of reimplementing its look); a thin wrapper around the repeated `GraphsView { theme: GraphsTheme { colorScheme: GraphsTheme.ColorScheme.Dark [...] } }` boilerplate that appears 10+ times across the 5 analytics pages. Neither blocked this pass, but both are candidates if a second page needs the same shape.

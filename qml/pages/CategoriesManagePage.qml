@@ -1,15 +1,14 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Dialogs
 import FinanceDashboard
 
-// ── Categories Management — Data Entry → "Manage Categories" ──────────────────
+// ── Categories Management — Transactions Management → "Manage Categories" ────
 // Add/rename/recolor/remove categories and their subcategories. Backed by
 // CategoryController (QML_SINGLETON, src/controllers/dataentry/
-// CategoryController.h) — the same shared instance read by the "Add
-// transaction" form (DataEntryPage.qml) and the import review table
-// (ImportSnapshotPage.qml), so edits made here show up immediately on both.
+// CategoryController.h) — the same shared instance read by the import
+// review table (ImportSnapshotPage.qml), so edits made here show up
+// immediately there too.
 // DB-backed (categories/subcategories tables — see CategoryController.h and
 // ARCHITECTURE.MD § Category Management): every add/rename/recolor/remove
 // here writes through to SQLite immediately, so deletions are permanent
@@ -17,6 +16,10 @@ import FinanceDashboard
 // category. Replaces the old keyword auto-suggestion system, removed per
 // product decision — categories/subcategories are now a user-managed list
 // picked manually everywhere.
+//
+// Built from the shared qml/components/ (PageHeader, GhostButton,
+// FormDialog, FormRow, ColorPickerRow, ConfirmDialog, EmptyState) — see
+// ARCHITECTURE.MD § Shared Components.
 
 Item {
     id: page
@@ -24,17 +27,6 @@ Item {
     signal closeRequested()
 
     readonly property color defaultNewColor: "#89b4fa"
-
-    // color -> "#rrggbb", built from the documented r/g/b real (0..1)
-    // properties of the QML color value type (avoids relying on the
-    // undocumented format of color.toString()).
-    function colorToHex(c) {
-        function channel(v) {
-            var h = Math.round(Math.max(0, Math.min(1, v)) * 255).toString(16)
-            return h.length === 1 ? "0" + h : h
-        }
-        return "#" + channel(c.r) + channel(c.g) + channel(c.b)
-    }
 
     ScrollView {
         anchors.fill: parent
@@ -46,41 +38,20 @@ Item {
             width: parent.width - 40
             spacing: 16
 
-            // ── Header ────────────────────────────────────────────────────────
-            RowLayout {
-                spacing: 12
-                Rectangle {
-                    width: 26; height: 26; radius: 4
-                    color: backHover.hovered ? "#181825" : "transparent"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "←"
-                        font.pixelSize: 19
-                        color: "#89b4fa"
-                    }
-                    HoverHandler { id: backHover }
-                    TapHandler { onTapped: page.closeRequested() }
+            PageHeader {
+                showBack: true
+                title: "Manage Categories"
+                onBackClicked: page.closeRequested()
+
+                StatusBadge {
+                    visible: CategoryController.statusText.length > 0
+                    text: CategoryController.statusText
+                    variant: "success"
                 }
-                Text {
-                    text: "Manage Categories"
-                    font.pixelSize: 23
-                    font.bold: true
-                    color: "#cdd6f4"
-                }
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 150; height: 30; radius: 4
-                    color: addCatHover.hovered ? "#264d80" : "#1e3a5f"
-                    border.color: "#89b4fa"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "＋  Add category"
-                        font.pixelSize: 15
-                        font.bold: true
-                        color: "#cdd6f4"
-                    }
-                    HoverHandler { id: addCatHover }
-                    TapHandler { onTapped: categoryDialog.openFor(-1, "", page.defaultNewColor) }
+                PillButton {
+                    text: "＋  Add category"
+                    variant: "primary"
+                    onClicked: categoryDialog.openFor(-1, "", page.defaultNewColor)
                 }
             }
 
@@ -88,8 +59,8 @@ Item {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: "Categories and subcategories used everywhere a transaction gets classified "
-                    + "(Add transaction, statement import). Colors are just for legends/swatches — "
-                    + "no charts read them yet."
+                    + "(statement import). Colors are just for legends/swatches — no charts read "
+                    + "them yet."
                 font.pixelSize: 14
                 color: "#6c7086"
             }
@@ -105,11 +76,9 @@ Item {
                     anchors.fill: parent
                     spacing: 14
 
-                    Text {
+                    EmptyState {
                         visible: CategoryController.categories.length === 0
-                        text: "No categories yet — add one above."
-                        font.pixelSize: 15
-                        color: "#6c7086"
+                        message: "No categories yet — add one above."
                     }
 
                     Repeater {
@@ -145,39 +114,25 @@ Item {
                                 }
                                 Item { Layout.fillWidth: true }
 
-                                Rectangle {
-                                    width: 60; height: 22; radius: 4
-                                    color: "transparent"
-                                    border.color: "#313244"
-                                    Text { anchors.centerIn: parent; text: "✎ Edit"; font.pixelSize: 13; color: "#89b4fa" }
-                                    TapHandler {
-                                        onTapped: categoryDialog.openFor(catRow.index, catRow.modelData.name, catRow.modelData.color)
-                                    }
+                                GhostButton {
+                                    text: "✎ Edit"
+                                    textColor: "#89b4fa"
+                                    onClicked: categoryDialog.openFor(catRow.index, catRow.modelData.name, catRow.modelData.color)
                                 }
-                                Rectangle {
-                                    width: 112; height: 22; radius: 4
-                                    color: "transparent"
-                                    border.color: "#313244"
-                                    Text { anchors.centerIn: parent; text: "＋ Subcategory"; font.pixelSize: 13; color: "#a6e3a1" }
-                                    TapHandler {
-                                        onTapped: subcategoryDialog.openFor(
-                                            catRow.index, -1, "",
-                                            CategoryController.suggestSubcategoryColor(catRow.index))
-                                    }
+                                GhostButton {
+                                    text: "＋ Subcategory"
+                                    textColor: "#a6e3a1"
+                                    onClicked: subcategoryDialog.openFor(
+                                        catRow.index, -1, "",
+                                        CategoryController.suggestSubcategoryColor(catRow.index))
                                 }
-                                Rectangle {
-                                    width: 22; height: 22; radius: 4
-                                    color: removeCatHover.hovered ? "#3d2028" : "transparent"
-                                    border.color: removeCatHover.hovered ? "#f38ba8" : "#313244"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: "×"
-                                        font.pixelSize: 17
-                                        font.bold: true
-                                        color: removeCatHover.hovered ? "#f38ba8" : "#6c7086"
-                                    }
-                                    HoverHandler { id: removeCatHover }
-                                    TapHandler { onTapped: deleteCategoryDialog.openFor(catRow.index, catRow.modelData.name) }
+                                GhostButton {
+                                    text: "×"
+                                    variant: "danger"
+                                    fontSize: 17
+                                    bold: true
+                                    horizontalPadding: 6
+                                    onClicked: deleteCategoryDialog.openFor(catRow.index, catRow.modelData.name)
                                 }
                             }
 
@@ -203,28 +158,19 @@ Item {
                                         font.pixelSize: 15
                                         color: "#a6adc8"
                                     }
-                                    Rectangle {
-                                        width: 60; height: 20; radius: 4
-                                        color: "transparent"
-                                        border.color: "#313244"
-                                        Text { anchors.centerIn: parent; text: "✎ Edit"; font.pixelSize: 12; color: "#89b4fa" }
-                                        TapHandler {
-                                            onTapped: subcategoryDialog.openFor(catRow.index, subRow.index, subRow.modelData.name, subRow.modelData.color)
-                                        }
+                                    GhostButton {
+                                        text: "✎ Edit"
+                                        textColor: "#89b4fa"
+                                        fontSize: 12
+                                        onClicked: subcategoryDialog.openFor(catRow.index, subRow.index, subRow.modelData.name, subRow.modelData.color)
                                     }
-                                    Rectangle {
-                                        width: 20; height: 20; radius: 4
-                                        color: removeSubHover.hovered ? "#3d2028" : "transparent"
-                                        border.color: removeSubHover.hovered ? "#f38ba8" : "#313244"
-                                        Text {
-                                            anchors.centerIn: parent
-                                            text: "×"
-                                            font.pixelSize: 15
-                                            font.bold: true
-                                            color: removeSubHover.hovered ? "#f38ba8" : "#6c7086"
-                                        }
-                                        HoverHandler { id: removeSubHover }
-                                        TapHandler { onTapped: CategoryController.removeSubcategory(catRow.index, subRow.index) }
+                                    GhostButton {
+                                        text: "×"
+                                        variant: "danger"
+                                        fontSize: 15
+                                        bold: true
+                                        horizontalPadding: 5
+                                        onClicked: CategoryController.removeSubcategory(catRow.index, subRow.index)
                                     }
                                 }
                             }
@@ -240,246 +186,78 @@ Item {
     }
 
     // ── Add / edit category dialog ──────────────────────────────────────────
-    Popup {
+    FormDialog {
         id: categoryDialog
-        anchors.centerIn: parent
-        width: 380
-        padding: 20
-        modal: true
+        dialogTitle: categoryDialog.editIndex < 0 ? "New category" : "Edit category"
+        saveText: categoryDialog.editIndex < 0 ? "Add" : "Save"
 
         property int editIndex: -1
-        property string selectedColor: "#89b4fa"
 
         function openFor(idx, name, color) {
             editIndex = idx
-            nameField.text = name
-            selectedColor = color
+            nameRow.text = name
+            colorRow.selectedColor = color
             open()
         }
 
-        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
+        FormRow { id: nameRow; label: "Name"; placeholderText: "e.g. Health" }
 
-        contentItem: ColumnLayout {
-            spacing: 14
-
-            Text {
-                text: categoryDialog.editIndex < 0 ? "New category" : "Edit category"
-                font.pixelSize: 19
-                font.bold: true
-                color: "#cdd6f4"
-            }
-
-            RowLayout {
-                spacing: 10
-                Text { Layout.preferredWidth: 50; text: "Name"; font.pixelSize: 15; color: "#6c7086" }
-                TextField {
-                    id: nameField
-                    Layout.fillWidth: true
-                    placeholderText: "e.g. Health"
-                    placeholderTextColor: "#45475a"
-                    color: "#cdd6f4"
-                    font.pixelSize: 15
-                    background: Rectangle {
-                        color: "#11111b"
-                        radius: 4
-                        border.color: nameField.activeFocus ? "#89b4fa" : "#313244"
-                    }
-                }
-            }
-
+        ColumnLayout {
+            spacing: 8
             Text { text: "Color"; font.pixelSize: 15; color: "#6c7086" }
-            RowLayout {
-                spacing: 10
-                Rectangle {
-                    width: 32; height: 32; radius: 16
-                    color: categoryDialog.selectedColor
-                    border.width: 2
-                    border.color: "#45475a"
-                    TapHandler {
-                        onTapped: {
-                            categoryColorDialog.selectedColor = categoryDialog.selectedColor
-                            categoryColorDialog.open()
-                        }
-                    }
-                }
-                Rectangle {
-                    width: 110; height: 26; radius: 4
-                    color: catColorHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Choose color…"; font.pixelSize: 14; color: "#cdd6f4" }
-                    HoverHandler { id: catColorHover }
-                    TapHandler {
-                        onTapped: {
-                            categoryColorDialog.selectedColor = categoryDialog.selectedColor
-                            categoryColorDialog.open()
-                        }
-                    }
-                }
-                Text { text: categoryDialog.selectedColor; font.pixelSize: 14; color: "#6c7086" }
-            }
+            ColorPickerRow { id: colorRow; dialogTitle: "Choose category color" }
+        }
 
-            RowLayout {
-                Layout.topMargin: 6
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 80; height: 30; radius: 4
-                    color: catCancelHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Cancel"; font.pixelSize: 15; color: "#cdd6f4" }
-                    HoverHandler { id: catCancelHover }
-                    TapHandler { onTapped: categoryDialog.close() }
-                }
-                Rectangle {
-                    width: 90; height: 30; radius: 4
-                    color: catSaveHover.hovered ? "#264d80" : "#1e3a5f"
-                    border.color: "#89b4fa"
-                    Text {
-                        anchors.centerIn: parent
-                        text: categoryDialog.editIndex < 0 ? "Add" : "Save"
-                        font.pixelSize: 15
-                        font.bold: true
-                        color: "#cdd6f4"
-                    }
-                    HoverHandler { id: catSaveHover }
-                    TapHandler {
-                        onTapped: {
-                            var trimmed = nameField.text.trim()
-                            if (trimmed.length === 0)
-                                return
-                            if (categoryDialog.editIndex < 0) {
-                                CategoryController.addCategory(trimmed, categoryDialog.selectedColor)
-                            } else {
-                                CategoryController.renameCategory(categoryDialog.editIndex, trimmed)
-                                CategoryController.setCategoryColor(categoryDialog.editIndex, categoryDialog.selectedColor)
-                            }
-                            categoryDialog.close()
-                        }
-                    }
-                }
+        onSaveClicked: {
+            var trimmed = nameRow.text.trim()
+            if (trimmed.length === 0)
+                return
+            if (editIndex < 0) {
+                CategoryController.addCategory(trimmed, colorRow.selectedColor)
+            } else {
+                CategoryController.renameCategory(editIndex, trimmed)
+                CategoryController.setCategoryColor(editIndex, colorRow.selectedColor)
             }
+            close()
         }
     }
 
     // ── Add / edit subcategory dialog ───────────────────────────────────────
-    Popup {
+    FormDialog {
         id: subcategoryDialog
-        anchors.centerIn: parent
-        width: 380
-        padding: 20
-        modal: true
+        dialogTitle: subcategoryDialog.editSubIndex < 0 ? "New subcategory" : "Edit subcategory"
+        saveText: subcategoryDialog.editSubIndex < 0 ? "Add" : "Save"
 
         property int parentCategoryIndex: -1
         property int editSubIndex: -1
-        property string selectedColor: "#89b4fa"
 
         function openFor(catIndex, subIndex, name, color) {
             parentCategoryIndex = catIndex
             editSubIndex = subIndex
-            subNameField.text = name
-            selectedColor = color
+            subNameRow.text = name
+            subColorRow.selectedColor = color
             open()
         }
 
-        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
+        FormRow { id: subNameRow; label: "Name"; placeholderText: "e.g. Pharmacy" }
 
-        contentItem: ColumnLayout {
-            spacing: 14
-
-            Text {
-                text: subcategoryDialog.editSubIndex < 0 ? "New subcategory" : "Edit subcategory"
-                font.pixelSize: 19
-                font.bold: true
-                color: "#cdd6f4"
-            }
-
-            RowLayout {
-                spacing: 10
-                Text { Layout.preferredWidth: 50; text: "Name"; font.pixelSize: 15; color: "#6c7086" }
-                TextField {
-                    id: subNameField
-                    Layout.fillWidth: true
-                    placeholderText: "e.g. Pharmacy"
-                    placeholderTextColor: "#45475a"
-                    color: "#cdd6f4"
-                    font.pixelSize: 15
-                    background: Rectangle {
-                        color: "#11111b"
-                        radius: 4
-                        border.color: subNameField.activeFocus ? "#89b4fa" : "#313244"
-                    }
-                }
-            }
-
+        ColumnLayout {
+            spacing: 8
             Text { text: "Color"; font.pixelSize: 15; color: "#6c7086" }
-            RowLayout {
-                spacing: 10
-                Rectangle {
-                    width: 32; height: 32; radius: 16
-                    color: subcategoryDialog.selectedColor
-                    border.width: 2
-                    border.color: "#45475a"
-                    TapHandler {
-                        onTapped: {
-                            subcategoryColorDialog.selectedColor = subcategoryDialog.selectedColor
-                            subcategoryColorDialog.open()
-                        }
-                    }
-                }
-                Rectangle {
-                    width: 110; height: 26; radius: 4
-                    color: subColorHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Choose color…"; font.pixelSize: 14; color: "#cdd6f4" }
-                    HoverHandler { id: subColorHover }
-                    TapHandler {
-                        onTapped: {
-                            subcategoryColorDialog.selectedColor = subcategoryDialog.selectedColor
-                            subcategoryColorDialog.open()
-                        }
-                    }
-                }
-                Text { text: subcategoryDialog.selectedColor; font.pixelSize: 14; color: "#6c7086" }
-            }
+            ColorPickerRow { id: subColorRow; dialogTitle: "Choose subcategory color" }
+        }
 
-            RowLayout {
-                Layout.topMargin: 6
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 80; height: 30; radius: 4
-                    color: subCancelHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Cancel"; font.pixelSize: 15; color: "#cdd6f4" }
-                    HoverHandler { id: subCancelHover }
-                    TapHandler { onTapped: subcategoryDialog.close() }
-                }
-                Rectangle {
-                    width: 90; height: 30; radius: 4
-                    color: subSaveHover.hovered ? "#264d80" : "#1e3a5f"
-                    border.color: "#89b4fa"
-                    Text {
-                        anchors.centerIn: parent
-                        text: subcategoryDialog.editSubIndex < 0 ? "Add" : "Save"
-                        font.pixelSize: 15
-                        font.bold: true
-                        color: "#cdd6f4"
-                    }
-                    HoverHandler { id: subSaveHover }
-                    TapHandler {
-                        onTapped: {
-                            var trimmed = subNameField.text.trim()
-                            if (trimmed.length === 0 || subcategoryDialog.parentCategoryIndex < 0)
-                                return
-                            if (subcategoryDialog.editSubIndex < 0) {
-                                CategoryController.addSubcategory(subcategoryDialog.parentCategoryIndex, trimmed, subcategoryDialog.selectedColor)
-                            } else {
-                                CategoryController.renameSubcategory(subcategoryDialog.parentCategoryIndex, subcategoryDialog.editSubIndex, trimmed)
-                                CategoryController.setSubcategoryColor(subcategoryDialog.parentCategoryIndex, subcategoryDialog.editSubIndex, subcategoryDialog.selectedColor)
-                            }
-                            subcategoryDialog.close()
-                        }
-                    }
-                }
+        onSaveClicked: {
+            var trimmed = subNameRow.text.trim()
+            if (trimmed.length === 0 || parentCategoryIndex < 0)
+                return
+            if (editSubIndex < 0) {
+                CategoryController.addSubcategory(parentCategoryIndex, trimmed, subColorRow.selectedColor)
+            } else {
+                CategoryController.renameSubcategory(parentCategoryIndex, editSubIndex, trimmed)
+                CategoryController.setSubcategoryColor(parentCategoryIndex, editSubIndex, subColorRow.selectedColor)
             }
+            close()
         }
     }
 
@@ -488,85 +266,19 @@ Item {
     // for an explicit confirmation before calling
     // CategoryController.removeCategory() (per product request — no
     // undo/history for category edits, see file header).
-    Popup {
+    ConfirmDialog {
         id: deleteCategoryDialog
-        anchors.centerIn: parent
-        width: 340
-        padding: 20
-        modal: true
+        dialogTitle: "Delete category?"
+        confirmText: "Delete"
 
         property int categoryIndex: -1
-        property string categoryName: ""
 
         function openFor(idx, name) {
             categoryIndex = idx
-            categoryName = name
+            message = "This will remove “" + name + "” and all of its subcategories. This cannot be undone."
             open()
         }
 
-        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
-
-        contentItem: ColumnLayout {
-            spacing: 14
-
-            Text {
-                text: "Delete category?"
-                font.pixelSize: 19
-                font.bold: true
-                color: "#cdd6f4"
-            }
-
-            Text {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                text: "This will remove “" + deleteCategoryDialog.categoryName
-                    + "” and all of its subcategories. This cannot be undone."
-                font.pixelSize: 14
-                color: "#a6adc8"
-            }
-
-            RowLayout {
-                Layout.topMargin: 6
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 80; height: 30; radius: 4
-                    color: delCancelHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Cancel"; font.pixelSize: 15; color: "#cdd6f4" }
-                    HoverHandler { id: delCancelHover }
-                    TapHandler { onTapped: deleteCategoryDialog.close() }
-                }
-                Rectangle {
-                    width: 90; height: 30; radius: 4
-                    color: delConfirmHover.hovered ? "#5a2d36" : "#3d2028"
-                    border.color: "#f38ba8"
-                    Text { anchors.centerIn: parent; text: "Delete"; font.pixelSize: 15; font.bold: true; color: "#f38ba8" }
-                    HoverHandler { id: delConfirmHover }
-                    TapHandler {
-                        onTapped: {
-                            CategoryController.removeCategory(deleteCategoryDialog.categoryIndex)
-                            deleteCategoryDialog.close()
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // ── Native color pickers ────────────────────────────────────────────────
-    // QtQuick.Dialogs.ColorDialog (verified against doc.qt.io/qt-6/qml-qtquick-
-    // dialogs-colordialog.html — properties: selectedColor, options; inherited
-    // open()/accepted() from Dialog). One per edit dialog since categoryDialog
-    // and subcategoryDialog each track their own in-progress selectedColor.
-    ColorDialog {
-        id: categoryColorDialog
-        title: "Choose category color"
-        onAccepted: categoryDialog.selectedColor = page.colorToHex(selectedColor)
-    }
-
-    ColorDialog {
-        id: subcategoryColorDialog
-        title: "Choose subcategory color"
-        onAccepted: subcategoryDialog.selectedColor = page.colorToHex(selectedColor)
+        onConfirmed: CategoryController.removeCategory(deleteCategoryDialog.categoryIndex)
     }
 }

@@ -82,14 +82,19 @@ FinanceDashboard/
 ├── ARCHITECTURE.MD
 ├── PROJECT.md              # Product spec: target pages, charts, features
 ├── qml/                    # UI (QML only, no logic)
-│   ├── Main.qml            # App shell — sidebar (collapsible categories) + StackLayout
-│   ├── components/         # SidebarCategory.qml, ChartCard.qml, KpiCard.qml, ...
-│   ├── pages/              # OverviewPage, CashFlowPage, ..., OtherLegacyPage,
-│   │                       # ImportSnapshotPage, CategoriesManagePage,
-│   │                       # TransactionsManagementPage, AccountManagementLandingPage,
-│   │                       # AccountsManagePage, AccountTransactionsPage,
-│   │                       # AccountTypesCategoriesPage, DatabaseManagementPage
-│   └── tabs/               # One .qml per tab (+ EntryCategory.qml component)
+│   ├── Main.qml            # App shell — sidebar (collapsible categories) + StackLayout,
+│   │                       # both driven by one `currentViewId` (see ARCHITECTURE.MD §
+│   │                       # Sidebar Navigation)
+│   ├── components/         # SidebarCategory.qml, ChartCard.qml, KpiCard.qml,
+│   │                       # ColorComboBox.qml, plus the shared page/dialog/button/badge
+│   │                       # library (PageHeader, PillButton, GhostButton, StatusBadge,
+│   │                       # FormRow, ColorPickerRow, FormDialog, ConfirmDialog,
+│   │                       # EmptyState) — see ARCHITECTURE.MD § Shared Components
+│   └── pages/              # OverviewPage, CashFlowPage, SavingsPage, InvestmentsPage,
+│                           # ProjectsPage, ImportSnapshotPage, CategoriesManagePage,
+│                           # TransactionsManagementPage, AccountManagementLandingPage,
+│                           # AccountsManagePage, AccountTransactionsPage,
+│                           # AccountTypesCategoriesPage, DatabaseManagementPage
 └── src/
     ├── main.cpp            # QGuiApplication + QQuickStyle::setStyle("Basic") + QQmlApplicationEngine
     ├── controllers/        # C++ backends exposed to QML (QML_ELEMENT), one subfolder
@@ -102,11 +107,9 @@ FinanceDashboard/
     │   ├── dataentry/      #   SnapshotImportController, CategoryController
     │   │                   #   (QML_SINGLETON — category/subcategory CRUD, SQLite-backed),
     │   │                   #   AccountController (QML_SINGLETON — account/account-type/
-    │   │                   #   account-category/hash CRUD, SQLite-backed). Also holds the
-    │   │                   #   unregistered, superseded DataEntryController.h/.cpp.
-    │   ├── database/       #   DatabaseManagementController (QML_ELEMENT — reset/reseed
-    │   │                   #   the SQLite file)
-    │   └── legacy/         #   Unregistered previous-gen controllers, kept as reference
+    │   │                   #   account-category/hash CRUD, SQLite-backed)
+    │   └── database/       #   DatabaseManagementController (QML_ELEMENT — reset/reseed
+    │                       #   the SQLite file)
     ├── import/             # Statement-import template system (ImportTemplate + templates)
     ├── models/             # Data structs (JSON-compatible where noted; Category.h/
     │                       # Account.h/Transaction.h are not)
@@ -114,10 +117,7 @@ FinanceDashboard/
     │                       # categories/subcategories, accounts/account_hashes/
     │                       # account_categories/account_types, transactions;
     │                       # Database::resetAll() wipes+recreates every table)
-    ├── utils/              # Formatter / FileFinder / JsonReader / AccountHashing (header-only)
-    ├── data/               # Debug/sample data factory
-    ├── MainWindow.* , tabs/  # LEGACY Widgets UI — not compiled, kept as porting reference
-    └── ...
+    └── utils/              # Formatter (Fmt::money/Fmt::dateOrDash) / AccountHashing (header-only)
 ```
 
 Chart patterns come from [QtGraphsExamples](https://github.com/nicolas-goyon/QtGraphsExamples).

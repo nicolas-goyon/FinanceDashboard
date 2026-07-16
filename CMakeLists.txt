@@ -15,10 +15,6 @@ qt_policy(SET QTP0004 NEW)
 # ── Executable — entry point + UI-independent C++ (db / models / utils) ───────
 qt_add_executable(FinanceDashboard
     src/main.cpp
-    src/data/DebugData.h
-    src/data/DebugData.cpp
-    src/models/PortfolioData.h
-    src/models/PortfolioData.cpp
     src/models/AssetEntry.h
     src/models/AssetEntry.cpp
     src/models/ImportedStatement.h
@@ -47,8 +43,6 @@ qt_add_executable(FinanceDashboard
     src/db/Database.h
     src/db/Database.cpp
     src/utils/Formatter.h
-    src/utils/FileFinder.h
-    src/utils/JsonReader.h
     src/utils/AccountHashing.h
     # Statement-import template system (see ARCHITECTURE.MD § Statement Import).
     # UI-independent — no QML_ELEMENT here, that's SnapshotImportController below.
@@ -93,6 +87,15 @@ qt_add_qml_module(FinanceDashboard
         qml/components/MoneyFlow.qml
         qml/components/SidebarCategory.qml
         qml/components/ColorComboBox.qml
+        qml/components/PageHeader.qml
+        qml/components/PillButton.qml
+        qml/components/GhostButton.qml
+        qml/components/StatusBadge.qml
+        qml/components/FormRow.qml
+        qml/components/ColorPickerRow.qml
+        qml/components/FormDialog.qml
+        qml/components/ConfirmDialog.qml
+        qml/components/EmptyState.qml
         qml/pages/OverviewPage.qml
         qml/pages/CashFlowPage.qml
         qml/pages/SavingsPage.qml
@@ -101,24 +104,12 @@ qt_add_qml_module(FinanceDashboard
         qml/pages/TransactionsManagementPage.qml
         qml/pages/AccountManagementLandingPage.qml
         qml/pages/DatabaseManagementPage.qml
-        qml/pages/OtherLegacyPage.qml
         qml/pages/ImportSnapshotPage.qml
         qml/pages/CategoriesManagePage.qml
         qml/pages/AccountsManagePage.qml
         qml/pages/AccountTypesCategoriesPage.qml
         qml/pages/AccountTransactionsPage.qml
 )
-
-# NOTE — previous generation (qml/tabs/* + their controllers) is unregistered.
-# The files stay on disk as reference (EntryController, DatabaseController and
-# AnalyticsController will be reused when wiring the Data Entry page to the DB).
-
-# NOTE — src/controllers/dataentry/DataEntryController.h/.cpp and
-# qml/pages/DataEntryPage.qml are likewise unregistered (superseded by the
-# Transactions Management / Account Management / Database Management split —
-# see ARCHITECTURE.MD § Transactions Management). Left on disk rather than
-# deleted, per this project's established convention for superseded files
-# (same as qml/tabs/* above).
 
 # NOTE — qml/pages/ImportSnapshotPage.qml (FileDialog) and
 # qml/pages/CategoriesManagePage.qml / qml/pages/AccountsManagePage.qml
@@ -130,8 +121,7 @@ qt_add_qml_module(FinanceDashboard
 # above and Qt6::QuickDialogs2 to target_link_libraries() below.
 
 # Each active controller's subfolder must be on the include path so the
-# auto-generated qml type registration .cpp can find the headers by basename
-# (legacy/ is excluded — those controllers aren't in SOURCES above, not compiled).
+# auto-generated qml type registration .cpp can find the headers by basename.
 target_include_directories(FinanceDashboard PRIVATE
     src
     src/controllers/overview
@@ -163,9 +153,3 @@ if(WIN32)
         WIN32_EXECUTABLE $<CONFIG:Release>
     )
 endif()
-
-# ── NOTE — migration in progress ──────────────────────────────────────────────
-# The legacy Qt Widgets UI (src/MainWindow.*, src/tabs/*) is intentionally NOT
-# compiled anymore. The files remain on disk as reference while each tab is
-# ported to QML (see ARCHITECTURE.MD § Migration Status). Delete them once all
-# tabs are ported.

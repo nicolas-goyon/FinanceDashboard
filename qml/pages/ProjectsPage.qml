@@ -14,32 +14,6 @@ Item {
 
     property bool showDetail: false
 
-    // Labeled TextField row used by the New-project form
-    component FormField: RowLayout {
-        property alias label: lbl.text
-        property alias field: input
-        property alias placeholder: input.placeholderText
-        spacing: 10
-        Text {
-            id: lbl
-            Layout.preferredWidth: 150
-            font.pixelSize: 15
-            color: "#6c7086"
-        }
-        TextField {
-            id: input
-            Layout.fillWidth: true
-            color: "#cdd6f4"
-            font.pixelSize: 15
-            placeholderTextColor: "#45475a"
-            background: Rectangle {
-                color: "#11111b"
-                radius: 4
-                border.color: input.activeFocus ? "#89b4fa" : "#313244"
-            }
-        }
-    }
-
     ProjectsController { id: controller }
 
     function rebuildChart() {
@@ -73,29 +47,15 @@ Item {
             width: parent.width - 40
             spacing: 16
 
-            RowLayout {
-                spacing: 12
-                Text {
-                    text: "Projects"
-                    font.pixelSize: 23
-                    font.bold: true
-                    color: "#cdd6f4"
-                }
-                Text { text: "[MOCK]"; font.pixelSize: 14; color: "#f38ba8" }
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 130; height: 32; radius: 4
-                    color: newHover.hovered ? "#264d80" : "#1e3a5f"
-                    border.color: "#89b4fa"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "＋  New project"
-                        font.pixelSize: 15
-                        font.bold: true
-                        color: "#cdd6f4"
-                    }
-                    HoverHandler { id: newHover }
-                    TapHandler { onTapped: newProjectDialog.open() }
+            PageHeader {
+                title: "Projects"
+                mock: true
+
+                PillButton {
+                    text: "＋  New project"
+                    variant: "primary"
+                    height: 32
+                    onClicked: newProjectDialog.open()
                 }
             }
 
@@ -138,18 +98,14 @@ Item {
                                     color: "#cdd6f4"
                                     elide: Text.ElideRight
                                 }
-                                Rectangle {
-                                    width: onTrackText.implicitWidth + 14
-                                    height: 20
-                                    radius: 10
-                                    color: modelData.onTrack ? "#1a3328" : "#3d1a28"
-                                    Text {
-                                        id: onTrackText
-                                        anchors.centerIn: parent
-                                        text: modelData.onTrack ? "on track" : "gap " + modelData.gapText
-                                        font.pixelSize: 13
-                                        color: modelData.onTrack ? "#a6e3a1" : "#f38ba8"
-                                    }
+                                StatusBadge {
+                                    // Was "#3d1a28" with no border — a transposed-digit
+                                    // typo (every other danger badge in the app uses
+                                    // "#3d2028") and the one badge missing a border.
+                                    // Routing through StatusBadge fixes both.
+                                    variant: modelData.onTrack ? "success" : "danger"
+                                    pillHeight: 20
+                                    text: modelData.onTrack ? "on track" : "gap " + modelData.gapText
                                 }
                             }
 
@@ -214,18 +170,10 @@ Item {
 
             RowLayout {
                 spacing: 12
-                Rectangle {
-                    width: 110; height: 30; radius: 4
-                    color: backHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text {
-                        anchors.centerIn: parent
-                        text: "←  All projects"
-                        font.pixelSize: 15
-                        color: "#cdd6f4"
-                    }
-                    HoverHandler { id: backHover }
-                    TapHandler { onTapped: page.showDetail = false }
+                PillButton {
+                    text: "←  All projects"
+                    variant: "neutral"
+                    onClicked: page.showDetail = false
                 }
                 Text {
                     text: controller.projectNames[controller.currentProject] ?? ""
@@ -385,76 +333,35 @@ Item {
     }
 
     // ══════════════════════════ NEW PROJECT DIALOG ═══════════════════════════
-    Popup {
+    FormDialog {
         id: newProjectDialog
-        anchors.centerIn: parent
+        dialogTitle: "New project"
+        saveText: "Create"
         width: 420
-        padding: 20
-        modal: true
 
-        background: Rectangle {
-            color: "#181825"
-            border.color: "#45475a"
-            radius: 8
-        }
+        FormRow { id: fName;      label: "Name";                     labelWidth: 150; placeholderText: "e.g. House deposit" }
+        FormRow { id: fTarget;    label: "Target amount (€)";        labelWidth: 150; placeholderText: "40000" }
+        FormRow { id: fMonths;    label: "Months until target";      labelWidth: 150; placeholderText: "36" }
+        FormRow { id: fEarmarked; label: "Already saved (€)";        labelWidth: 150; placeholderText: "0" }
+        FormRow { id: fMonthly;   label: "Monthly contribution (€)"; labelWidth: 150; placeholderText: "300" }
 
-        contentItem: ColumnLayout {
-            spacing: 12
-
-            Text {
-                text: "New project"
-                font.pixelSize: 19
-                font.bold: true
-                color: "#cdd6f4"
-            }
-
-            FormField { id: fName;      label: "Name";                 placeholder: "e.g. House deposit" }
-            FormField { id: fTarget;    label: "Target amount (€)";    placeholder: "40000" }
-            FormField { id: fMonths;    label: "Months until target";  placeholder: "36" }
-            FormField { id: fEarmarked; label: "Already saved (€)";    placeholder: "0" }
-            FormField { id: fMonthly;   label: "Monthly contribution (€)"; placeholder: "300" }
-
-            RowLayout {
-                Layout.topMargin: 6
-                Item { Layout.fillWidth: true }
-                Rectangle {
-                    width: 80; height: 30; radius: 4
-                    color: cancelHover.hovered ? "#313244" : "#1e1e2e"
-                    border.color: "#313244"
-                    Text { anchors.centerIn: parent; text: "Cancel"; font.pixelSize: 15; color: "#cdd6f4" }
-                    HoverHandler { id: cancelHover }
-                    TapHandler { onTapped: newProjectDialog.close() }
-                }
-                Rectangle {
-                    width: 90; height: 30; radius: 4
-                    color: createHover.hovered ? "#264d80" : "#1e3a5f"
-                    border.color: "#89b4fa"
-                    Text { anchors.centerIn: parent; text: "Create"; font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
-                    HoverHandler { id: createHover }
-                    TapHandler {
-                        onTapped: {
-                            var target = parseFloat(fTarget.field.text)
-                            var months = parseInt(fMonths.field.text)
-                            var saved = parseFloat(fEarmarked.field.text)
-                            var monthly = parseFloat(fMonthly.field.text)
-                            if (fName.field.text.trim().length === 0
-                                    || isNaN(target) || isNaN(months))
-                                return
-                            controller.addProject(fName.field.text,
-                                                  target, months,
-                                                  isNaN(saved) ? 0 : saved,
-                                                  isNaN(monthly) ? 0 : monthly)
-                            fName.field.text = ""
-                            fTarget.field.text = ""
-                            fMonths.field.text = ""
-                            fEarmarked.field.text = ""
-                            fMonthly.field.text = ""
-                            newProjectDialog.close()
-                            page.showDetail = true   // controller selected the new one
-                        }
-                    }
-                }
-            }
+        onSaveClicked: {
+            var target = parseFloat(fTarget.text)
+            var months = parseInt(fMonths.text)
+            var saved = parseFloat(fEarmarked.text)
+            var monthly = parseFloat(fMonthly.text)
+            if (fName.text.trim().length === 0 || isNaN(target) || isNaN(months))
+                return
+            controller.addProject(fName.text, target, months,
+                                  isNaN(saved) ? 0 : saved,
+                                  isNaN(monthly) ? 0 : monthly)
+            fName.text = ""
+            fTarget.text = ""
+            fMonths.text = ""
+            fEarmarked.text = ""
+            fMonthly.text = ""
+            close()
+            page.showDetail = true   // controller selected the new one
         }
     }
 }

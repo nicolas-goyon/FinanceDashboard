@@ -6,13 +6,6 @@
 #include <QTimer>
 #include <QVariantMap>
 
-namespace {
-QString dateText(const QDate& d)
-{
-    return d.isValid() ? d.toString(QStringLiteral("dd/MM/yyyy")) : QStringLiteral("—");
-}
-} // namespace
-
 AccountController::AccountController(QObject* parent)
     : QObject(parent)
 {
@@ -407,8 +400,8 @@ QVariantList AccountController::transactionsForAccount(int accountIndex) const
     rows.reserve(txs.size());
     for (const Data::Transaction& tx : txs) {
         rows.append(QVariantMap{
-            { "confirmationDate", dateText(tx.confirmationDate) },
-            { "operationDate",    dateText(tx.operationDate) },
+            { "confirmationDate", Fmt::dateOrDash(tx.confirmationDate) },
+            { "operationDate",    Fmt::dateOrDash(tx.operationDate) },
             { "description",      tx.description },
             { "debitText",        tx.debit  > 0.0 ? Fmt::money(-tx.debit) : QStringLiteral("—") },
             { "creditText",       tx.credit > 0.0 ? Fmt::money(tx.credit, true) : QStringLiteral("—") },
