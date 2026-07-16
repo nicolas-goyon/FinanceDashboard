@@ -10,7 +10,7 @@
                             "column": 25,
                             "durationMicroseconds": 0,
                             "functionName": "items",
-                            "line": 35,
+                            "line": 56,
                             "message": "Cannot generate efficient code for storing an array in a non-sequence type"
                         },
                         {
@@ -18,7 +18,7 @@
                             "column": 12,
                             "durationMicroseconds": 0,
                             "functionName": "model",
-                            "line": 43,
+                            "line": 64,
                             "message": "Could not find property \"model\"."
                         },
                         {
@@ -26,7 +26,15 @@
                             "column": 5,
                             "durationMicroseconds": 0,
                             "functionName": "indexForName",
-                            "line": 46,
+                            "line": 67,
+                            "message": "Functions without type annotations won't be compiled"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 5,
+                            "durationMicroseconds": 0,
+                            "functionName": "readableTextColor",
+                            "line": 76,
                             "message": "Functions without type annotations won't be compiled"
                         },
                         {
@@ -34,7 +42,7 @@
                             "column": 19,
                             "durationMicroseconds": 0,
                             "functionName": "currentIndex",
-                            "line": 53,
+                            "line": 81,
                             "message": "Could not find property \"currentIndex\"."
                         },
                         {
@@ -42,7 +50,7 @@
                             "column": 18,
                             "durationMicroseconds": 0,
                             "functionName": "onActivated",
-                            "line": 54,
+                            "line": 82,
                             "message": "Could not find signal \"activated\"."
                         },
                         {
@@ -50,15 +58,47 @@
                             "column": 18,
                             "durationMicroseconds": 0,
                             "functionName": "onActivated",
-                            "line": 54,
+                            "line": 82,
                             "message": "Could not find signal \"activated\"."
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 43,
+                            "durationMicroseconds": 0,
+                            "functionName": "currentColor",
+                            "line": 84,
+                            "message": "Cannot access value for name currentIndex"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 47,
+                            "durationMicroseconds": 0,
+                            "functionName": "currentTextColor",
+                            "line": 87,
+                            "message": "Cannot generate efficient code for call to untyped JavaScript function"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 44,
+                            "durationMicroseconds": 0,
+                            "functionName": "itemColor",
+                            "line": 95,
+                            "message": "Cannot access value for name delegate"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 48,
+                            "durationMicroseconds": 0,
+                            "functionName": "itemTextColor",
+                            "line": 96,
+                            "message": "Cannot access value for name control"
                         },
                         {
                             "codegenResult": 2,
                             "column": 16,
                             "durationMicroseconds": 0,
                             "functionName": "width",
-                            "line": 62,
+                            "line": 98,
                             "message": "Could not find property \"width\"."
                         },
                         {
@@ -66,79 +106,47 @@
                             "column": 22,
                             "durationMicroseconds": 0,
                             "functionName": "highlighted",
-                            "line": 63,
+                            "line": 99,
                             "message": "Could not find property \"highlighted\"."
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 24,
-                            "durationMicroseconds": 0,
-                            "functionName": "color",
-                            "line": 69,
-                            "message": "Cannot access value for name delegate"
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 23,
-                            "durationMicroseconds": 0,
-                            "functionName": "text",
-                            "line": 74,
-                            "message": "Cannot access value for name delegate"
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 24,
-                            "durationMicroseconds": 0,
-                            "functionName": "elide",
-                            "line": 77,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 0,
-                            "column": 36,
-                            "durationMicroseconds": 0,
-                            "functionName": "verticalAlignment",
-                            "line": 78,
-                            "message": ""
-                        },
-                        {
-                            "codegenResult": 2,
-                            "column": 22,
-                            "durationMicroseconds": 0,
-                            "functionName": "visible",
-                            "line": 88,
-                            "message": "Cannot access value for name control"
                         },
                         {
                             "codegenResult": 2,
                             "column": 20,
                             "durationMicroseconds": 0,
                             "functionName": "color",
-                            "line": 89,
-                            "message": "Cannot access value for name control"
+                            "line": 102,
+                            "message": "Cannot access value for name delegate"
                         },
                         {
                             "codegenResult": 2,
-                            "column": 27,
+                            "column": 22,
                             "durationMicroseconds": 0,
-                            "functionName": "rightPadding",
-                            "line": 97,
-                            "message": "Cannot access value for name control"
+                            "functionName": "opacity",
+                            "line": 103,
+                            "message": "Cannot access value for name delegate"
                         },
                         {
                             "codegenResult": 2,
                             "column": 19,
                             "durationMicroseconds": 0,
                             "functionName": "text",
-                            "line": 98,
-                            "message": "Cannot access value for name control"
+                            "line": 107,
+                            "message": "Cannot access value for name delegate"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 20,
+                            "durationMicroseconds": 0,
+                            "functionName": "color",
+                            "line": 108,
+                            "message": "Cannot access value for name delegate"
                         },
                         {
                             "codegenResult": 0,
                             "column": 20,
                             "durationMicroseconds": 0,
                             "functionName": "elide",
-                            "line": 101,
+                            "line": 112,
                             "message": ""
                         },
                         {
@@ -146,8 +154,48 @@
                             "column": 32,
                             "durationMicroseconds": 0,
                             "functionName": "verticalAlignment",
-                            "line": 102,
+                            "line": 113,
                             "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 15,
+                            "durationMicroseconds": 0,
+                            "functionName": "text",
+                            "line": 131,
+                            "message": "Cannot access value for name control"
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 16,
+                            "durationMicroseconds": 0,
+                            "functionName": "color",
+                            "line": 132,
+                            "message": "Cannot access value for name control"
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 16,
+                            "durationMicroseconds": 0,
+                            "functionName": "elide",
+                            "line": 134,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 0,
+                            "column": 28,
+                            "durationMicroseconds": 0,
+                            "functionName": "verticalAlignment",
+                            "line": 135,
+                            "message": ""
+                        },
+                        {
+                            "codegenResult": 2,
+                            "column": 16,
+                            "durationMicroseconds": 0,
+                            "functionName": "color",
+                            "line": 140,
+                            "message": "Cannot access value for name control"
                         }
                     ],
                     "filePath": "C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/components/ColorComboBox.qml"

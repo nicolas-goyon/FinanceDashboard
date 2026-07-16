@@ -1488,8 +1488,12 @@ FinanceDashboard_autogen/timestamp: \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/Database.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AssetEntriesTable.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/AssetEntriesTable.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/CategoriesTable.cpp \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/CategoriesTable.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SnapshotsTable.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SnapshotsTable.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SubcategoriesTable.cpp \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SubcategoriesTable.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/import/CheckingCsvTemplateV1.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/import/CheckingCsvTemplateV1.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/import/ImportTemplate.h \
@@ -1498,6 +1502,7 @@ FinanceDashboard_autogen/timestamp: \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/main.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/AssetEntry.cpp \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/AssetEntry.h \
+	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/Category.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/ImportLog.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/ImportedStatement.h \
 	C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/PortfolioData.cpp \

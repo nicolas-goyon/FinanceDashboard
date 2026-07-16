@@ -1,5 +1,7 @@
 #pragma once
 
+#include "models/Category.h"
+
 #include <QObject>
 #include <QString>
 #include <QVariantList>
@@ -18,10 +20,16 @@
 // per-page): categories are a cross-cutting concept edited from one page and
 // consumed on two others, so it must be one shared instance for edits to show
 // up immediately elsewhere in the same run — a per-page instance (the usual
-// pattern) would silently reset on every page navigation. Still in-memory
-// mock data only, same as the rest of the app (no DB table yet) — it just
-// resets on app restart, consistent with the "in-memory mock" scope decided
-// for this pass.
+// pattern) would silently reset on every page navigation.
+//
+// DB-backed (categories/subcategories tables — see db/tables/CategoriesTable.h,
+// db/tables/SubcategoriesTable.h, Database::loadCategories() and friends):
+// the constructor loads the current list from Database::instance(), or seeds
+// the original mock defaults (and persists them) the very first time the app
+// runs against an empty DB. Every CRUD method here writes through to the DB
+// first and only updates the in-memory list (m_categories) if that write
+// succeeded, so a failed DB write never produces a phantom in-memory-only
+// entry that would vanish on the next reload.
 //
 // Lives in src/controllers/dataentry/ alongside DataEntryController and
 // SnapshotImportController — grouped by domain (Data Entry) like every other
@@ -35,7 +43,10 @@
 //
 // Data shape (rebuilt into a QVariantList on every categories() read, same
 // convention as SnapshotImportController::transactionRows() — no separate
-// QAbstractListModel):
+// QAbstractListModel). Row ids (Data::Category::id / Data::Subcategory::id)
+// are kept internally only, not exposed in this QVariantList — QML still
+// addresses categories/subcategories by list index, unchanged from before
+// the DB-backed rewrite:
 //   categories: [{ name, color, subcategories: [{ name, color }, ...] }, ...]
 
 class CategoryController : public QObject
@@ -59,19 +70,27 @@ public:
     // Default color to pre-fill the "add subcategory" dialog with: a lighter
     // or darker HSL shade of the parent category's own color, chosen to be
     // distinct from that category's existing subcategory colors (siblings
-    // only — not checked against other categories). Returns the category's
-    // own color unchanged if categoryIndex is invalid or no distinct shade
-    // was found within the tried steps.
+    // only — other categories' colors are allowed to repeat, per product
+    // decision, since they're a different visual group).
+    // Falls back to the category's own color if categoryIndex is invalid or
+    // every tried shade collides (many existing subcategories). Pure
+    // algorithm in C++, per the "UI in QML, algorithms in C++" rule —
+    // CategoriesManagePage.qml's "+ Subcategory" action just calls it and
+    // passes the result as the dialog's initial color; the user can still
+    // override it via the color picker before saving.
     Q_INVOKABLE QString suggestSubcategoryColor(int categoryIndex) const;
 
-    // Category CRUD (index into the top-level categories list).
+    // Category CRUD (index into the top-level categories list). Each of
+    // these writes through Database::instance() first; the in-memory list
+    // (and the categoriesChanged() signal) only updates if that write
+    // succeeded.
     Q_INVOKABLE void addCategory(const QString& name, const QString& color);
     Q_INVOKABLE void renameCategory(int index, const QString& newName);
     Q_INVOKABLE void setCategoryColor(int index, const QString& color);
     Q_INVOKABLE void removeCategory(int index);
 
     // Subcategory CRUD (categoryIndex into categories, subIndex into that
-    // category's subcategories).
+    // category's subcategories). Same write-through-then-update convention.
     Q_INVOKABLE void addSubcategory(int categoryIndex, const QString& name, const QString& color);
     Q_INVOKABLE void renameSubcategory(int categoryIndex, int subIndex, const QString& newName);
     Q_INVOKABLE void setSubcategoryColor(int categoryIndex, int subIndex, const QString& color);
@@ -81,15 +100,11 @@ signals:
     void categoriesChanged();
 
 private:
-    struct Subcategory {
-        QString name;
-        QString color;
-    };
-    struct Category {
-        QString name;
-        QString color;
-        QVector<Subcategory> subcategories;
-    };
+    // Seeds the original mock category/subcategory list into the DB (and
+    // m_categories) the first time the app runs against an empty categories
+    // table. Only called from the constructor when Database::loadCategories()
+    // comes back empty.
+    void seedDefaults();
 
-    QVector<Category> m_categories;
+    QVector<Data::Category> m_categories;
 };

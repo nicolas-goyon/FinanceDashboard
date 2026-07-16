@@ -584,7 +584,7 @@
                         {
                             "codegenResult": 2,
                             "column": 35,
-                            "durationMicroseconds": 0,
+                            "durationMicroseconds": 1000,
                             "functionName": "onTapped",
                             "line": 466,
                             "message": "Cannot access value for name subNameField"

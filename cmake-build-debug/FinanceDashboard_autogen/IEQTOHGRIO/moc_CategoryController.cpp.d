@@ -367,4 +367,5 @@ C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/cmake-buil
   C:/Qt/6.11.1/mingw_64/include/QtQml/qtqml-config.h \
   C:/Qt/6.11.1/mingw_64/include/QtQml/qtqmlexports.h \
   C:/Qt/6.11.1/mingw_64/include/QtQml/qtqmlglobal.h \
-  C:/Qt/6.11.1/mingw_64/include/QtQmlIntegration/qqmlintegration.h
+  C:/Qt/6.11.1/mingw_64/include/QtQmlIntegration/qqmlintegration.h \
+  C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/Category.h

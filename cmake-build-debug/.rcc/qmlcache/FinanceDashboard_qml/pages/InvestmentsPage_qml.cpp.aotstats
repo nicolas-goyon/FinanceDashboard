@@ -80,7 +80,7 @@
                         {
                             "codegenResult": 0,
                             "column": 38,
-                            "durationMicroseconds": 0,
+                            "durationMicroseconds": 1000,
                             "functionName": "colorScheme",
                             "line": 61,
                             "message": ""
@@ -112,7 +112,7 @@
                         {
                             "codegenResult": 2,
                             "column": 48,
-                            "durationMicroseconds": 2000,
+                            "durationMicroseconds": 3000,
                             "functionName": "onCompleted",
                             "line": 80,
                             "message": "Cannot generate efficient code for LoadElement on a sequence potentially affected by side effects"
@@ -144,7 +144,7 @@
                         {
                             "codegenResult": 0,
                             "column": 44,
-                            "durationMicroseconds": 1000,
+                            "durationMicroseconds": 0,
                             "functionName": "onClicked",
                             "line": 134,
                             "message": ""

@@ -8,7 +8,7 @@
                         {
                             "codegenResult": 2,
                             "column": 12,
-                            "durationMicroseconds": 1000,
+                            "durationMicroseconds": 2000,
                             "functionName": "color",
                             "line": 21,
                             "message": "Cannot generate efficient code for internal conversion with incompatible or ambiguous types: conversion to QVariant -> QColor stored as QVariant"
@@ -32,7 +32,7 @@
                         {
                             "codegenResult": 0,
                             "column": 18,
-                            "durationMicroseconds": 1000,
+                            "durationMicroseconds": 0,
                             "functionName": "visible",
                             "line": 28,
                             "message": ""

@@ -41,46 +41,46 @@
 				"parent" : 2
 			},
 			{
-				"command" : 2,
-				"file" : 0,
-				"line" : 1365,
-				"parent" : 2
-			},
-			{
 				"command" : 5,
 				"file" : 2,
-				"line" : 45,
+				"line" : 50,
 				"parent" : 0
 			},
 			{
 				"command" : 4,
 				"file" : 0,
 				"line" : 1507,
-				"parent" : 5
+				"parent" : 4
 			},
 			{
 				"command" : 3,
 				"file" : 0,
 				"line" : 1035,
-				"parent" : 6
+				"parent" : 5
 			},
 			{
 				"command" : 2,
 				"file" : 0,
 				"line" : 3864,
-				"parent" : 7
+				"parent" : 6
 			},
 			{
 				"command" : 6,
 				"file" : 0,
 				"line" : 910,
-				"parent" : 6
+				"parent" : 5
 			},
 			{
 				"command" : 2,
 				"file" : 0,
 				"line" : 4286,
-				"parent" : 9
+				"parent" : 8
+			},
+			{
+				"command" : 2,
+				"file" : 0,
+				"line" : 1365,
+				"parent" : 2
 			}
 		]
 	},
@@ -100,16 +100,16 @@
 	"orderDependencies" : 
 	[
 		{
-			"backtrace" : 4,
-			"id" : "Qt6::qmlaotstats::@6890427a1f51a3e7e1df"
-		},
-		{
-			"backtrace" : 8,
+			"backtrace" : 7,
 			"id" : "Qt6::qmlcachegen::@6890427a1f51a3e7e1df"
 		},
 		{
-			"backtrace" : 10,
+			"backtrace" : 9,
 			"id" : "Qt6::qmltyperegistrar::@6890427a1f51a3e7e1df"
+		},
+		{
+			"backtrace" : 10,
+			"id" : "Qt6::qmlaotstats::@6890427a1f51a3e7e1df"
 		},
 		{
 			"id" : "module_FinanceDashboard_aotstats_target::@6890427a1f51a3e7e1df"

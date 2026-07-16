@@ -32,7 +32,7 @@
                         {
                             "codegenResult": 2,
                             "column": 28,
-                            "durationMicroseconds": 13000,
+                            "durationMicroseconds": 7000,
                             "functionName": "onCompleted",
                             "line": 29,
                             "message": "Cannot generate efficient code for storing an array in a non-sequence type"
@@ -192,7 +192,7 @@
                         {
                             "codegenResult": 2,
                             "column": 49,
-                            "durationMicroseconds": 45000,
+                            "durationMicroseconds": 0,
                             "functionName": "overrideValues",
                             "line": 162,
                             "message": "Cannot access value for name page"
@@ -224,7 +224,7 @@
                         {
                             "codegenResult": 2,
                             "column": 44,
-                            "durationMicroseconds": 4000,
+                            "durationMicroseconds": 0,
                             "functionName": "onClicked",
                             "line": 212,
                             "message": "Cannot generate efficient code for call to untyped JavaScript function"
@@ -240,7 +240,7 @@
                         {
                             "codegenResult": 2,
                             "column": 56,
-                            "durationMicroseconds": 1000,
+                            "durationMicroseconds": 0,
                             "functionName": "onCompleted",
                             "line": 204,
                             "message": "Cannot load property label from conversion to QVariant."

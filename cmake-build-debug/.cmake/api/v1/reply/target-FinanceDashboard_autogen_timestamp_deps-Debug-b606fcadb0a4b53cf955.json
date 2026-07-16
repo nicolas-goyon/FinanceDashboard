@@ -22,7 +22,7 @@
 			{
 				"command" : 3,
 				"file" : 0,
-				"line" : 45,
+				"line" : 50,
 				"parent" : 0
 			},
 			{
@@ -69,16 +69,16 @@
 			"id" : "FinanceDashboard_copy_qml::@6890427a1f51a3e7e1df"
 		},
 		{
+			"backtrace" : 0,
+			"id" : "FinanceDashboard_qmlimportscan::@6890427a1f51a3e7e1df"
+		},
+		{
 			"backtrace" : 6,
 			"id" : "FinanceDashboard_copy_res::@6890427a1f51a3e7e1df"
 		},
 		{
 			"backtrace" : 0,
 			"id" : "generate_qmlls_build_ini_file::@6890427a1f51a3e7e1df"
-		},
-		{
-			"backtrace" : 0,
-			"id" : "FinanceDashboard_qmlimportscan::@6890427a1f51a3e7e1df"
 		}
 	],
 	"folder" : 
@@ -96,11 +96,11 @@
 		},
 		{
 			"backtrace" : 0,
-			"id" : "Qt6::Core::@6890427a1f51a3e7e1df"
+			"id" : "Qt6::Gui::@6890427a1f51a3e7e1df"
 		},
 		{
 			"backtrace" : 0,
-			"id" : "Qt6::Gui::@6890427a1f51a3e7e1df"
+			"id" : "Qt6::Core::@6890427a1f51a3e7e1df"
 		},
 		{
 			"backtrace" : 0,
@@ -112,10 +112,6 @@
 		},
 		{
 			"backtrace" : 0,
-			"id" : "Qt6::Graphs::@6890427a1f51a3e7e1df"
-		},
-		{
-			"backtrace" : 0,
 			"id" : "Qt6::Sql::@6890427a1f51a3e7e1df"
 		},
 		{
@@ -124,15 +120,19 @@
 		},
 		{
 			"backtrace" : 0,
+			"id" : "Qt6::Graphs::@6890427a1f51a3e7e1df"
+		},
+		{
+			"backtrace" : 0,
 			"id" : "FinanceDashboard_tooling::@6890427a1f51a3e7e1df"
 		},
 		{
 			"backtrace" : 0,
-			"id" : "generate_qmlls_build_ini_file::@6890427a1f51a3e7e1df"
+			"id" : "FinanceDashboard_qmlimportscan::@6890427a1f51a3e7e1df"
 		},
 		{
 			"backtrace" : 0,
-			"id" : "FinanceDashboard_qmlimportscan::@6890427a1f51a3e7e1df"
+			"id" : "generate_qmlls_build_ini_file::@6890427a1f51a3e7e1df"
 		}
 	],
 	"paths" : 

@@ -19,7 +19,7 @@ Finance Dashboard is a standalone desktop application for monitoring portfolio d
 | **Projects** | Per-project goal tracking with projection vs target, plus a loan simulator (real annuity math) |
 | **Data Entry** | Monthly snapshot form, transaction entry with a manual category/subcategory picker, history, annual summary |
 | ↳ **New Monthly Snapshot** (import) | Import a bank statement file (CSV today, more formats later), review/edit/categorize the parsed transactions, check parse warnings/errors in a log popup. Parsing is real; saving is still mock (see `ARCHITECTURE.MD § Statement Import`). |
-| ↳ **Manage Categories** | Add, rename, recolor, and remove categories and subcategories used everywhere a transaction gets classified (see `ARCHITECTURE.MD § Category Management`). |
+| ↳ **Manage Categories** | Add, rename, recolor, and remove categories and subcategories used everywhere a transaction gets classified. SQLite-backed — the list now persists across restarts (see `ARCHITECTURE.MD § Category Management`). |
 
 ---
 
@@ -93,11 +93,13 @@ FinanceDashboard/
     │   ├── investments/    #   InvestmentsController
     │   ├── projects/       #   ProjectsController
     │   ├── dataentry/      #   DataEntryController, SnapshotImportController,
-    │   │                   #   CategoryController (QML_SINGLETON — category/subcategory CRUD)
+    │   │                   #   CategoryController (QML_SINGLETON — category/subcategory
+    │   │                   #   CRUD, SQLite-backed)
     │   └── legacy/         #   Unregistered previous-gen controllers, kept as reference
     ├── import/             # Statement-import template system (ImportTemplate + templates)
-    ├── models/             # Data structs (JSON-compatible)
-    ├── db/                 # SQLite layer (Database singleton + table classes)
+    ├── models/             # Data structs (JSON-compatible where noted; Category.h is not)
+    ├── db/                 # SQLite layer (Database singleton + table classes, incl.
+    │                       # categories/subcategories)
     ├── utils/              # Formatter / FileFinder / JsonReader (header-only)
     ├── data/               # Debug/sample data factory
     ├── MainWindow.* , tabs/  # LEGACY Widgets UI — not compiled, kept as porting reference

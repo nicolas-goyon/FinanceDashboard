@@ -23,7 +23,7 @@
 			{
 				"command" : 4,
 				"file" : 1,
-				"line" : 45,
+				"line" : 50,
 				"parent" : 0
 			},
 			{
@@ -47,7 +47,7 @@
 			{
 				"command" : 0,
 				"file" : 0,
-				"line" : 1799,
+				"line" : 1734,
 				"parent" : 4
 			}
 		]
@@ -67,8 +67,8 @@
 	{
 		"name" : "QtInternalTargets/QmlLinter"
 	},
-	"id" : "FinanceDashboard_qmllint_module::@6890427a1f51a3e7e1df",
-	"name" : "FinanceDashboard_qmllint_module",
+	"id" : "FinanceDashboard_qmllint::@6890427a1f51a3e7e1df",
+	"name" : "FinanceDashboard_qmllint",
 	"orderDependencies" : 
 	[
 		{
@@ -106,13 +106,13 @@
 		{
 			"backtrace" : 5,
 			"isGenerated" : true,
-			"path" : "cmake-build-debug/CMakeFiles/FinanceDashboard_qmllint_module",
+			"path" : "cmake-build-debug/CMakeFiles/FinanceDashboard_qmllint",
 			"sourceGroupIndex" : 0
 		},
 		{
 			"backtrace" : 0,
 			"isGenerated" : true,
-			"path" : "cmake-build-debug/CMakeFiles/FinanceDashboard_qmllint_module.rule",
+			"path" : "cmake-build-debug/CMakeFiles/FinanceDashboard_qmllint.rule",
 			"sourceGroupIndex" : 1
 		}
 	],

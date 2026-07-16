@@ -140,7 +140,7 @@ Module {
     }
     Component {
         file: "CategoryController.h"
-        lineNumber: 41
+        lineNumber: 52
         name: "CategoryController"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -154,22 +154,22 @@ Module {
             read: "categories"
             notify: "categoriesChanged"
             index: 0
-            lineNumber: 47
+            lineNumber: 58
             isReadonly: true
         }
-        Signal { name: "categoriesChanged"; lineNumber: 81 }
+        Signal { name: "categoriesChanged"; lineNumber: 100 }
         Method {
             name: "categoryColor"
             type: "QString"
             isMethodConstant: true
-            lineNumber: 56
+            lineNumber: 67
             Parameter { name: "categoryName"; type: "QString" }
         }
         Method {
             name: "subcategoryColor"
             type: "QString"
             isMethodConstant: true
-            lineNumber: 57
+            lineNumber: 68
             Parameter { name: "categoryName"; type: "QString" }
             Parameter { name: "subcategoryName"; type: "QString" }
         }
@@ -177,56 +177,56 @@ Module {
             name: "suggestSubcategoryColor"
             type: "QString"
             isMethodConstant: true
-            lineNumber: 65
+            lineNumber: 81
             Parameter { name: "categoryIndex"; type: "int" }
         }
         Method {
             name: "addCategory"
-            lineNumber: 68
+            lineNumber: 87
             Parameter { name: "name"; type: "QString" }
             Parameter { name: "color"; type: "QString" }
         }
         Method {
             name: "renameCategory"
-            lineNumber: 69
+            lineNumber: 88
             Parameter { name: "index"; type: "int" }
             Parameter { name: "newName"; type: "QString" }
         }
         Method {
             name: "setCategoryColor"
-            lineNumber: 70
+            lineNumber: 89
             Parameter { name: "index"; type: "int" }
             Parameter { name: "color"; type: "QString" }
         }
         Method {
             name: "removeCategory"
-            lineNumber: 71
+            lineNumber: 90
             Parameter { name: "index"; type: "int" }
         }
         Method {
             name: "addSubcategory"
-            lineNumber: 75
+            lineNumber: 94
             Parameter { name: "categoryIndex"; type: "int" }
             Parameter { name: "name"; type: "QString" }
             Parameter { name: "color"; type: "QString" }
         }
         Method {
             name: "renameSubcategory"
-            lineNumber: 76
+            lineNumber: 95
             Parameter { name: "categoryIndex"; type: "int" }
             Parameter { name: "subIndex"; type: "int" }
             Parameter { name: "newName"; type: "QString" }
         }
         Method {
             name: "setSubcategoryColor"
-            lineNumber: 77
+            lineNumber: 96
             Parameter { name: "categoryIndex"; type: "int" }
             Parameter { name: "subIndex"; type: "int" }
             Parameter { name: "color"; type: "QString" }
         }
         Method {
             name: "removeSubcategory"
-            lineNumber: 78
+            lineNumber: 97
             Parameter { name: "categoryIndex"; type: "int" }
             Parameter { name: "subIndex"; type: "int" }
         }

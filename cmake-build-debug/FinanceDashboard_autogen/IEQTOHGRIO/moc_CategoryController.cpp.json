@@ -12,7 +12,7 @@
                 }
             ],
             "className": "CategoryController",
-            "lineNumber": 41,
+            "lineNumber": 52,
             "methods": [
                 {
                     "access": "public",
@@ -24,7 +24,7 @@
                     ],
                     "index": 1,
                     "isConst": true,
-                    "lineNumber": 56,
+                    "lineNumber": 67,
                     "name": "categoryColor",
                     "returnType": "QString"
                 },
@@ -42,7 +42,7 @@
                     ],
                     "index": 2,
                     "isConst": true,
-                    "lineNumber": 57,
+                    "lineNumber": 68,
                     "name": "subcategoryColor",
                     "returnType": "QString"
                 },
@@ -56,7 +56,7 @@
                     ],
                     "index": 3,
                     "isConst": true,
-                    "lineNumber": 65,
+                    "lineNumber": 81,
                     "name": "suggestSubcategoryColor",
                     "returnType": "QString"
                 },
@@ -73,7 +73,7 @@
                         }
                     ],
                     "index": 4,
-                    "lineNumber": 68,
+                    "lineNumber": 87,
                     "name": "addCategory",
                     "returnType": "void"
                 },
@@ -90,7 +90,7 @@
                         }
                     ],
                     "index": 5,
-                    "lineNumber": 69,
+                    "lineNumber": 88,
                     "name": "renameCategory",
                     "returnType": "void"
                 },
@@ -107,7 +107,7 @@
                         }
                     ],
                     "index": 6,
-                    "lineNumber": 70,
+                    "lineNumber": 89,
                     "name": "setCategoryColor",
                     "returnType": "void"
                 },
@@ -120,7 +120,7 @@
                         }
                     ],
                     "index": 7,
-                    "lineNumber": 71,
+                    "lineNumber": 90,
                     "name": "removeCategory",
                     "returnType": "void"
                 },
@@ -141,7 +141,7 @@
                         }
                     ],
                     "index": 8,
-                    "lineNumber": 75,
+                    "lineNumber": 94,
                     "name": "addSubcategory",
                     "returnType": "void"
                 },
@@ -162,7 +162,7 @@
                         }
                     ],
                     "index": 9,
-                    "lineNumber": 76,
+                    "lineNumber": 95,
                     "name": "renameSubcategory",
                     "returnType": "void"
                 },
@@ -183,7 +183,7 @@
                         }
                     ],
                     "index": 10,
-                    "lineNumber": 77,
+                    "lineNumber": 96,
                     "name": "setSubcategoryColor",
                     "returnType": "void"
                 },
@@ -200,7 +200,7 @@
                         }
                     ],
                     "index": 11,
-                    "lineNumber": 78,
+                    "lineNumber": 97,
                     "name": "removeSubcategory",
                     "returnType": "void"
                 }
@@ -212,7 +212,7 @@
                     "designable": true,
                     "final": false,
                     "index": 0,
-                    "lineNumber": 47,
+                    "lineNumber": 58,
                     "name": "categories",
                     "notify": "categoriesChanged",
                     "override": false,
@@ -230,7 +230,7 @@
                 {
                     "access": "public",
                     "index": 0,
-                    "lineNumber": 81,
+                    "lineNumber": 100,
                     "name": "categoriesChanged",
                     "returnType": "void"
                 }

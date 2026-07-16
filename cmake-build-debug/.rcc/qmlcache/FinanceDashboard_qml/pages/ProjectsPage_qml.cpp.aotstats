@@ -8,7 +8,7 @@
                         {
                             "codegenResult": 2,
                             "column": 5,
-                            "durationMicroseconds": 6000,
+                            "durationMicroseconds": 5000,
                             "functionName": "rebuildChart",
                             "line": 45,
                             "message": "Cannot generate efficient code for LoadElement on a sequence potentially affected by side effects"
@@ -280,7 +280,7 @@
                         {
                             "codegenResult": 2,
                             "column": 99,
-                            "durationMicroseconds": 0,
+                            "durationMicroseconds": 1000,
                             "functionName": "color",
                             "line": 192,
                             "message": "Cannot access value for name modelData"
@@ -552,7 +552,7 @@
                         {
                             "codegenResult": 0,
                             "column": 175,
-                            "durationMicroseconds": 0,
+                            "durationMicroseconds": 1000,
                             "functionName": "horizontalAlignment",
                             "line": 358,
                             "message": ""

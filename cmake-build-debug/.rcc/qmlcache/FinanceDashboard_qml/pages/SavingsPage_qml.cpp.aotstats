@@ -120,7 +120,7 @@
                         {
                             "codegenResult": 2,
                             "column": 48,
-                            "durationMicroseconds": 1000,
+                            "durationMicroseconds": 2000,
                             "functionName": "onCompleted",
                             "line": 92,
                             "message": "Cannot generate efficient code for LoadElement on a sequence potentially affected by side effects"
@@ -248,7 +248,7 @@
                         {
                             "codegenResult": 0,
                             "column": 52,
-                            "durationMicroseconds": 2000,
+                            "durationMicroseconds": 0,
                             "functionName": "onCompleted",
                             "line": 200,
                             "message": ""

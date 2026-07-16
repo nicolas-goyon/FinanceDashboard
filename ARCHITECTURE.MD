@@ -36,13 +36,13 @@ The app was restructured around the 6 pages from **PROJECT.md**. Current state: 
 | Projects | `ProjectsController` | project `ComboBox` · KPI cards · projection-vs-target lines · **loan simulator (REAL annuity math in C++)** · save-vs-borrow comparison | MOCK projects, real loan math |
 | Data Entry / Reports | `DataEntryController` | snapshot form per account · transaction entry with **manual** category/subcategory picker (`CategoryController`, see § Category Management) · history table · annual summary | MOCK, nothing persisted |
 | ↳ New Monthly Snapshot (import) | `SnapshotImportController` | template + file picker · statement header info · editable/categorizable transaction table · account auto-match · parse log popup — see § Statement Import | **REAL parsing**, MOCK save |
-| ↳ Manage Categories | `CategoryController` (`QML_SINGLETON`) | add/rename/recolor/remove categories and subcategories — see § Category Management | MOCK (in-memory) |
+| ↳ Manage Categories | `CategoryController` (`QML_SINGLETON`) | add/rename/recolor/remove categories and subcategories — see § Category Management | **REAL** (SQLite-backed, `categories`/`subcategories` tables) |
 
 **Previous generations kept on disk but NOT compiled/registered:**
 - `qml/tabs/*` + `EntryController`, `DatabaseController`, `AnalyticsController`, `OverviewController`, `PortfolioController`, `ImportController` — the ported snapshot tabs. **Reuse these when wiring Data Entry / real DB** (they already do save/load/diff against `Database`).
 - `src/MainWindow.*`, `src/tabs/*` — the original Qt Widgets app.
 
-The `db/`, `models/`, `utils/` layers are still compiled and `main.cpp` still opens the SQLite DB — ready for the wiring phase.
+The `db/`, `models/`, `utils/` layers are still compiled and `main.cpp` still opens the SQLite DB — ready for the wiring phase. **Categories/subcategories are the first slice wired to the real DB** (`categories`/`subcategories` tables — see § Category Management); every other domain here is still MOCK.
 
 ---
 
@@ -65,10 +65,12 @@ FinanceDashboard/
 │   │   ├── KpiCard.qml     — LABEL / value / sub stat card.
 │   │   ├── ChartCard.qml   — Titled card hosting a chart (default property slot).
 │   │   ├── SidebarCategory.qml — One collapsible sidebar entry (see § Sidebar Navigation).
-│   │   └── ColorComboBox.qml — ComboBox that renders a color swatch next to each
-│   │                         item's name, in both the dropdown and the collapsed
-│   │                         field. Used for the category/subcategory pickers on
-│   │                         ImportSnapshotPage.qml (see § Statement Import).
+│   │   └── ColorComboBox.qml — ComboBox that fills its own background (field and
+│   │                         each dropdown row) with the item's color, with text
+│   │                         color and drop-down arrow (a custom Canvas indicator)
+│   │                         both picked per-item for contrast. Used for the
+│   │                         category/subcategory pickers on ImportSnapshotPage.qml
+│   │                         (see § Statement Import).
 │   ├── pages/              — One .qml per PROJECT.md page (see status table above),
 │   │   │                     plus OtherLegacyPage.qml and ImportSnapshotPage.qml
 │   │   │                     (neither is a PROJECT.md page on its own).
@@ -108,7 +110,7 @@ FinanceDashboard/
 │   │   │   DataEntryController — both belong to the Data Entry domain (the page
 │   │   │   itself plus its "New Monthly Snapshot" action).
 │   │   ├── dataentry/CategoryController.h/.cpp    — Category/subcategory CRUD (`QML_SINGLETON`,
-│   │   │   in-memory) — see § Category Management. Grouped under dataentry/ with
+│   │   │   SQLite-backed via `Database`) — see § Category Management. Grouped under dataentry/ with
 │   │   │   its siblings (not a separate category/ subfolder) — it's a Data Entry
 │   │   │   sidebar action like SnapshotImportController; being a QML_SINGLETON
 │   │   │   (shared instance, since it's consumed by two other pages too) is a
@@ -135,15 +137,21 @@ FinanceDashboard/
 │   │   │                             Both implement fromJson/toJson for JsonReader compat.
 │   │   ├── ImportedStatement.h     — ImportedTransaction + ImportedStatement (header-only,
 │   │   │                             staging data for the import review screen, no DB yet).
-│   │   └── ImportLog.h             — ImportLogEntry (header-only) — parse warnings/errors.
+│   │   ├── ImportLog.h             — ImportLogEntry (header-only) — parse warnings/errors.
+│   │   └── Category.h              — Data::Category + Data::Subcategory (header-only POD,
+│   │                                  mirrors the `categories`/`subcategories` table rows,
+│   │                                  `id` field for targeting CRUD by row — see § Category
+│   │                                  Management).
 │   │
 │   ├── db/
 │   │   ├── Database.h/.cpp      — Singleton orchestrator. Owns the QSqlDatabase
-│   │   │                          connection and the two table objects. All SQL is
+│   │   │                          connection and the four table objects. All SQL is
 │   │   │                          delegated; Database only handles transactions.
 │   │   └── tables/
-│   │       ├── SnapshotsTable.h/.cpp    — All SQL for the `snapshots` table.
-│   │       └── AssetEntriesTable.h/.cpp — All SQL for the `asset_entries` table.
+│   │       ├── SnapshotsTable.h/.cpp      — All SQL for the `snapshots` table.
+│   │       ├── AssetEntriesTable.h/.cpp   — All SQL for the `asset_entries` table.
+│   │       ├── CategoriesTable.h/.cpp     — All SQL for the `categories` table.
+│   │       └── SubcategoriesTable.h/.cpp  — All SQL for the `subcategories` table.
 │   │
 │   ├── utils/
 │   │   ├── Formatter.h        — Header-only display utilities (namespace Fmt).
@@ -268,10 +276,18 @@ no separate QML files per step. Uses `QtQuick.Dialogs.FileDialog` (nameFilters d
 the selected template's `fileFilter()`). Each transaction row has two
 `qml/components/ColorComboBox.qml`s — category then subcategory, sourced from
 `CategoryController.categories` (the subcategory list is filtered live to the row's
-currently-picked category). `ColorComboBox` renders each item's swatch (`color` role)
-next to its name, both in the dropdown and in the collapsed field, so the picked
-category/subcategory color is visible while choosing and once chosen — plain `ComboBox`
-before this only showed names. The parse log is a `Popup` (list of level/line/message/
+currently-picked category). `ColorComboBox` fills its own background (field and each
+dropdown row) with the item's `color` role, with text color chosen per item for
+contrast, so the picked category/subcategory color is visible while choosing and once
+chosen — plain `ComboBox` before this only showed names. (An earlier version showed the
+color as a small swatch badge ahead of the name instead of the background, which also ate
+into the 115px column width; separately, its collapsed-field contentItem reserved
+`indicator.width + spacing` for the dropdown arrow a second time on top of what the Basic
+style's own ComboBox.qml already reserves via `control.rightPadding` — that double
+reservation, copied from the Qt docs' "Customizing ComboBox" example without accounting
+for the fact that example also supplies its own custom `indicator`, was the real cause of
+names cropping to 2-3 characters despite visible space in the box. `ColorComboBox` now
+uses only a small fixed inset instead.) The parse log is a `Popup` (list of level/line/message/
 rawLine), reachable both from a badge in the statement-info card and a "View log" footer
 button. `closeRequested()` returns to the sidebar view (see § Sidebar Navigation →
 Overlay pages).
@@ -302,6 +318,10 @@ statement-import review table on `ImportSnapshotPage.qml`).
 - **Data shape**, rebuilt into a `QVariantList` on every `categories()` read (same
   convention as `SnapshotImportController::transactionRows()` — no separate
   `QAbstractListModel`): `[{ name, color, subcategories: [{ name, color }, ...] }, ...]`.
+  Row ids (`Data::Category::id` / `Data::Subcategory::id`) are kept in the internal
+  `QVector<Data::Category> m_categories` only, not exposed in this QVariantList — QML
+  still addresses categories/subcategories by list index, same as before the DB-backed
+  rewrite below.
 - **CRUD**: `addCategory`/`renameCategory`/`setCategoryColor`/`removeCategory` and the
   subcategory equivalents (indexed by `categoryIndex`/`subIndex` into the current list).
   `categoryColor(name)`/`subcategoryColor(categoryName, subName)` are convenience lookups
@@ -318,8 +338,53 @@ statement-import review table on `ImportSnapshotPage.qml`).
   algorithms in C++" rule — `CategoriesManagePage.qml`'s "+ Subcategory" action just calls
   it and passes the result as the dialog's initial color; the user can still override it
   via the color picker before saving.
-- **Scope: in-memory mock data only**, same as the rest of the app — resets on app restart.
-  No DB table yet (see Known Limitations/TODOs).
+- **Scope: SQLite-backed** — `categories`/`subcategories` tables (see below), the first
+  domain in the app wired to the real DB (every other controller is still MOCK). On
+  construction, `CategoryController` calls `Database::instance().loadCategories()`; on an
+  empty DB (first launch) it calls the private `seedDefaults()`, which writes the original
+  mock category/subcategory list through `Database::addCategory()`/`addSubcategory()` so it
+  persists from then on instead of resetting every run. Every CRUD method writes through
+  `Database::instance()` first and only updates `m_categories` (and emits
+  `categoriesChanged()`) if that write succeeded — a failed DB write (DB not open, a
+  UNIQUE-constraint collision on a bug elsewhere, etc.) never produces a phantom
+  in-memory-only entry that would silently vanish on the next reload.
+
+### Category/subcategory DB schema
+
+```sql
+CREATE TABLE categories (
+  id    INTEGER PRIMARY KEY AUTOINCREMENT,
+  name  TEXT    NOT NULL UNIQUE,
+  color TEXT    NOT NULL
+);
+
+CREATE TABLE subcategories (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  category_id INTEGER NOT NULL,
+  name        TEXT    NOT NULL,
+  color       TEXT    NOT NULL,
+  UNIQUE(category_id, name)
+);
+CREATE INDEX idx_subcategories_category ON subcategories(category_id);
+```
+
+- **`CategoriesTable`/`SubcategoriesTable`** (`src/db/tables/`) own all SQL for their table,
+  same shape as `SnapshotsTable`/`AssetEntriesTable`: `createTable()`, CRUD by row id,
+  `all()`/`allForCategory(id)` readers ordered by row id (insertion order — there is no
+  explicit sort-order column; nothing reorders categories today).
+- **No DB-level cascade** (no `ON DELETE CASCADE` — no foreign keys are declared at all
+  in this schema, consistent with the rest of the app). `Database::removeCategory(id)`
+  does the cascade manually in a transaction: `SubcategoriesTable::removeForCategory(id)`
+  then `CategoriesTable::remove(id)` — same "delete-then-insert" transaction style as
+  `Database::saveSnapshot()`.
+- **`Database::loadCategories()`** composes both tables: reads all categories, then fills
+  each one's `subcategories` from `SubcategoriesTable::allForCategory(id)` — mirrors how
+  `AssetEntriesTable::loadForSnapshot()` is composed by `Database::loadSnapshot()`.
+- **Duplicate-name checks stay in `CategoryController`, not SQL** — the controller already
+  checked for a case-insensitive duplicate name before mutating its in-memory list, and
+  that check is unchanged; the DB layer's `UNIQUE` constraints are a backstop, not the
+  primary validation path (`insert()` returns `-1` on any failure, duplicate or otherwise,
+  and the controller treats that as "write failed, don't touch the in-memory list").
 - **`CategoriesManagePage.qml`**: color picker uses `QtQuick.Dialogs.ColorDialog` (native
   platform dialog, verified against doc.qt.io/qt-6/qml-qtquick-dialogs-colordialog.html —
   `selectedColor`/`options` properties, inherited `open()`/`accepted()` from `Dialog`).
@@ -377,9 +442,13 @@ When a TableView/Repeater delegate declares ANY `required property`, model roles
 ### `db/Database.h/.cpp`
 - Meyers singleton — `Database::instance()`.
 - Owns the `QSqlDatabase` connection (`"finance_dashboard"` named connection).
-- Owns `SnapshotsTable m_snapshots` and `AssetEntriesTable m_assetEntries`.
+- Owns `SnapshotsTable m_snapshots`, `AssetEntriesTable m_assetEntries`,
+  `CategoriesTable m_categoriesTable`, `SubcategoriesTable m_subcategoriesTable`.
 - `open()` enables WAL mode then delegates `createTable()` to each table object.
-- `saveSnapshot()` is the only method that touches transactions (cross-table write).
+- `saveSnapshot()` and `removeCategory()` are the only methods that touch transactions
+  (cross-table writes).
+- `loadCategories()`, `addCategory()`/`renameCategory()`/`setCategoryColor()`/
+  `removeCategory()` and the subcategory equivalents — see § Category Management.
 - **DB file location:** `%APPDATA%\DataAnalysis\FinanceDashboard\finance_dashboard.db` (Windows).
 
 ### `db/tables/SnapshotsTable.h/.cpp`
@@ -393,8 +462,18 @@ When a TableView/Repeater delegate declares ANY `required property`, model roles
 - `loadForSnapshot(id, date)` rebuilds a `FinancialSnapshot`.
 - **To add a new asset category:** add a branch in `loadForSnapshot`, an `insertBatch` call in `saveSnapshot`, and a new layer in `AnalyticsController::reload()` + `AnalyticsTab.qml`.
 
+### `db/tables/CategoriesTable.h/.cpp` / `db/tables/SubcategoriesTable.h/.cpp`
+- See § Category Management for the full schema and CRUD surface.
+- `insert()` returns the new row id (`int`), or `-1` on any failure (duplicate name via the
+  `UNIQUE` constraint included) — callers (`CategoryController`) check for duplicates
+  themselves first and treat `-1` as "write failed, don't touch the in-memory list".
+- `all()` / `allForCategory(categoryId)` order by row id ascending (insertion order).
+
 ### `models/AssetEntry.h/.cpp`
 - `Data::AssetEntry` — `{name, value}`; `Data::FinancialSnapshot` — `{date, stocks[], coins[], metals[], etfs[]}`. Both with `toJson()` / `fromJson()`.
+
+### `models/Category.h`
+- Header-only POD: `Data::Subcategory` — `{id, name, color}`; `Data::Category` — `{id, name, color, subcategories[]}`. `id` is the SQLite row id (`-1` for a not-yet-persisted instance). No JSON (de)serialization — unlike `AssetEntry`, nothing round-trips these through a file.
 
 ### `models/PortfolioData.h/.cpp`
 - `Data::DataPoint` — `{time, value}`; `Data::PortfolioSummary` — top-level portfolio JSON document. Both `JsonReader`-compatible.
@@ -476,7 +555,6 @@ Open `CMakeLists.txt` → auto-configures → press Run.
 ## Known Limitations / TODOs
 
 - [ ] **Wire pages to real data** — replace the MOCK generators in the 6 page controllers with DB aggregation. The schema needs to grow: per-account monthly snapshots + categorized transactions (see PROJECT.md). Reuse `EntryController`/`DatabaseController` patterns.
-- [ ] `CategoryController` has no DB table yet — the category/subcategory list (and any color edits) resets on every app restart. Needs a `categories`/`subcategories` table + load/save wiring (see § Category Management).
 - [ ] Range selector (12–24 month window) on time charts — PROJECT.md calls for it on all pages.
 - [ ] Loan simulator: add optional insurance (assurance emprunteur) flat % input.
 - [ ] Delete previous-generation files once the new UI is validated: `src/MainWindow.*`, `src/tabs/*`, `qml/tabs/*`.
@@ -491,3 +569,5 @@ Open `CMakeLists.txt` → auto-configures → press Run.
 - [ ] Sidebar action list items are still mostly inert placeholders (only Data Entry → "New Monthly Snapshot" and "Manage Categories" are wired) — see § Sidebar Navigation.
 - [ ] `CheckingCsvTemplateV1::parseAmount()` currently has the "€" removal and the final space removal **commented out** (see the `//` lines in the .cpp). As written, an amount like `"1234.56 €"` will fail to convert (the trailing `€` breaks `toDouble()`), and any input relying on space-stripping (e.g. narrow-space-separated thousands not already covered by the two explicit space-char removals above it) won't be cleaned either. This was left as-is per an in-progress edit — revisit once real exported files are available to confirm what actually needs stripping.
 - [ ] `src/controllers/category/` is an empty leftover directory from moving `CategoryController` into `src/controllers/dataentry/` — the sandbox this move was done in couldn't `rmdir` it (mount permission issue). Delete it by hand; it's not referenced by `CMakeLists.txt` or anything else, so it's harmless to the build in the meantime.
+- [ ] `CategoryController::removeCategory()`/`removeSubcategory()` delete unconditionally — there is no `transactions` table yet (see the Statement import TODO above) so nothing can reference a category by id today, but once one exists, deleting an in-use category will need either a guard (refuse/warn) or an explicit "reassign to Other" step; revisit when the transactions table lands.
+- [ ] No reordering of categories/subcategories — `CategoriesTable.all()`/`SubcategoriesTable.allForCategory()` order by row id (insertion order) only, no explicit sort-order column. Add one if drag-to-reorder is ever wanted.

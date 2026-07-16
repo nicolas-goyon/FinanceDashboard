@@ -8,7 +8,7 @@
                         {
                             "codegenResult": 2,
                             "column": 39,
-                            "durationMicroseconds": 3000,
+                            "durationMicroseconds": 2000,
                             "functionName": "categories",
                             "line": 35,
                             "message": "Cannot generate efficient code for storing an array in a non-sequence type"
@@ -251,7 +251,7 @@
                             "durationMicroseconds": 0,
                             "functionName": "onCloseRequested",
                             "line": 158,
-                            "message": "Could not find signal \"closeRequested\"."
+                            "message": "Cannot access value for name root"
                         },
                         {
                             "codegenResult": 2,
@@ -315,7 +315,7 @@
                             "durationMicroseconds": 0,
                             "functionName": "onCloseRequested",
                             "line": 177,
-                            "message": "Could not find signal \"closeRequested\"."
+                            "message": "Cannot access value for name root"
                         }
                     ],
                     "filePath": "C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/qml/Main.qml"

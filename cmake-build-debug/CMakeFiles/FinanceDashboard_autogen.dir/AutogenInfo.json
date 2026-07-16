@@ -1694,9 +1694,21 @@
 			null
 		],
 		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/CategoriesTable.h",
+			"MU",
+			"VIF6ZRPZEV/moc_CategoriesTable.cpp",
+			null
+		],
+		[
 			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SnapshotsTable.h",
 			"MU",
 			"VIF6ZRPZEV/moc_SnapshotsTable.cpp",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SubcategoriesTable.h",
+			"MU",
+			"VIF6ZRPZEV/moc_SubcategoriesTable.cpp",
 			null
 		],
 		[
@@ -1721,6 +1733,12 @@
 			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/AssetEntry.h",
 			"MU",
 			"M4YTXQ7V2H/moc_AssetEntry.cpp",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/models/Category.h",
+			"MU",
+			"M4YTXQ7V2H/moc_Category.cpp",
 			null
 		],
 		[
@@ -1945,7 +1963,17 @@
 			null
 		],
 		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/CategoriesTable.cpp",
+			"MU",
+			null
+		],
+		[
 			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SnapshotsTable.cpp",
+			"MU",
+			null
+		],
+		[
+			"C:/Users/Nico/Desktop/ProjectsCode/DataAnalysis/Code/FinanceDashboard/src/db/tables/SubcategoriesTable.cpp",
 			"MU",
 			null
 		],

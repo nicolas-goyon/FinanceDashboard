@@ -160,7 +160,7 @@
                         {
                             "codegenResult": 0,
                             "column": 32,
-                            "durationMicroseconds": 1000,
+                            "durationMicroseconds": 0,
                             "functionName": "onClicked",
                             "line": 73,
                             "message": ""
