@@ -9,6 +9,8 @@
 Database::Database()
     : m_snapshots(kConnection)
     , m_assetEntries(kConnection)
+    , m_categoriesTable(kConnection)
+    , m_subcategoriesTable(kConnection)
 {}
 
 Database& Database::instance()
@@ -36,7 +38,11 @@ bool Database::open(const QString& path)
     pragma.exec(QStringLiteral("PRAGMA journal_mode = WAL;"));
 
     // Each table class creates its own schema
-    if (!m_snapshots.createTable() || !m_assetEntries.createTable()) {
+    if (!m_snapshots.createTable()         ||
+        !m_assetEntries.createTable()      ||
+        !m_categoriesTable.createTable()   ||
+        !m_subcategoriesTable.createTable())
+    {
         m_lastError = "Failed to create tables.";
         return false;
     }
@@ -113,4 +119,74 @@ Database::loadLatestSnapshot() const
 QVector<QDate> Database::listDates() const
 {
     return m_snapshots.allDates();
+}
+
+// ── Categories ──────────────────────────────────────────────────────────────────
+
+QVector<Data::Category> Database::loadCategories() const
+{
+    QVector<Data::Category> cats = m_categoriesTable.all();
+    for (Data::Category& cat : cats)
+        cat.subcategories = m_subcategoriesTable.allForCategory(cat.id);
+    return cats;
+}
+
+int Database::addCategory(const QString& name, const QString& color)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    return m_categoriesTable.insert(name, color);
+}
+
+bool Database::renameCategory(int id, const QString& newName)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_categoriesTable.rename(id, newName);
+}
+
+bool Database::setCategoryColor(int id, const QString& color)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_categoriesTable.setColor(id, color);
+}
+
+bool Database::removeCategory(int id)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+
+    m_db.transaction();
+
+    // Manual cascade: subcategories first, then the category row itself —
+    // same "delete-then-insert" transaction style as saveSnapshot().
+    if (!m_subcategoriesTable.removeForCategory(id) || !m_categoriesTable.remove(id)) {
+        m_db.rollback();
+        m_lastError = "Failed to remove category.";
+        return false;
+    }
+
+    m_db.commit();
+    return true;
+}
+
+int Database::addSubcategory(int categoryId, const QString& name, const QString& color)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    return m_subcategoriesTable.insert(categoryId, name, color);
+}
+
+bool Database::renameSubcategory(int id, const QString& newName)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_subcategoriesTable.rename(id, newName);
+}
+
+bool Database::setSubcategoryColor(int id, const QString& color)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_subcategoriesTable.setColor(id, color);
+}
+
+bool Database::removeSubcategory(int id)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_subcategoriesTable.remove(id);
 }

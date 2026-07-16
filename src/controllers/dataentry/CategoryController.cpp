@@ -1,5 +1,7 @@
 #include "CategoryController.h"
 
+#include "db/Database.h"
+
 #include <QColor>
 #include <QSet>
 #include <QVariantMap>
@@ -7,50 +9,81 @@
 CategoryController::CategoryController(QObject* parent)
     : QObject(parent)
 {
-    // MOCK: seed data, in-memory only — resets on app restart, no DB table yet
-    // (see ARCHITECTURE.MD § Category Management). Same category names as the
-    // old DataEntryController mock list, now with a color each and a few
-    // illustrative subcategories. Subcategory colors are shades of their
-    // parent category's color (same hue/saturation, lightness offset by
-    // ~8% per step) rather than unrelated Mocha accents, so a category and
-    // its subcategories read as one visual family in legends/swatches —
-    // same lightness-step convention as suggestSubcategoryColor() below,
-    // computed offline with QColor::getHslF/fromHslF so the seed data and
-    // the live "add subcategory" default stay visually consistent.
-    m_categories = {
-        Category{ "Rent", "#b4befe", {
-            Subcategory{ "Base rent", "#b4befe" },
-            Subcategory{ "Charges",   "#8c9bfd" },
+    // DB-backed (see ARCHITECTURE.MD § Category Management): load whatever is
+    // already persisted, or seed the original mock defaults on a fresh DB.
+    m_categories = Database::instance().loadCategories();
+    if (m_categories.isEmpty())
+        seedDefaults();
+}
+
+void CategoryController::seedDefaults()
+{
+    // Same category names/colors/subcategories as the original in-memory
+    // mock list, now written through Database so they persist across
+    // restarts instead of resetting every run. Subcategory colors are
+    // shades of their parent category's color (same hue/saturation,
+    // lightness offset by ~8% per step) rather than unrelated Mocha
+    // accents, so a category and its subcategories read as one visual
+    // family in legends/swatches — same lightness-step convention as
+    // suggestSubcategoryColor() below.
+    struct SeedSub { QString name; QString color; };
+    struct SeedCat { QString name; QString color; QVector<SeedSub> subs; };
+
+    static const QVector<SeedCat> kSeed = {
+        { "Rent", "#b4befe", {
+            { "Base rent", "#b4befe" },
+            { "Charges",   "#8c9bfd" },
         } },
-        Category{ "Groceries", "#a6e3a1", {
-            Subcategory{ "Supermarket", "#a6e3a1" },
-            Subcategory{ "Market",      "#88da82" },
+        { "Groceries", "#a6e3a1", {
+            { "Supermarket", "#a6e3a1" },
+            { "Market",      "#88da82" },
         } },
-        Category{ "Transport", "#89dceb", {
-            Subcategory{ "Public transit", "#89dceb" },
-            Subcategory{ "Fuel",           "#66d2e5" },
-            Subcategory{ "Rideshare",      "#ace6f1" },
+        { "Transport", "#89dceb", {
+            { "Public transit", "#89dceb" },
+            { "Fuel",           "#66d2e5" },
+            { "Rideshare",      "#ace6f1" },
         } },
-        Category{ "Utilities", "#f9e2af", {
-            Subcategory{ "Electricity", "#f9e2af" },
-            Subcategory{ "Internet",    "#f6d489" },
+        { "Utilities", "#f9e2af", {
+            { "Electricity", "#f9e2af" },
+            { "Internet",    "#f6d489" },
         } },
-        Category{ "Leisure", "#cba6f7", {
-            Subcategory{ "Restaurants",    "#cba6f7" },
-            Subcategory{ "Subscriptions",  "#b581f4" },
+        { "Leisure", "#cba6f7", {
+            { "Restaurants",   "#cba6f7" },
+            { "Subscriptions", "#b581f4" },
         } },
-        Category{ "Other", "#6c7086", {} },
+        { "Other", "#6c7086", {} },
     };
+
+    Database& db = Database::instance();
+    for (const SeedCat& sc : kSeed) {
+        const int catId = db.addCategory(sc.name, sc.color);
+        if (catId < 0)
+            continue; // DB not open / insert failed — skip, retried next launch
+
+        Data::Category cat;
+        cat.id    = catId;
+        cat.name  = sc.name;
+        cat.color = sc.color;
+
+        for (const SeedSub& ss : sc.subs) {
+            const int subId = db.addSubcategory(catId, ss.name, ss.color);
+            if (subId < 0)
+                continue;
+            cat.subcategories.append(Data::Subcategory{ subId, ss.name, ss.color });
+        }
+
+        m_categories.append(cat);
+    }
 }
 
 QVariantList CategoryController::categories() const
 {
     QVariantList out;
     out.reserve(m_categories.size());
-    for (const Category& cat : m_categories) {
+    for (const Data::Category& cat : m_categories) {
         QVariantList subs;
         subs.reserve(cat.subcategories.size());
-        for (const Subcategory& sub : cat.subcategories) {
+        for (const Data::Subcategory& sub : cat.subcategories) {
             subs.append(QVariantMap{
                 { "name",  sub.name },
                 { "color", sub.color },
@@ -67,7 +100,7 @@ QVariantList CategoryController::categories() const
 
 QString CategoryController::categoryColor(const QString& categoryName) const
 {
-    for (const Category& cat : m_categories)
+    for (const Data::Category& cat : m_categories)
         if (cat.name == categoryName)
             return cat.color;
     return QString();
@@ -75,9 +108,9 @@ QString CategoryController::categoryColor(const QString& categoryName) const
 
 QString CategoryController::subcategoryColor(const QString& categoryName, const QString& subcategoryName) const
 {
-    for (const Category& cat : m_categories)
+    for (const Data::Category& cat : m_categories)
         if (cat.name == categoryName)
-            for (const Subcategory& sub : cat.subcategories)
+            for (const Data::Subcategory& sub : cat.subcategories)
                 if (sub.name == subcategoryName)
                     return sub.color;
     return QString();
@@ -90,13 +123,13 @@ QString CategoryController::suggestSubcategoryColor(int categoryIndex) const
     if (categoryIndex < 0 || categoryIndex >= m_categories.size())
         return kFallback;
 
-    const Category& cat = m_categories[categoryIndex];
+    const Data::Category& cat = m_categories[categoryIndex];
     const QColor base(cat.color);
     if (!base.isValid())
         return cat.color.isEmpty() ? kFallback : cat.color;
 
     QSet<QString> used;
-    for (const Subcategory& sub : cat.subcategories)
+    for (const Data::Subcategory& sub : cat.subcategories)
         used.insert(sub.color.toLower());
 
     // QColor::getHslF/fromHslF take float* / float in Qt 6 (not qreal), even
@@ -130,11 +163,19 @@ void CategoryController::addCategory(const QString& name, const QString& color)
     const QString trimmed = name.trimmed();
     if (trimmed.isEmpty())
         return;
-    for (const Category& cat : m_categories)
+    for (const Data::Category& cat : m_categories)
         if (cat.name.compare(trimmed, Qt::CaseInsensitive) == 0)
             return; // no duplicate names
 
-    m_categories.append(Category{ trimmed, color, {} });
+    const int id = Database::instance().addCategory(trimmed, color);
+    if (id < 0)
+        return; // DB write failed — nothing to show, avoid a phantom entry
+
+    Data::Category cat;
+    cat.id    = id;
+    cat.name  = trimmed;
+    cat.color = color;
+    m_categories.append(cat);
     emit categoriesChanged();
 }
 
@@ -144,6 +185,8 @@ void CategoryController::renameCategory(int index, const QString& newName)
         return;
     const QString trimmed = newName.trimmed();
     if (trimmed.isEmpty() || trimmed == m_categories[index].name)
+        return;
+    if (!Database::instance().renameCategory(m_categories[index].id, trimmed))
         return;
     m_categories[index].name = trimmed;
     emit categoriesChanged();
@@ -155,6 +198,8 @@ void CategoryController::setCategoryColor(int index, const QString& color)
         return;
     if (m_categories[index].color == color)
         return;
+    if (!Database::instance().setCategoryColor(m_categories[index].id, color))
+        return;
     m_categories[index].color = color;
     emit categoriesChanged();
 }
@@ -162,6 +207,8 @@ void CategoryController::setCategoryColor(int index, const QString& color)
 void CategoryController::removeCategory(int index)
 {
     if (index < 0 || index >= m_categories.size())
+        return;
+    if (!Database::instance().removeCategory(m_categories[index].id))
         return;
     m_categories.removeAt(index);
     emit categoriesChanged();
@@ -174,12 +221,16 @@ void CategoryController::addSubcategory(int categoryIndex, const QString& name, 
     const QString trimmed = name.trimmed();
     if (trimmed.isEmpty())
         return;
-    Category& cat = m_categories[categoryIndex];
-    for (const Subcategory& sub : cat.subcategories)
+    Data::Category& cat = m_categories[categoryIndex];
+    for (const Data::Subcategory& sub : cat.subcategories)
         if (sub.name.compare(trimmed, Qt::CaseInsensitive) == 0)
             return; // no duplicate names within the same category
 
-    cat.subcategories.append(Subcategory{ trimmed, color });
+    const int id = Database::instance().addSubcategory(cat.id, trimmed, color);
+    if (id < 0)
+        return;
+
+    cat.subcategories.append(Data::Subcategory{ id, trimmed, color });
     emit categoriesChanged();
 }
 
@@ -187,11 +238,13 @@ void CategoryController::renameSubcategory(int categoryIndex, int subIndex, cons
 {
     if (categoryIndex < 0 || categoryIndex >= m_categories.size())
         return;
-    Category& cat = m_categories[categoryIndex];
+    Data::Category& cat = m_categories[categoryIndex];
     if (subIndex < 0 || subIndex >= cat.subcategories.size())
         return;
     const QString trimmed = newName.trimmed();
     if (trimmed.isEmpty() || trimmed == cat.subcategories[subIndex].name)
+        return;
+    if (!Database::instance().renameSubcategory(cat.subcategories[subIndex].id, trimmed))
         return;
     cat.subcategories[subIndex].name = trimmed;
     emit categoriesChanged();
@@ -201,10 +254,12 @@ void CategoryController::setSubcategoryColor(int categoryIndex, int subIndex, co
 {
     if (categoryIndex < 0 || categoryIndex >= m_categories.size())
         return;
-    Category& cat = m_categories[categoryIndex];
+    Data::Category& cat = m_categories[categoryIndex];
     if (subIndex < 0 || subIndex >= cat.subcategories.size())
         return;
     if (cat.subcategories[subIndex].color == color)
+        return;
+    if (!Database::instance().setSubcategoryColor(cat.subcategories[subIndex].id, color))
         return;
     cat.subcategories[subIndex].color = color;
     emit categoriesChanged();
@@ -214,8 +269,10 @@ void CategoryController::removeSubcategory(int categoryIndex, int subIndex)
 {
     if (categoryIndex < 0 || categoryIndex >= m_categories.size())
         return;
-    Category& cat = m_categories[categoryIndex];
+    Data::Category& cat = m_categories[categoryIndex];
     if (subIndex < 0 || subIndex >= cat.subcategories.size())
+        return;
+    if (!Database::instance().removeSubcategory(cat.subcategories[subIndex].id))
         return;
     cat.subcategories.removeAt(subIndex);
     emit categoriesChanged();

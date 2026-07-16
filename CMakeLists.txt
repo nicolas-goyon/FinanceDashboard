@@ -23,10 +23,15 @@ qt_add_executable(FinanceDashboard
     src/models/AssetEntry.cpp
     src/models/ImportedStatement.h
     src/models/ImportLog.h
+    src/models/Category.h
     src/db/tables/SnapshotsTable.h
     src/db/tables/SnapshotsTable.cpp
     src/db/tables/AssetEntriesTable.h
     src/db/tables/AssetEntriesTable.cpp
+    src/db/tables/CategoriesTable.h
+    src/db/tables/CategoriesTable.cpp
+    src/db/tables/SubcategoriesTable.h
+    src/db/tables/SubcategoriesTable.cpp
     src/db/Database.h
     src/db/Database.cpp
     src/utils/Formatter.h
