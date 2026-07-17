@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_IMPORT_IMPORTTEMPLATE_H
+#define FINANCEDASHBOARD_IMPORT_IMPORTTEMPLATE_H
 
 #include "models/ImportedStatement.h"
 #include "models/ImportLog.h"
@@ -23,16 +24,24 @@
 class ImportTemplate
 {
 public:
+    ImportTemplate() = default;
     virtual ~ImportTemplate() = default;
 
+    // Polymorphic base — copying/moving through the base pointer would slice
+    // the derived template, so disable it explicitly (Core Guidelines C.67).
+    ImportTemplate(const ImportTemplate&) = delete;
+    ImportTemplate& operator=(const ImportTemplate&) = delete;
+    ImportTemplate(ImportTemplate&&) = delete;
+    ImportTemplate& operator=(ImportTemplate&&) = delete;
+
     // Stable key (used by SnapshotImportController::parseFile, never shown to the user).
-    virtual QString id() const = 0;
+    [[nodiscard]] virtual QString id() const = 0;
 
     // Shown in the template picker ComboBox.
-    virtual QString displayName() const = 0;
+    [[nodiscard]] virtual QString displayName() const = 0;
 
     // QtQuick.Dialogs FileDialog nameFilters entry, e.g. "CSV files (*.csv)".
-    virtual QString fileFilter() const = 0;
+    [[nodiscard]] virtual QString fileFilter() const = 0;
 
     // Parse `filePath` into `outStatement`, appending any issues to `outLog`.
     // Returns false only when parsing failed so badly that outStatement is
@@ -42,3 +51,5 @@ public:
                         Data::ImportedStatement& outStatement,
                         QVector<Data::ImportLogEntry>& outLog) const = 0;
 };
+
+#endif // FINANCEDASHBOARD_IMPORT_IMPORTTEMPLATE_H

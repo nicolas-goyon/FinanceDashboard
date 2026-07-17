@@ -1,6 +1,9 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_MODELS_IMPORTLOG_H
+#define FINANCEDASHBOARD_MODELS_IMPORTLOG_H
 
 #include <QString>
+
+#include <cstdint>
 
 // ── Data::ImportLogEntry ─────────────────────────────────────────────────────
 //
@@ -11,7 +14,7 @@
 
 namespace Data {
 
-enum class LogLevel { Info, Warning, Error };
+enum class LogLevel : std::uint8_t { Info, Warning, Error };
 
 struct ImportLogEntry {
     LogLevel level{LogLevel::Info};
@@ -31,3 +34,5 @@ struct ImportLogEntry {
 };
 
 } // namespace Data
+
+#endif // FINANCEDASHBOARD_MODELS_IMPORTLOG_H

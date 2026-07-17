@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -118,8 +120,8 @@ Item {
                                 }
                                 Rectangle {
                                     visible: accRow.modelData.category.length > 0
-                                    width: catBadgeText.implicitWidth + 16
-                                    height: 20
+                                    Layout.preferredWidth: catBadgeText.implicitWidth + 16
+                                    Layout.preferredHeight: 20
                                     radius: 10
                                     color: Qt.rgba(1, 1, 1, 0.08)
                                     border.color: AccountController.accountCategoryColor(accRow.modelData.category) || "#6c7086"
@@ -231,13 +233,13 @@ Item {
                                 }
                             }
 
-                            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; height: 1; color: "#313244" }
+                            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.preferredHeight: 1; color: "#313244" }
                         }
                     }
                 }
             }
 
-            Item { height: 8 }
+            Item { Layout.preferredHeight: 8 }
         }
     }
 

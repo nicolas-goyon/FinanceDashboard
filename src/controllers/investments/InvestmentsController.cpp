@@ -3,13 +3,28 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QObject>
+#include <QtMinMax>
+
+#include <array>
+
+namespace {
+constexpr int kMonthsShown = 12;
+constexpr double kValueAxisHeadroom = 1.12;  // 12% headroom above the max value for the chart axis
+constexpr double kPerfAxisScale = 1.3;       // scales the perf-% axis bounds past the actual min/max
+constexpr double kPerfAxisPadding = 0.5;     // extra flat padding on the perf-% axis bounds
+constexpr double kAllocEtfPct = 55.0;
+constexpr double kAllocTechStocksPct = 25.0;
+constexpr double kAllocCryptoPct = 10.0;
+constexpr double kAllocCashPct = 10.0;
+} // namespace
 
 InvestmentsController::InvestmentsController(QObject* parent)
     : QObject(parent)
 {
     // MOCK: 12 months of portfolio value + assumed monthly deposit
-    const double portfolio[12] = { 10100, 10600, 10200, 11100, 11700, 11300,
-                                   12200, 12900, 12500, 13600, 14300, 15200 };
+    const std::array<double, kMonthsShown> portfolio = { 10100, 10600, 10200, 11100, 11700, 11300,
+                                               12200, 12900, 12500, 13600, 14300, 15200 };
     const double monthlyDeposit = 250.0;
     const double depositsStart  = 9250.0;
 
@@ -19,18 +34,18 @@ InvestmentsController::InvestmentsController(QObject* parent)
     double deposits = depositsStart;
     double prev = 0;
 
-    for (int m = 0; m < 12; ++m) {
+    for (int monthIdx = 0; monthIdx < kMonthsShown; ++monthIdx) {
         deposits += monthlyDeposit;
-        const QDate month = firstMonth.addMonths(m);
+        const QDate month = firstMonth.addMonths(monthIdx);
 
-        m_timestamps.append(double(month.startOfDay().toMSecsSinceEpoch()));
-        m_portfolioValues.append(portfolio[m]);
+        m_timestamps.append(static_cast<double>(month.startOfDay().toMSecsSinceEpoch()));
+        m_portfolioValues.append(portfolio.at(monthIdx));
         m_depositValues.append(deposits);
         m_monthLabels.append(month.toString("MMM"));
-        m_valueMax = qMax(m_valueMax, portfolio[m]);
+        m_valueMax = qMax(m_valueMax, portfolio.at(monthIdx));
 
-        if (m > 0) {
-            const double pct = (portfolio[m] - prev) / prev * 100.0;
+        if (monthIdx > 0) {
+            const double pct = (portfolio.at(monthIdx) - prev) / prev * 100.0;
             m_perfGains.append(pct >= 0 ? pct : 0.0);
             m_perfLosses.append(pct < 0 ? pct : 0.0);
             m_perfMax = qMax(m_perfMax, pct);
@@ -39,17 +54,17 @@ InvestmentsController::InvestmentsController(QObject* parent)
             m_perfGains.append(0.0);
             m_perfLosses.append(0.0);
         }
-        prev = portfolio[m];
+        prev = portfolio.at(monthIdx);
     }
-    m_valueMax *= 1.12;
-    m_perfMax = m_perfMax * 1.3 + 0.5;
-    m_perfMin = m_perfMin * 1.3 - 0.5;
+    m_valueMax *= kValueAxisHeadroom;
+    m_perfMax = (m_perfMax * kPerfAxisScale) + kPerfAxisPadding;
+    m_perfMin = (m_perfMin * kPerfAxisScale) - kPerfAxisPadding;
     m_minTimeMs = m_timestamps.first().toDouble();
     m_maxTimeMs = m_timestamps.last().toDouble();
 
     // ── KPIs ──────────────────────────────────────────────────────────────────
     const double invested = deposits;
-    const double pnl      = portfolio[11] - invested;
+    const double pnl      = portfolio.at(11) - invested;
     const double retPct   = pnl / invested * 100.0;
 
     m_kpis = {
@@ -67,9 +82,9 @@ InvestmentsController::InvestmentsController(QObject* parent)
 
     // MOCK: allocation donut (static breakdown)
     m_allocation = {
-        QVariantMap{ { "label", "ETF World" },  { "value", 55.0 }, { "color", "#89b4fa" } },
-        QVariantMap{ { "label", "Tech stocks" },{ "value", 25.0 }, { "color", "#cba6f7" } },
-        QVariantMap{ { "label", "Crypto" },     { "value", 10.0 }, { "color", "#fab387" } },
-        QVariantMap{ { "label", "Cash" },       { "value", 10.0 }, { "color", "#a6e3a1" } },
+        QVariantMap{ { "label", "ETF World" },  { "value", kAllocEtfPct }, { "color", "#89b4fa" } },
+        QVariantMap{ { "label", "Tech stocks" },{ "value", kAllocTechStocksPct }, { "color", "#cba6f7" } },
+        QVariantMap{ { "label", "Crypto" },     { "value", kAllocCryptoPct }, { "color", "#fab387" } },
+        QVariantMap{ { "label", "Cash" },       { "value", kAllocCashPct }, { "color", "#a6e3a1" } },
     };
 }

@@ -4,10 +4,23 @@
 #include "utils/Formatter.h"
 #include "utils/AccountHashing.h"
 #include "db/Database.h"
+#include "models/ImportLog.h"
+#include "models/ImportedStatement.h"
 #include "models/Transaction.h"
 
 #include <QFileInfo>
+#include <QObject>
+#include <QString>
 #include <QTimer>
+#include <QUrl>
+#include <QVariantList>
+#include <QVariantMap>
+#include <Qt>
+#include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
+
+namespace {
+constexpr int kStatusClearDelayMs = 4000; // how long a status message stays visible
+} // namespace
 
 SnapshotImportController::SnapshotImportController(QObject* parent)
     : QObject(parent)
@@ -53,18 +66,18 @@ QVariantList SnapshotImportController::transactionRows() const
     QVariantList rows;
     rows.reserve(m_statement.transactions.size());
     for (int i = 0; i < m_statement.transactions.size(); ++i) {
-        const Data::ImportedTransaction& tx = m_statement.transactions.at(i);
+        const Data::ImportedTransaction& transaction = m_statement.transactions.at(i);
         rows.append(QVariantMap{
             { "index",             i },
-            { "confirmationDate",  Fmt::dateOrDash(tx.confirmationDate) },
-            { "operationDate",     Fmt::dateOrDash(tx.operationDate) },
-            { "description",       tx.description },
-            { "debitText",         tx.debit  > 0.0 ? Fmt::money(-tx.debit) : QStringLiteral("—") },
-            { "creditText",        tx.credit > 0.0 ? Fmt::money(tx.credit, true) : QStringLiteral("—") },
-            { "balanceText",       Fmt::money(tx.balanceAfter) },
-            { "category",          tx.category },
-            { "subcategory",       tx.subcategory },
-            { "included",          tx.included },
+            { "confirmationDate",  Fmt::dateOrDash(transaction.confirmationDate) },
+            { "operationDate",     Fmt::dateOrDash(transaction.operationDate) },
+            { "description",       transaction.description },
+            { "debitText",         transaction.debit  > 0.0 ? Fmt::money(-transaction.debit) : QStringLiteral("—") },
+            { "creditText",        transaction.credit > 0.0 ? Fmt::money(transaction.credit, true) : QStringLiteral("—") },
+            { "balanceText",       Fmt::money(transaction.balanceAfter) },
+            { "category",          transaction.category },
+            { "subcategory",       transaction.subcategory },
+            { "included",          transaction.included },
         });
     }
     return rows;
@@ -74,12 +87,12 @@ QVariantList SnapshotImportController::logEntries() const
 {
     QVariantList rows;
     rows.reserve(m_log.size());
-    for (const Data::ImportLogEntry& e : m_log) {
+    for (const Data::ImportLogEntry& entry : m_log) {
         rows.append(QVariantMap{
-            { "level",   Data::ImportLogEntry::levelLabel(e.level) },
-            { "line",    e.lineNumber },
-            { "message", e.message },
-            { "rawLine", e.rawLine },
+            { "level",   Data::ImportLogEntry::levelLabel(entry.level) },
+            { "line",    entry.lineNumber },
+            { "message", entry.message },
+            { "rawLine", entry.rawLine },
         });
     }
     return rows;
@@ -87,20 +100,24 @@ QVariantList SnapshotImportController::logEntries() const
 
 int SnapshotImportController::errorCount() const
 {
-    int n = 0;
-    for (const Data::ImportLogEntry& e : m_log)
-        if (e.level == Data::LogLevel::Error)
-            ++n;
-    return n;
+    int count = 0;
+    for (const Data::ImportLogEntry& entry : m_log) {
+        if (entry.level == Data::LogLevel::Error) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 int SnapshotImportController::warningCount() const
 {
-    int n = 0;
-    for (const Data::ImportLogEntry& e : m_log)
-        if (e.level == Data::LogLevel::Warning)
-            ++n;
-    return n;
+    int count = 0;
+    for (const Data::ImportLogEntry& entry : m_log) {
+        if (entry.level == Data::LogLevel::Warning) {
+            ++count;
+        }
+    }
+    return count;
 }
 
 void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& templateId)
@@ -113,7 +130,7 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
     const QString path = fileUrl.isLocalFile() ? fileUrl.toLocalFile() : fileUrl.toString();
     m_sourceFileName = QFileInfo(path).fileName();
 
-    if (!tpl) {
+    if (tpl == nullptr) {
         m_log.append(Data::ImportLogEntry{ Data::LogLevel::Error, 0,
             QStringLiteral("Unknown template id: %1").arg(templateId), QString() });
         m_hasParsed = false;
@@ -124,9 +141,9 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
         m_hasParsed = false;
         m_lastParseFailed = true;
     } else {
-        const bool ok = tpl->parse(path, m_statement, m_log);
-        m_hasParsed = ok;
-        m_lastParseFailed = !ok;
+        const bool success = tpl->parse(path, m_statement, m_log);
+        m_hasParsed = success;
+        m_lastParseFailed = !success;
     }
 
     emit statementChanged();
@@ -143,37 +160,48 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
 
 void SnapshotImportController::setRowCategory(int row, const QString& category)
 {
-    if (row < 0 || row >= m_statement.transactions.size())
+    if (row < 0 || row >= m_statement.transactions.size()) {
         return;
-    Data::ImportedTransaction& tx = m_statement.transactions[row];
-    if (tx.category == category)
+    }
+    // row bounds-checked above; QList's at() is const-only, so mutating
+    // through operator[] is genuinely required here.
+    Data::ImportedTransaction& transaction = m_statement.transactions[row]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (transaction.category == category) {
         return;
-    tx.category = category;
-    tx.subcategory.clear(); // parent changed — old subcategory no longer applies
+    }
+    transaction.category = category;
+    transaction.subcategory.clear(); // parent changed — old subcategory no longer applies
     emit statementChanged();
 }
 
 void SnapshotImportController::setRowSubcategory(int row, const QString& subcategory)
 {
-    if (row < 0 || row >= m_statement.transactions.size())
+    if (row < 0 || row >= m_statement.transactions.size()) {
         return;
-    m_statement.transactions[row].subcategory = subcategory;
+    }
+    // row bounds-checked above; QList's at() is const-only, so mutating
+    // through operator[] is genuinely required here.
+    m_statement.transactions[row].subcategory = subcategory; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     emit statementChanged();
 }
 
 void SnapshotImportController::setRowIncluded(int row, bool included)
 {
-    if (row < 0 || row >= m_statement.transactions.size())
+    if (row < 0 || row >= m_statement.transactions.size()) {
         return;
-    Data::ImportedTransaction& tx = m_statement.transactions[row];
-    if (tx.included == included)
+    }
+    // row bounds-checked above; QList's at() is const-only, so mutating
+    // through operator[] is genuinely required here.
+    Data::ImportedTransaction& transaction = m_statement.transactions[row]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (transaction.included == included) {
         return; // no-op guard — also avoids the Repeater "model" binding-loop
                 // warning this used to cause: transactions default to
                 // included=true while CheckBox.checked defaults to false, so
                 // the delegate's initial binding assignment used to fire
                 // onCheckedChanged -> setRowIncluded(true) -> statementChanged()
                 // re-entrantly while the model itself was still being built.
-    tx.included = included;
+    }
+    transaction.included = included;
     emit statementChanged();
 }
 
@@ -189,15 +217,17 @@ int SnapshotImportController::matchAccountIndex(const QVariantList& accounts) co
     // statement, or no account with a matching stored hash → -1, caller
     // shows the manual picker.
     const QString targetHash = AccountHashing::compute(m_statement.iban, m_statement.bic);
-    if (targetHash.isEmpty())
+    if (targetHash.isEmpty()) {
         return -1;
+    }
 
     for (int i = 0; i < accounts.size(); ++i) {
         const QVariantMap acc = accounts.at(i).toMap();
         const QVariantList hashes = acc.value("hashes").toList();
-        for (const QVariant& hv : hashes) {
-            if (hv.toMap().value("hash").toString().compare(targetHash, Qt::CaseInsensitive) == 0)
+        for (const QVariant& hashEntry : hashes) {
+            if (hashEntry.toMap().value("hash").toString().compare(targetHash, Qt::CaseInsensitive) == 0) {
                 return i;
+            }
         }
     }
 
@@ -225,19 +255,20 @@ void SnapshotImportController::save(int accountId, const QString& accountLabel)
 
     QVector<Data::Transaction> toSave;
     toSave.reserve(m_statement.transactions.size());
-    for (const Data::ImportedTransaction& tx : m_statement.transactions) {
-        if (!tx.included)
+    for (const Data::ImportedTransaction& transaction : m_statement.transactions) {
+        if (!transaction.included) {
             continue;
+        }
         Data::Transaction row;
         row.accountId        = accountId;
-        row.confirmationDate = tx.confirmationDate;
-        row.operationDate    = tx.operationDate;
-        row.description      = tx.description;
-        row.debit            = tx.debit;
-        row.credit           = tx.credit;
-        row.balanceAfter     = tx.balanceAfter;
-        row.category         = tx.category;
-        row.subcategory      = tx.subcategory;
+        row.confirmationDate = transaction.confirmationDate;
+        row.operationDate    = transaction.operationDate;
+        row.description      = transaction.description;
+        row.debit            = transaction.debit;
+        row.credit           = transaction.credit;
+        row.balanceAfter     = transaction.balanceAfter;
+        row.category         = transaction.category;
+        row.subcategory      = transaction.subcategory;
         row.sourceTemplate   = m_templateId;
         toSave.append(row);
     }
@@ -252,8 +283,9 @@ void SnapshotImportController::save(int accountId, const QString& accountLabel)
     // "auto") — future imports of the same account then auto-match (see §
     // Statement Import / § Account Management in ARCHITECTURE.MD).
     const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
-    if (!hash.isEmpty() && !Database::instance().accountHasHash(accountId, hash))
+    if (!hash.isEmpty() && !Database::instance().accountHasHash(accountId, hash)) {
         Database::instance().addAccountHash(accountId, hash, QStringLiteral("auto"));
+    }
 
     setStatus(QString("✓  Saved %1 of %2 transaction(s) to \"%3\"")
                    .arg(toSave.size())
@@ -265,7 +297,7 @@ void SnapshotImportController::setStatus(const QString& msg)
 {
     m_statusText = msg;
     emit statusChanged();
-    QTimer::singleShot(4000, this, [this]() {
+    QTimer::singleShot(kStatusClearDelayMs, this, [this]() {
         m_statusText.clear();
         emit statusChanged();
     });

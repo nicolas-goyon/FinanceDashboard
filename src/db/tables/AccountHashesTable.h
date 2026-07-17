@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_DB_TABLES_ACCOUNTHASHESTABLE_H
+#define FINANCEDASHBOARD_DB_TABLES_ACCOUNTHASHESTABLE_H
 
 #include "models/Account.h"
 
@@ -28,7 +29,7 @@
 class AccountHashesTable
 {
 public:
-    explicit AccountHashesTable(const QString& connectionName);
+    explicit AccountHashesTable(QString connectionName);
 
     bool createTable();
 
@@ -36,16 +37,18 @@ public:
     // already stored for this account via the UNIQUE(account_id, hash)
     // constraint — callers may treat that as "already linked", not an error).
     int  insert(int accountId, const QString& hash, const QString& source);
-    bool remove(int id);
+    bool remove(int hashId);
     // Cascade helper for Database::removeAccount().
     bool removeForAccount(int accountId);
 
-    bool existsForAccount(int accountId, const QString& hash) const;
+    [[nodiscard]] bool existsForAccount(int accountId, const QString& hash) const;
 
     // All hashes for one account, oldest first (insertion order via row id).
-    QVector<Data::AccountHash> allForAccount(int accountId) const;
+    [[nodiscard]] QVector<Data::AccountHash> allForAccount(int accountId) const;
 
 private:
-    QSqlDatabase db() const;
+    [[nodiscard]] QSqlDatabase db() const;
     QString m_connectionName;
 };
+
+#endif // FINANCEDASHBOARD_DB_TABLES_ACCOUNTHASHESTABL

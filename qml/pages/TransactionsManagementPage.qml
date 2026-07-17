@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 
 // ── Transactions Management — sidebar landing page ────────────────────────────

@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -96,7 +98,7 @@ Item {
                                 spacing: 10
 
                                 Rectangle {
-                                    width: 18; height: 18; radius: 9
+                                    Layout.preferredWidth: 18; Layout.preferredHeight: 18; radius: 9
                                     color: catRow.modelData.color
                                     border.color: "#313244"
                                 }
@@ -148,7 +150,7 @@ Item {
                                     spacing: 10
 
                                     Rectangle {
-                                        width: 14; height: 14; radius: 7
+                                        Layout.preferredWidth: 14; Layout.preferredHeight: 14; radius: 7
                                         color: subRow.modelData.color
                                         border.color: "#313244"
                                     }
@@ -175,13 +177,13 @@ Item {
                                 }
                             }
 
-                            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; height: 1; color: "#313244" }
+                            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.preferredHeight: 1; color: "#313244" }
                         }
                     }
                 }
             }
 
-            Item { height: 8 }
+            Item { Layout.preferredHeight: 8 }
         }
     }
 

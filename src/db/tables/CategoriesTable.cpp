@@ -1,12 +1,18 @@
 #include "CategoriesTable.h"
+#include "models/Category.h"
 
+#include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QString>
 #include <QVariant>
+#include <QVector>
 #include <QDebug>
+#include <QtLogging>
+#include <utility>
 
-CategoriesTable::CategoriesTable(const QString& connectionName)
-    : m_connectionName(connectionName)
+CategoriesTable::CategoriesTable(QString connectionName)
+    : m_connectionName(std::move(connectionName))
 {}
 
 QSqlDatabase CategoriesTable::db() const
@@ -18,73 +24,79 @@ QSqlDatabase CategoriesTable::db() const
 
 bool CategoriesTable::createTable()
 {
-    QSqlQuery q(db());
-    const bool ok = q.exec(QStringLiteral(
+    QSqlQuery query(db());
+    const bool success = query.exec(QStringLiteral(
         "CREATE TABLE IF NOT EXISTS categories ("
         "  id    INTEGER PRIMARY KEY AUTOINCREMENT,"
         "  name  TEXT    NOT NULL UNIQUE,"
         "  color TEXT    NOT NULL"
         ");"
     ));
-    if (!ok)
-        qWarning() << "[CategoriesTable] createTable error:" << q.lastError().text();
-    return ok;
+    if (!success) {
+        qWarning() << "[CategoriesTable] createTable error:" << query.lastError().text();
+    }
+    return success;
 }
 
 // ── Write ─────────────────────────────────────────────────────────────────────
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — mirrors the table's
+// (name, color) column order; every call site passes them in that order.
 int CategoriesTable::insert(const QString& name, const QString& color)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "INSERT INTO categories (name, color) VALUES (?, ?);"
     ));
-    q.addBindValue(name);
-    q.addBindValue(color);
+    query.addBindValue(name);
+    query.addBindValue(color);
 
-    if (!q.exec()) {
-        qWarning() << "[CategoriesTable] insert error:" << q.lastError().text();
+    if (!query.exec()) {
+        qWarning() << "[CategoriesTable] insert error:" << query.lastError().text();
         return -1;
     }
-    return q.lastInsertId().toInt();
+    return query.lastInsertId().toInt();
 }
 
-bool CategoriesTable::rename(int id, const QString& newName)
+bool CategoriesTable::rename(int categoryId, const QString& newName)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("UPDATE categories SET name = ? WHERE id = ?;"));
-    q.addBindValue(newName);
-    q.addBindValue(id);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("UPDATE categories SET name = ? WHERE id = ?;"));
+    query.addBindValue(newName);
+    query.addBindValue(categoryId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[CategoriesTable] rename error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[CategoriesTable] rename error:" << query.lastError().text();
+    }
+    return success;
 }
 
-bool CategoriesTable::setColor(int id, const QString& color)
+bool CategoriesTable::setColor(int categoryId, const QString& color)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("UPDATE categories SET color = ? WHERE id = ?;"));
-    q.addBindValue(color);
-    q.addBindValue(id);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("UPDATE categories SET color = ? WHERE id = ?;"));
+    query.addBindValue(color);
+    query.addBindValue(categoryId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[CategoriesTable] setColor error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[CategoriesTable] setColor error:" << query.lastError().text();
+    }
+    return success;
 }
 
-bool CategoriesTable::remove(int id)
+bool CategoriesTable::remove(int categoryId)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("DELETE FROM categories WHERE id = ?;"));
-    q.addBindValue(id);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("DELETE FROM categories WHERE id = ?;"));
+    query.addBindValue(categoryId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[CategoriesTable] remove error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[CategoriesTable] remove error:" << query.lastError().text();
+    }
+    return success;
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────────
@@ -92,17 +104,17 @@ bool CategoriesTable::remove(int id)
 QVector<Data::Category> CategoriesTable::all() const
 {
     QVector<Data::Category> result;
-    QSqlQuery q(db());
-    if (!q.exec(QStringLiteral("SELECT id, name, color FROM categories ORDER BY id ASC;"))) {
-        qWarning() << "[CategoriesTable] all error:" << q.lastError().text();
+    QSqlQuery query(db());
+    if (!query.exec(QStringLiteral("SELECT id, name, color FROM categories ORDER BY id ASC;"))) {
+        qWarning() << "[CategoriesTable] all error:" << query.lastError().text();
         return result;
     }
 
-    while (q.next()) {
+    while (query.next()) {
         Data::Category cat;
-        cat.id    = q.value(0).toInt();
-        cat.name  = q.value(1).toString();
-        cat.color = q.value(2).toString();
+        cat.id    = query.value(0).toInt();
+        cat.name  = query.value(1).toString();
+        cat.color = query.value(2).toString();
         result << cat;
     }
     return result;

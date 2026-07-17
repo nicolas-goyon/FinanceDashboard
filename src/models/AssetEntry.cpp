@@ -1,6 +1,8 @@
 #include "AssetEntry.h"
 
 #include <QJsonValue>
+#include <QVector>
+#include <Qt>
 
 namespace Data {
 
@@ -9,63 +11,70 @@ namespace Data {
 QJsonObject AssetEntry::toJson() const
 {
     QJsonObject obj;
-    obj[QStringLiteral("name")]  = name;
-    obj[QStringLiteral("value")] = value;
+    obj.insert(QStringLiteral("name"),  m_name);
+    obj.insert(QStringLiteral("value"), m_value);
     return obj;
 }
 
 AssetEntry AssetEntry::fromJson(const QJsonObject& obj)
 {
-    AssetEntry e;
-    e.name  = obj.value(QStringLiteral("name")).toString();
-    e.value = obj.value(QStringLiteral("value")).toDouble();
-    return e;
+    AssetEntry entry;
+    entry.setName(obj.value(QStringLiteral("name")).toString());
+    entry.setValue(obj.value(QStringLiteral("value")).toDouble());
+    return entry;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-static QJsonArray entriesToJson(const QVector<AssetEntry>& entries)
+namespace {
+
+QJsonArray entriesToJson(const QVector<AssetEntry>& entries)
 {
     QJsonArray arr;
-    for (const AssetEntry& e : entries)
-        arr.append(e.toJson());
+    for (const AssetEntry& entry : entries) {
+        arr.append(entry.toJson());
+    }
     return arr;
 }
 
-static QVector<AssetEntry> entriesFromJson(const QJsonArray& arr)
+QVector<AssetEntry> entriesFromJson(const QJsonArray& arr)
 {
     QVector<AssetEntry> result;
     result.reserve(arr.size());
-    for (const QJsonValue& v : arr)
-        result << AssetEntry::fromJson(v.toObject());
+    for (const auto& value : arr) {
+        result << AssetEntry::fromJson(value.toObject());
+    }
     return result;
 }
+
+} // namespace
 
 // ── FinancialSnapshot ─────────────────────────────────────────────────────────
 
 QJsonObject FinancialSnapshot::toJson() const
 {
     QJsonObject obj;
-    obj[QStringLiteral("date")]   = date.toString(Qt::ISODate);
-    obj[QStringLiteral("stocks")] = entriesToJson(stocks);
-    obj[QStringLiteral("coins")]  = entriesToJson(coins);
-    obj[QStringLiteral("metals")] = entriesToJson(metals);
-    obj[QStringLiteral("etfs")]   = entriesToJson(etfs);
+    obj.insert(QStringLiteral("date"),   m_date.toString(Qt::ISODate));
+    obj.insert(QStringLiteral("stocks"), entriesToJson(m_stocks));
+    obj.insert(QStringLiteral("coins"),  entriesToJson(m_coins));
+    obj.insert(QStringLiteral("metals"), entriesToJson(m_metals));
+    obj.insert(QStringLiteral("etfs"),   entriesToJson(m_etfs));
     return obj;
 }
 
 FinancialSnapshot FinancialSnapshot::fromJson(const QJsonObject& obj)
 {
-    FinancialSnapshot s;
+    FinancialSnapshot snapshot;
     const QString dateStr = obj.value(QStringLiteral("date")).toString();
-    if (!dateStr.isEmpty())
-        s.date = QDate::fromString(dateStr, Qt::ISODate);
+    if (!dateStr.isEmpty()) {
+        snapshot.setDate(QDate::fromString(dateStr, Qt::ISODate));
+    }
 
-    s.stocks = entriesFromJson(obj.value(QStringLiteral("stocks")).toArray());
-    s.coins  = entriesFromJson(obj.value(QStringLiteral("coins")).toArray());
-    s.metals = entriesFromJson(obj.value(QStringLiteral("metals")).toArray());
-    s.etfs   = entriesFromJson(obj.value(QStringLiteral("etfs")).toArray());
-    return s;
+    snapshot.setStocks(entriesFromJson(obj.value(QStringLiteral("stocks")).toArray()));
+    snapshot.setCoins(entriesFromJson(obj.value(QStringLiteral("coins")).toArray()));
+    snapshot.setMetals(entriesFromJson(obj.value(QStringLiteral("metals")).toArray()));
+    snapshot.setEtfs(entriesFromJson(obj.value(QStringLiteral("etfs")).toArray()));
+    return snapshot;
 }
 
 } // namespace Data

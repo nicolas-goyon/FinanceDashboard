@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_DB_TABLES_CATEGORIESTABLE_H
+#define FINANCEDASHBOARD_DB_TABLES_CATEGORIESTABLE_H
 
 #include "models/Category.h"
 
@@ -23,7 +24,7 @@
 class CategoriesTable
 {
 public:
-    explicit CategoriesTable(const QString& connectionName);
+    explicit CategoriesTable(QString connectionName);
 
     // Create the table. Called once by Database::open().
     bool createTable();
@@ -34,20 +35,22 @@ public:
     // CategoryController already used for its in-memory list.
     int insert(const QString& name, const QString& color);
 
-    bool rename(int id, const QString& newName);
-    bool setColor(int id, const QString& color);
+    bool rename(int categoryId, const QString& newName);
+    bool setColor(int categoryId, const QString& color);
 
     // Deletes the category row itself only — does NOT cascade to
     // subcategories. Callers must delete those first (see
     // Database::removeCategory(), which does both in one transaction).
-    bool remove(int id);
+    bool remove(int categoryId);
 
     // All categories, oldest first (insertion order via row id).
     // Subcategories are NOT populated here — Database::loadCategories()
     // fills those in from SubcategoriesTable.
-    QVector<Data::Category> all() const;
+    [[nodiscard]] QVector<Data::Category> all() const;
 
 private:
-    QSqlDatabase db() const;
+    [[nodiscard]] QSqlDatabase db() const;
     QString m_connectionName;
 };
+
+#endif // FINANCEDASHBOARD_DB_T

@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -120,6 +122,7 @@ Item {
                     Repeater {
                         model: controller.goals
                         delegate: ColumnLayout {
+                            id: goalRow
                             required property var modelData
                             Layout.fillWidth: true
                             spacing: 4
@@ -128,12 +131,12 @@ Item {
                                 Layout.fillWidth: true
                                 Text {
                                     Layout.fillWidth: true
-                                    text: modelData.label
+                                    text: goalRow.modelData.label
                                     font.pixelSize: 15
                                     color: "#cdd6f4"
                                 }
                                 Text {
-                                    text: modelData.currentText + "  /  " + modelData.targetText
+                                    text: goalRow.modelData.currentText + "  /  " + goalRow.modelData.targetText
                                     font.pixelSize: 14
                                     color: "#6c7086"
                                 }
@@ -144,10 +147,10 @@ Item {
                                 radius: 4
                                 color: "#11111b"
                                 Rectangle {
-                                    width: parent.width * modelData.pct
+                                    width: parent.width * goalRow.modelData.pct
                                     height: parent.height
                                     radius: 4
-                                    color: modelData.color
+                                    color: goalRow.modelData.color
                                 }
                             }
                         }
@@ -197,7 +200,7 @@ Item {
                 }
             }
 
-            Item { height: 8 }
+            Item { Layout.preferredHeight: 8 }
         }
     }
 }

@@ -1,24 +1,44 @@
 #include "TransactionsTable.h"
+#include "models/Transaction.h"
 
+#include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QString>
 #include <QVariant>
+#include <QVector>
 #include <QDebug>
+#include <Qt>
+#include <QtLogging>
+#include <utility>
 
 namespace {
-QString dateToDb(const QDate& d)
+QString dateToDb(const QDate& date)
 {
-    return d.isValid() ? d.toString(Qt::ISODate) : QString();
+    return date.isValid() ? date.toString(Qt::ISODate) : QString();
 }
 
-QDate dateFromDb(const QString& s)
+QDate dateFromDb(const QString& dateStr)
 {
-    return s.isEmpty() ? QDate() : QDate::fromString(s, Qt::ISODate);
+    return dateStr.isEmpty() ? QDate() : QDate::fromString(dateStr, Qt::ISODate);
 }
+
+// Column indices for the SELECT in allForAccount() (must match its column list order).
+constexpr int kColId = 0;
+constexpr int kColAccountId = 1;
+constexpr int kColConfirmationDate = 2;
+constexpr int kColOperationDate = 3;
+constexpr int kColDescription = 4;
+constexpr int kColDebit = 5;
+constexpr int kColCredit = 6;
+constexpr int kColBalanceAfter = 7;
+constexpr int kColCategory = 8;
+constexpr int kColSubcategory = 9;
+constexpr int kColSourceTemplate = 10;
 } // namespace
 
-TransactionsTable::TransactionsTable(const QString& connectionName)
-    : m_connectionName(connectionName)
+TransactionsTable::TransactionsTable(QString connectionName)
+    : m_connectionName(std::move(connectionName))
 {}
 
 QSqlDatabase TransactionsTable::db() const
@@ -28,9 +48,9 @@ QSqlDatabase TransactionsTable::db() const
 
 bool TransactionsTable::createTable()
 {
-    QSqlQuery q(db());
-    const bool ok =
-        q.exec(QStringLiteral(
+    QSqlQuery query(db());
+    const bool success =
+        query.exec(QStringLiteral(
             "CREATE TABLE IF NOT EXISTS transactions ("
             "  id                INTEGER PRIMARY KEY AUTOINCREMENT,"
             "  account_id        INTEGER NOT NULL,"
@@ -45,40 +65,41 @@ bool TransactionsTable::createTable()
             "  source_template   TEXT    NOT NULL DEFAULT ''"
             ");"
         )) &&
-        q.exec(QStringLiteral(
+        query.exec(QStringLiteral(
             "CREATE INDEX IF NOT EXISTS idx_transactions_account"
             " ON transactions(account_id);"
         ));
 
-    if (!ok)
-        qWarning() << "[TransactionsTable] createTable error:" << q.lastError().text();
-    return ok;
+    if (!success) {
+        qWarning() << "[TransactionsTable] createTable error:" << query.lastError().text();
+    }
+    return success;
 }
 
 bool TransactionsTable::insertBatch(int accountId, const QVector<Data::Transaction>& txs)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "INSERT INTO transactions"
         " (account_id, confirmation_date, operation_date, description, debit,"
         "  credit, balance_after, category, subcategory, source_template)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
     ));
 
-    for (const Data::Transaction& tx : txs) {
-        q.addBindValue(accountId);
-        q.addBindValue(dateToDb(tx.confirmationDate));
-        q.addBindValue(dateToDb(tx.operationDate));
-        q.addBindValue(tx.description);
-        q.addBindValue(tx.debit);
-        q.addBindValue(tx.credit);
-        q.addBindValue(tx.balanceAfter);
-        q.addBindValue(tx.category);
-        q.addBindValue(tx.subcategory);
-        q.addBindValue(tx.sourceTemplate);
+    for (const Data::Transaction& transaction : txs) {
+        query.addBindValue(accountId);
+        query.addBindValue(dateToDb(transaction.confirmationDate));
+        query.addBindValue(dateToDb(transaction.operationDate));
+        query.addBindValue(transaction.description);
+        query.addBindValue(transaction.debit);
+        query.addBindValue(transaction.credit);
+        query.addBindValue(transaction.balanceAfter);
+        query.addBindValue(transaction.category);
+        query.addBindValue(transaction.subcategory);
+        query.addBindValue(transaction.sourceTemplate);
 
-        if (!q.exec()) {
-            qWarning() << "[TransactionsTable] insertBatch error:" << q.lastError().text();
+        if (!query.exec()) {
+            qWarning() << "[TransactionsTable] insertBatch error:" << query.lastError().text();
             return false;
         }
     }
@@ -87,60 +108,61 @@ bool TransactionsTable::insertBatch(int accountId, const QVector<Data::Transacti
 
 bool TransactionsTable::removeForAccount(int accountId)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("DELETE FROM transactions WHERE account_id = ?;"));
-    q.addBindValue(accountId);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("DELETE FROM transactions WHERE account_id = ?;"));
+    query.addBindValue(accountId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[TransactionsTable] removeForAccount error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[TransactionsTable] removeForAccount error:" << query.lastError().text();
+    }
+    return success;
 }
 
 QVector<Data::Transaction> TransactionsTable::allForAccount(int accountId) const
 {
     QVector<Data::Transaction> result;
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "SELECT id, account_id, confirmation_date, operation_date, description,"
         " debit, credit, balance_after, category, subcategory, source_template"
         " FROM transactions WHERE account_id = ?"
         " ORDER BY operation_date DESC, id DESC;"
     ));
-    q.addBindValue(accountId);
+    query.addBindValue(accountId);
 
-    if (!q.exec()) {
-        qWarning() << "[TransactionsTable] allForAccount error:" << q.lastError().text();
+    if (!query.exec()) {
+        qWarning() << "[TransactionsTable] allForAccount error:" << query.lastError().text();
         return result;
     }
 
-    while (q.next()) {
-        Data::Transaction tx;
-        tx.id               = q.value(0).toInt();
-        tx.accountId         = q.value(1).toInt();
-        tx.confirmationDate  = dateFromDb(q.value(2).toString());
-        tx.operationDate     = dateFromDb(q.value(3).toString());
-        tx.description       = q.value(4).toString();
-        tx.debit             = q.value(5).toDouble();
-        tx.credit            = q.value(6).toDouble();
-        tx.balanceAfter      = q.value(7).toDouble();
-        tx.category          = q.value(8).toString();
-        tx.subcategory       = q.value(9).toString();
-        tx.sourceTemplate    = q.value(10).toString();
-        result << tx;
+    while (query.next()) {
+        Data::Transaction transaction;
+        transaction.id               = query.value(kColId).toInt();
+        transaction.accountId         = query.value(kColAccountId).toInt();
+        transaction.confirmationDate  = dateFromDb(query.value(kColConfirmationDate).toString());
+        transaction.operationDate     = dateFromDb(query.value(kColOperationDate).toString());
+        transaction.description       = query.value(kColDescription).toString();
+        transaction.debit             = query.value(kColDebit).toDouble();
+        transaction.credit            = query.value(kColCredit).toDouble();
+        transaction.balanceAfter      = query.value(kColBalanceAfter).toDouble();
+        transaction.category          = query.value(kColCategory).toString();
+        transaction.subcategory       = query.value(kColSubcategory).toString();
+        transaction.sourceTemplate    = query.value(kColSourceTemplate).toString();
+        result.append(transaction);
     }
     return result;
 }
 
 int TransactionsTable::countForAccount(int accountId) const
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE account_id = ?;"));
-    q.addBindValue(accountId);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE account_id = ?;"));
+    query.addBindValue(accountId);
 
-    if (!q.exec() || !q.next()) {
-        qWarning() << "[TransactionsTable] countForAccount error:" << q.lastError().text();
+    if (!query.exec() || !query.next()) {
+        qWarning() << "[TransactionsTable] countForAccount error:" << query.lastError().text();
         return 0;
     }
-    return q.value(0).toInt();
+    return query.value(0).toInt();
 }

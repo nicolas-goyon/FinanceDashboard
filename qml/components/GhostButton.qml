@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 
 // ── GhostButton ──────────────────────────────────────────────────────────────
 // Small bordered inline-row action — "✎ Edit", "＋ Subcategory", "＋ Add hash",

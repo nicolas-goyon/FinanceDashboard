@@ -178,7 +178,7 @@ Item {
                 }
             }
 
-            Item { height: 8 }
+            Item { Layout.preferredHeight: 8 }
         }
     }
 }
