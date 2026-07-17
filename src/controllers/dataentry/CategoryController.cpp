@@ -1,11 +1,23 @@
 #include "CategoryController.h"
 
 #include "db/Database.h"
+#include "models/Category.h"
 
 #include <QColor>
+#include <QObject>
 #include <QSet>
+#include <QString>
 #include <QTimer>
+#include <QVariantList>
 #include <QVariantMap>
+#include <Qt>
+#include <QtMinMax>
+#include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
+
+namespace {
+constexpr int kStatusClearDelayMs = 3000; // how long a status message stays visible
+constexpr int kMaxShadeSteps = 10;        // how many lightness steps to try before giving up
+} // namespace
 
 CategoryController::CategoryController(QObject* parent)
     : QObject(parent)
@@ -13,8 +25,9 @@ CategoryController::CategoryController(QObject* parent)
     // DB-backed (see ARCHITECTURE.MD § Category Management): load whatever is
     // already persisted, or seed the original mock defaults on a fresh DB.
     m_categories = Database::instance().loadCategories();
-    if (m_categories.isEmpty())
+    if (m_categories.isEmpty()) {
         seedDefaults();
+    }
 }
 
 void CategoryController::reload()
@@ -28,7 +41,7 @@ void CategoryController::setStatus(const QString& msg)
 {
     m_statusText = msg;
     emit statusChanged();
-    QTimer::singleShot(3000, this, [this]() {
+    QTimer::singleShot(kStatusClearDelayMs, this, [this]() {
         m_statusText.clear();
         emit statusChanged();
     });
@@ -72,22 +85,24 @@ void CategoryController::seedDefaults()
         { "Other", "#6c7086", {} },
     };
 
-    Database& db = Database::instance();
-    for (const SeedCat& sc : kSeed) {
-        const int catId = db.addCategory(sc.name, sc.color);
-        if (catId < 0)
+    Database& database = Database::instance();
+    for (const SeedCat& seedCat : kSeed) {
+        const int catId = database.addCategory(seedCat.name, seedCat.color);
+        if (catId < 0) {
             continue; // DB not open / insert failed — skip, retried next launch
+        }
 
         Data::Category cat;
         cat.id    = catId;
-        cat.name  = sc.name;
-        cat.color = sc.color;
+        cat.name  = seedCat.name;
+        cat.color = seedCat.color;
 
-        for (const SeedSub& ss : sc.subs) {
-            const int subId = db.addSubcategory(catId, ss.name, ss.color);
-            if (subId < 0)
+        for (const SeedSub& seedSub : seedCat.subs) {
+            const int subId = database.addSubcategory(catId, seedSub.name, seedSub.color);
+            if (subId < 0) {
                 continue;
-            cat.subcategories.append(Data::Subcategory{ subId, ss.name, ss.color });
+            }
+            cat.subcategories.append(Data::Subcategory{ subId, seedSub.name, seedSub.color });
         }
 
         m_categories.append(cat);
@@ -118,56 +133,71 @@ QVariantList CategoryController::categories() const
 
 QString CategoryController::categoryColor(const QString& categoryName) const
 {
-    for (const Data::Category& cat : m_categories)
-        if (cat.name == categoryName)
+    for (const Data::Category& cat : m_categories) {
+        if (cat.name == categoryName) {
             return cat.color;
-    return QString();
+        }
+    }
+    return {};
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+// positionally from CategoriesManagePage.qml.
 QString CategoryController::subcategoryColor(const QString& categoryName, const QString& subcategoryName) const
 {
-    for (const Data::Category& cat : m_categories)
-        if (cat.name == categoryName)
-            for (const Data::Subcategory& sub : cat.subcategories)
-                if (sub.name == subcategoryName)
+    for (const Data::Category& cat : m_categories) {
+        if (cat.name == categoryName) {
+            for (const Data::Subcategory& sub : cat.subcategories) {
+                if (sub.name == subcategoryName) {
                     return sub.color;
-    return QString();
+                }
+            }
+        }
+    }
+    return {};
 }
 
 QString CategoryController::suggestSubcategoryColor(int categoryIndex) const
 {
     static const QString kFallback = QStringLiteral("#89b4fa"); // app default accent
 
-    if (categoryIndex < 0 || categoryIndex >= m_categories.size())
+    if (categoryIndex < 0 || categoryIndex >= m_categories.size()) {
         return kFallback;
+    }
 
-    const Data::Category& cat = m_categories[categoryIndex];
+    const Data::Category& cat = m_categories.at(categoryIndex);
     const QColor base(cat.color);
-    if (!base.isValid())
+    if (!base.isValid()) {
         return cat.color.isEmpty() ? kFallback : cat.color;
+    }
 
     QSet<QString> used;
-    for (const Data::Subcategory& sub : cat.subcategories)
+    for (const Data::Subcategory& sub : cat.subcategories) {
         used.insert(sub.color.toLower());
+    }
 
     // QColor::getHslF/fromHslF take float* / float in Qt 6 (not qreal), even
     // though qreal is double on desktop platforms — verified against the
     // build error against C:/Qt/6.11.1/mingw_64/include/QtGui/qcolor.h.
-    float h, s, l, a;
-    base.getHslF(&h, &s, &l, &a);
+    float hue = 0.0F;
+    float sat = 0.0F;
+    float light = 0.0F;
+    float alpha = 0.0F;
+    base.getHslF(&hue, &sat, &light, &alpha);
 
     // Walk outward from the base lightness in increasing steps, alternating
     // lighter/darker, until a shade distinct from every sibling subcategory
     // color is found (siblings only — other categories' colors are allowed
     // to repeat, they're a different visual group).
-    for (int step = 1; step <= 10; ++step) {
-        const float delta = step * 0.08f; // ~8% lightness per step
-        for (int sign : { 1, -1 }) {
-            const float candidateL = qBound(0.05f, l + sign * delta, 0.95f);
-            const QColor candidate = QColor::fromHslF(h, s, candidateL, a);
-            const QString hex = candidate.name(QColor::HexRgb);
-            if (!used.contains(hex.toLower()))
+    for (int step = 1; step <= kMaxShadeSteps; ++step) {
+        const float delta = static_cast<float>(step) * 0.08F; // ~8% lightness per step
+        for (const int sign : { 1, -1 }) {
+            const float candidateL = qBound(0.05F, light + (static_cast<float>(sign) * delta), 0.95F);
+            const QColor candidate = QColor::fromHslF(hue, sat, candidateL, alpha);
+            QString hex = candidate.name(QColor::HexRgb);
+            if (!used.contains(hex.toLower())) {
                 return hex;
+            }
         }
     }
 
@@ -176,25 +206,29 @@ QString CategoryController::suggestSubcategoryColor(int categoryIndex) const
     return cat.color;
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+// positionally from CategoriesManagePage.qml.
 void CategoryController::addCategory(const QString& name, const QString& color)
 {
     const QString trimmed = name.trimmed();
-    if (trimmed.isEmpty())
+    if (trimmed.isEmpty()) {
         return;
-    for (const Data::Category& cat : m_categories)
+    }
+    for (const Data::Category& cat : m_categories) {
         if (cat.name.compare(trimmed, Qt::CaseInsensitive) == 0) {
             setStatus(QStringLiteral("⚠  A category with this name already exists"));
             return; // no duplicate names
         }
+    }
 
-    const int id = Database::instance().addCategory(trimmed, color);
-    if (id < 0) {
+    const int categoryId = Database::instance().addCategory(trimmed, color);
+    if (categoryId < 0) {
         setStatus(QStringLiteral("⚠  Could not save the category"));
         return; // DB write failed — nothing to show, avoid a phantom entry
     }
 
     Data::Category cat;
-    cat.id    = id;
+    cat.id    = categoryId;
     cat.name  = trimmed;
     cat.color = color;
     m_categories.append(cat);
@@ -204,37 +238,47 @@ void CategoryController::addCategory(const QString& name, const QString& color)
 
 void CategoryController::renameCategory(int index, const QString& newName)
 {
-    if (index < 0 || index >= m_categories.size())
+    if (index < 0 || index >= m_categories.size()) {
         return;
+    }
     const QString trimmed = newName.trimmed();
-    if (trimmed.isEmpty() || trimmed == m_categories[index].name)
+    if (trimmed.isEmpty() || trimmed == m_categories.at(index).name) {
         return;
-    if (!Database::instance().renameCategory(m_categories[index].id, trimmed)) {
+    }
+    if (!Database::instance().renameCategory(m_categories.at(index).id, trimmed)) {
         setStatus(QStringLiteral("⚠  Could not rename the category"));
         return;
     }
-    m_categories[index].name = trimmed;
+    // index bounds-checked above; QList's at() is const-only, so mutating
+    // through operator[] is genuinely required here.
+    m_categories[index].name = trimmed; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     emit categoriesChanged();
     setStatus(QStringLiteral("✓  Category renamed"));
 }
 
 void CategoryController::setCategoryColor(int index, const QString& color)
 {
-    if (index < 0 || index >= m_categories.size())
+    if (index < 0 || index >= m_categories.size()) {
         return;
-    if (m_categories[index].color == color)
+    }
+    if (m_categories.at(index).color == color) {
         return;
-    if (!Database::instance().setCategoryColor(m_categories[index].id, color))
+    }
+    if (!Database::instance().setCategoryColor(m_categories.at(index).id, color)) {
         return;
-    m_categories[index].color = color;
+    }
+    // index bounds-checked above; QList's at() is const-only, so mutating
+    // through operator[] is genuinely required here.
+    m_categories[index].color = color; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     emit categoriesChanged();
 }
 
 void CategoryController::removeCategory(int index)
 {
-    if (index < 0 || index >= m_categories.size())
+    if (index < 0 || index >= m_categories.size()) {
         return;
-    if (!Database::instance().removeCategory(m_categories[index].id)) {
+    }
+    if (!Database::instance().removeCategory(m_categories.at(index).id)) {
         setStatus(QStringLiteral("⚠  Could not remove the category"));
         return;
     }
@@ -243,73 +287,103 @@ void CategoryController::removeCategory(int index)
     setStatus(QStringLiteral("✓  Category removed"));
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+// positionally from CategoriesManagePage.qml.
 void CategoryController::addSubcategory(int categoryIndex, const QString& name, const QString& color)
 {
-    if (categoryIndex < 0 || categoryIndex >= m_categories.size())
+    if (categoryIndex < 0 || categoryIndex >= m_categories.size()) {
         return;
+    }
     const QString trimmed = name.trimmed();
-    if (trimmed.isEmpty())
+    if (trimmed.isEmpty()) {
         return;
-    Data::Category& cat = m_categories[categoryIndex];
-    for (const Data::Subcategory& sub : cat.subcategories)
+    }
+    // categoryIndex bounds-checked above; QList's at() is const-only, so
+    // mutating through operator[] is genuinely required here.
+    Data::Category& cat = m_categories[categoryIndex]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (const Data::Subcategory& sub : cat.subcategories) {
         if (sub.name.compare(trimmed, Qt::CaseInsensitive) == 0) {
             setStatus(QStringLiteral("⚠  A subcategory with this name already exists"));
             return; // no duplicate names within the same category
         }
+    }
 
-    const int id = Database::instance().addSubcategory(cat.id, trimmed, color);
-    if (id < 0) {
+    const int subcategoryId = Database::instance().addSubcategory(cat.id, trimmed, color);
+    if (subcategoryId < 0) {
         setStatus(QStringLiteral("⚠  Could not save the subcategory"));
         return;
     }
 
-    cat.subcategories.append(Data::Subcategory{ id, trimmed, color });
+    cat.subcategories.append(Data::Subcategory{ subcategoryId, trimmed, color });
     emit categoriesChanged();
     setStatus(QStringLiteral("✓  Subcategory added"));
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+// positionally from CategoriesManagePage.qml as (categoryIndex, subIndex, ...).
 void CategoryController::renameSubcategory(int categoryIndex, int subIndex, const QString& newName)
 {
-    if (categoryIndex < 0 || categoryIndex >= m_categories.size())
+    if (categoryIndex < 0 || categoryIndex >= m_categories.size()) {
         return;
-    Data::Category& cat = m_categories[categoryIndex];
-    if (subIndex < 0 || subIndex >= cat.subcategories.size())
+    }
+    // categoryIndex bounds-checked above; QList's at() is const-only, so
+    // mutating through operator[] is genuinely required here.
+    Data::Category& cat = m_categories[categoryIndex]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (subIndex < 0 || subIndex >= cat.subcategories.size()) {
         return;
+    }
     const QString trimmed = newName.trimmed();
-    if (trimmed.isEmpty() || trimmed == cat.subcategories[subIndex].name)
+    if (trimmed.isEmpty() || trimmed == cat.subcategories.at(subIndex).name) {
         return;
-    if (!Database::instance().renameSubcategory(cat.subcategories[subIndex].id, trimmed)) {
+    }
+    if (!Database::instance().renameSubcategory(cat.subcategories.at(subIndex).id, trimmed)) {
         setStatus(QStringLiteral("⚠  Could not rename the subcategory"));
         return;
     }
-    cat.subcategories[subIndex].name = trimmed;
+    // subIndex bounds-checked above; same const-only at() limitation.
+    cat.subcategories[subIndex].name = trimmed; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     emit categoriesChanged();
     setStatus(QStringLiteral("✓  Subcategory renamed"));
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+// positionally from CategoriesManagePage.qml as (categoryIndex, subIndex, ...).
 void CategoryController::setSubcategoryColor(int categoryIndex, int subIndex, const QString& color)
 {
-    if (categoryIndex < 0 || categoryIndex >= m_categories.size())
+    if (categoryIndex < 0 || categoryIndex >= m_categories.size()) {
         return;
-    Data::Category& cat = m_categories[categoryIndex];
-    if (subIndex < 0 || subIndex >= cat.subcategories.size())
+    }
+    // categoryIndex bounds-checked above; QList's at() is const-only, so
+    // mutating through operator[] is genuinely required here.
+    Data::Category& cat = m_categories[categoryIndex]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (subIndex < 0 || subIndex >= cat.subcategories.size()) {
         return;
-    if (cat.subcategories[subIndex].color == color)
+    }
+    if (cat.subcategories.at(subIndex).color == color) {
         return;
-    if (!Database::instance().setSubcategoryColor(cat.subcategories[subIndex].id, color))
+    }
+    if (!Database::instance().setSubcategoryColor(cat.subcategories.at(subIndex).id, color)) {
         return;
-    cat.subcategories[subIndex].color = color;
+    }
+    // subIndex bounds-checked above; same const-only at() limitation.
+    cat.subcategories[subIndex].color = color; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     emit categoriesChanged();
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+// positionally from CategoriesManagePage.qml as (categoryIndex, subIndex).
 void CategoryController::removeSubcategory(int categoryIndex, int subIndex)
 {
-    if (categoryIndex < 0 || categoryIndex >= m_categories.size())
+    if (categoryIndex < 0 || categoryIndex >= m_categories.size()) {
         return;
-    Data::Category& cat = m_categories[categoryIndex];
-    if (subIndex < 0 || subIndex >= cat.subcategories.size())
+    }
+    // categoryIndex bounds-checked above; QList's at() is const-only, so
+    // mutating through operator[] is genuinely required here.
+    Data::Category& cat = m_categories[categoryIndex]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (subIndex < 0 || subIndex >= cat.subcategories.size()) {
         return;
-    if (!Database::instance().removeSubcategory(cat.subcategories[subIndex].id)) {
+    }
+    if (!Database::instance().removeSubcategory(cat.subcategories.at(subIndex).id)) {
         setStatus(QStringLiteral("⚠  Could not remove the subcategory"));
         return;
     }

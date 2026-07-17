@@ -1,12 +1,18 @@
 #include "AccountHashesTable.h"
+#include "models/Account.h"
 
+#include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QString>
 #include <QVariant>
+#include <QVector>
 #include <QDebug>
+#include <QtLogging>
+#include <utility>
 
-AccountHashesTable::AccountHashesTable(const QString& connectionName)
-    : m_connectionName(connectionName)
+AccountHashesTable::AccountHashesTable(QString connectionName)
+    : m_connectionName(std::move(connectionName))
 {}
 
 QSqlDatabase AccountHashesTable::db() const
@@ -16,9 +22,9 @@ QSqlDatabase AccountHashesTable::db() const
 
 bool AccountHashesTable::createTable()
 {
-    QSqlQuery q(db());
-    const bool ok =
-        q.exec(QStringLiteral(
+    QSqlQuery query(db());
+    const bool success =
+        query.exec(QStringLiteral(
             "CREATE TABLE IF NOT EXISTS account_hashes ("
             "  id         INTEGER PRIMARY KEY AUTOINCREMENT,"
             "  account_id INTEGER NOT NULL,"
@@ -27,98 +33,104 @@ bool AccountHashesTable::createTable()
             "  UNIQUE(account_id, hash)"
             ");"
         )) &&
-        q.exec(QStringLiteral(
+        query.exec(QStringLiteral(
             "CREATE INDEX IF NOT EXISTS idx_account_hashes_account"
             " ON account_hashes(account_id);"
         )) &&
-        q.exec(QStringLiteral(
+        query.exec(QStringLiteral(
             "CREATE INDEX IF NOT EXISTS idx_account_hashes_hash"
             " ON account_hashes(hash);"
         ));
 
-    if (!ok)
-        qWarning() << "[AccountHashesTable] createTable error:" << q.lastError().text();
-    return ok;
+    if (!success) {
+        qWarning() << "[AccountHashesTable] createTable error:" << query.lastError().text();
+    }
+    return success;
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — mirrors the table's
+// (hash, source) column order; every call site passes a literal source
+// ("manual"/"auto"), not a variable that could be swapped with hash.
 int AccountHashesTable::insert(int accountId, const QString& hash, const QString& source)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "INSERT INTO account_hashes (account_id, hash, source) VALUES (?, ?, ?);"
     ));
-    q.addBindValue(accountId);
-    q.addBindValue(hash);
-    q.addBindValue(source);
+    query.addBindValue(accountId);
+    query.addBindValue(hash);
+    query.addBindValue(source);
 
-    if (!q.exec()) {
-        qWarning() << "[AccountHashesTable] insert error:" << q.lastError().text();
+    if (!query.exec()) {
+        qWarning() << "[AccountHashesTable] insert error:" << query.lastError().text();
         return -1;
     }
-    return q.lastInsertId().toInt();
+    return query.lastInsertId().toInt();
 }
 
-bool AccountHashesTable::remove(int id)
+bool AccountHashesTable::remove(int hashId)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("DELETE FROM account_hashes WHERE id = ?;"));
-    q.addBindValue(id);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("DELETE FROM account_hashes WHERE id = ?;"));
+    query.addBindValue(hashId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[AccountHashesTable] remove error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[AccountHashesTable] remove error:" << query.lastError().text();
+    }
+    return success;
 }
 
 bool AccountHashesTable::removeForAccount(int accountId)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("DELETE FROM account_hashes WHERE account_id = ?;"));
-    q.addBindValue(accountId);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("DELETE FROM account_hashes WHERE account_id = ?;"));
+    query.addBindValue(accountId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[AccountHashesTable] removeForAccount error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[AccountHashesTable] removeForAccount error:" << query.lastError().text();
+    }
+    return success;
 }
 
 bool AccountHashesTable::existsForAccount(int accountId, const QString& hash) const
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "SELECT 1 FROM account_hashes WHERE account_id = ? AND hash = ? LIMIT 1;"
     ));
-    q.addBindValue(accountId);
-    q.addBindValue(hash);
+    query.addBindValue(accountId);
+    query.addBindValue(hash);
 
-    if (!q.exec()) {
-        qWarning() << "[AccountHashesTable] existsForAccount error:" << q.lastError().text();
+    if (!query.exec()) {
+        qWarning() << "[AccountHashesTable] existsForAccount error:" << query.lastError().text();
         return false;
     }
-    return q.next();
+    return query.next();
 }
 
 QVector<Data::AccountHash> AccountHashesTable::allForAccount(int accountId) const
 {
     QVector<Data::AccountHash> result;
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "SELECT id, hash, source FROM account_hashes"
         " WHERE account_id = ? ORDER BY id ASC;"
     ));
-    q.addBindValue(accountId);
+    query.addBindValue(accountId);
 
-    if (!q.exec()) {
-        qWarning() << "[AccountHashesTable] allForAccount error:" << q.lastError().text();
+    if (!query.exec()) {
+        qWarning() << "[AccountHashesTable] allForAccount error:" << query.lastError().text();
         return result;
     }
 
-    while (q.next()) {
-        Data::AccountHash h;
-        h.id     = q.value(0).toInt();
-        h.hash   = q.value(1).toString();
-        h.source = q.value(2).toString();
-        result << h;
+    while (query.next()) {
+        Data::AccountHash accountHash;
+        accountHash.id     = query.value(0).toInt();
+        accountHash.hash   = query.value(1).toString();
+        accountHash.source = query.value(2).toString();
+        result << accountHash;
     }
     return result;
 }

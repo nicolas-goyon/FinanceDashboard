@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_CATEGORYCONTROLLER_H
+#define FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_CATEGORYCONTROLLER_H
 
 #include "models/Category.h"
 
@@ -61,13 +62,13 @@ class CategoryController : public QObject
 public:
     explicit CategoryController(QObject* parent = nullptr);
 
-    QVariantList categories() const;
-    QString      statusText() const { return m_statusText; }
+    [[nodiscard]] QVariantList categories() const;
+    [[nodiscard]] QString      statusText() const { return m_statusText; }
 
     // Convenience lookups (used to fill a color swatch given only names,
     // e.g. a transaction row that stores category/subcategory as strings).
-    Q_INVOKABLE QString categoryColor(const QString& categoryName) const;
-    Q_INVOKABLE QString subcategoryColor(const QString& categoryName, const QString& subcategoryName) const;
+    Q_INVOKABLE [[nodiscard]] QString categoryColor(const QString& categoryName) const;
+    Q_INVOKABLE [[nodiscard]] QString subcategoryColor(const QString& categoryName, const QString& subcategoryName) const;
 
     // Default color to pre-fill the "add subcategory" dialog with: a lighter
     // or darker HSL shade of the parent category's own color, chosen to be
@@ -80,7 +81,7 @@ public:
     // CategoriesManagePage.qml's "+ Subcategory" action just calls it and
     // passes the result as the dialog's initial color; the user can still
     // override it via the color picker before saving.
-    Q_INVOKABLE QString suggestSubcategoryColor(int categoryIndex) const;
+    Q_INVOKABLE [[nodiscard]] QString suggestSubcategoryColor(int categoryIndex) const;
 
     // Category CRUD (index into the top-level categories list). Each of
     // these writes through Database::instance() first; the in-memory list
@@ -129,3 +130,5 @@ private:
     QVector<Data::Category> m_categories;
     QString m_statusText;
 };
+
+#endif // FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_CATEGORYCONTROLLER_H

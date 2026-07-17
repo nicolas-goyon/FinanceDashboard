@@ -4,8 +4,16 @@
 #include "models/Transaction.h"
 
 #include <QDate>
+#include <QLatin1String>
+#include <QObject>
+#include <QString>
 #include <QTimer>
 #include <QVector>
+#include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
+
+namespace {
+constexpr int kStatusClearDelayMs = 4000; // how long a status message stays visible
+} // namespace
 
 DatabaseManagementController::DatabaseManagementController(QObject* parent)
     : QObject(parent)
@@ -32,9 +40,9 @@ void DatabaseManagementController::resetToMock()
     emit databaseReset();
 }
 
-void DatabaseManagementController::seedMockData()
+void DatabaseManagementController::seedMockData() // static, see header
 {
-    Database& db = Database::instance();
+    Database& database = Database::instance();
 
     // Same default category/subcategory list as
     // CategoryController::seedDefaults() (duplicated here deliberately —
@@ -65,12 +73,14 @@ void DatabaseManagementController::seedMockData()
         } },
         { "Other", "#6c7086", {} },
     };
-    for (const SeedCat& sc : kCategorySeed) {
-        const int catId = db.addCategory(sc.name, sc.color);
-        if (catId < 0)
+    for (const SeedCat& seedCat : kCategorySeed) {
+        const int catId = database.addCategory(seedCat.name, seedCat.color);
+        if (catId < 0) {
             continue;
-        for (const SeedSub& ss : sc.subs)
-            db.addSubcategory(catId, ss.name, ss.color);
+        }
+        for (const SeedSub& seedSub : seedCat.subs) {
+            database.addSubcategory(catId, seedSub.name, seedSub.color);
+        }
     }
 
     // Same defaults as AccountController::seedDefaults().
@@ -81,14 +91,16 @@ void DatabaseManagementController::seedMockData()
         { "Investments",    "#cba6f7" },
         { "Urgent savings", "#f9e2af" },
     };
-    for (const SeedAccCat& sc : kAccountCategorySeed)
-        db.addAccountCategory(sc.name, sc.color);
+    for (const SeedAccCat& seedAccCat : kAccountCategorySeed) {
+        database.addAccountCategory(seedAccCat.name, seedAccCat.color);
+    }
 
     static const QVector<QString> kAccountTypeSeed = {
         "CCP", "Livret A", "LDDS", "PEL", "Assurance Vie", "PEA", "CTO", "Other",
     };
-    for (const QString& name : kAccountTypeSeed)
-        db.addAccountType(name);
+    for (const QString& name : kAccountTypeSeed) {
+        database.addAccountType(name);
+    }
 
     struct SeedAcc { QString name, type, category, currency, notes; };
     static const QVector<SeedAcc> kAccountSeed = {
@@ -100,10 +112,11 @@ void DatabaseManagementController::seedMockData()
         { "Trading account",  "CTO",           "Investments", "EUR", "" },
     };
     int checkingBankAId = -1;
-    for (const SeedAcc& sa : kAccountSeed) {
-        const int id = db.addAccount(sa.name, sa.type, sa.category, sa.currency, sa.notes);
-        if (sa.name == QLatin1String("Checking — Bank A"))
-            checkingBankAId = id;
+    for (const SeedAcc& seedAcc : kAccountSeed) {
+        const int accountId = database.addAccount(seedAcc.name, seedAcc.type, seedAcc.category, seedAcc.currency, seedAcc.notes);
+        if (seedAcc.name == QLatin1String("Checking — Bank A")) {
+            checkingBankAId = accountId;
+        }
     }
 
     // A handful of fabricated sample transactions against the first demo
@@ -127,21 +140,21 @@ void DatabaseManagementController::seedMockData()
         };
         QVector<Data::Transaction> txs;
         txs.reserve(kTxSeed.size());
-        for (const SeedTx& st : kTxSeed) {
-            Data::Transaction tx;
-            tx.accountId        = checkingBankAId;
-            tx.operationDate     = today.addDays(-st.daysAgo);
-            tx.confirmationDate  = tx.operationDate;
-            tx.description       = st.description;
-            tx.debit             = st.debit;
-            tx.credit            = st.credit;
-            tx.balanceAfter      = st.balanceAfter;
-            tx.category          = st.category;
-            tx.subcategory       = st.subcategory;
-            tx.sourceTemplate    = QStringLiteral("mock-seed");
-            txs.append(tx);
+        for (const SeedTx& seedTx : kTxSeed) {
+            Data::Transaction transaction;
+            transaction.accountId        = checkingBankAId;
+            transaction.operationDate     = today.addDays(-seedTx.daysAgo);
+            transaction.confirmationDate  = transaction.operationDate;
+            transaction.description       = seedTx.description;
+            transaction.debit             = seedTx.debit;
+            transaction.credit            = seedTx.credit;
+            transaction.balanceAfter      = seedTx.balanceAfter;
+            transaction.category          = seedTx.category;
+            transaction.subcategory       = seedTx.subcategory;
+            transaction.sourceTemplate    = QStringLiteral("mock-seed");
+            txs.append(transaction);
         }
-        db.insertTransactions(checkingBankAId, txs);
+        database.insertTransactions(checkingBankAId, txs);
     }
 }
 
@@ -149,7 +162,7 @@ void DatabaseManagementController::setStatus(const QString& msg)
 {
     m_statusText = msg;
     emit statusChanged();
-    QTimer::singleShot(4000, this, [this]() {
+    QTimer::singleShot(kStatusClearDelayMs, this, [this]() {
         m_statusText.clear();
         emit statusChanged();
     });

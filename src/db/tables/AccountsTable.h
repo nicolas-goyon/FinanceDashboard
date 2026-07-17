@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_DB_TABLES_ACCOUNTSTABLE_H
+#define FINANCEDASHBOARD_DB_TABLES_ACCOUNTSTABLE_H
 
 #include "models/Account.h"
 
@@ -32,7 +33,7 @@
 class AccountsTable
 {
 public:
-    explicit AccountsTable(const QString& connectionName);
+    explicit AccountsTable(QString connectionName);
 
     bool createTable();
 
@@ -44,18 +45,20 @@ public:
     // Full-row update (all fields at once — no per-field setters, unlike
     // CategoriesTable, since AccountController's edit dialog always submits
     // every field together).
-    bool update(int id, const QString& name, const QString& type, const QString& category,
+    bool update(int accountId, const QString& name, const QString& type, const QString& category,
                 const QString& currency, const QString& notes);
 
     // Deletes the account row itself only — does NOT cascade to hashes or
     // transactions. Callers must delete those first (see
     // Database::removeAccount(), which does all three in one transaction).
-    bool remove(int id);
+    bool remove(int accountId);
 
     // All accounts, oldest first (insertion order via row id). Hashes left empty.
-    QVector<Data::Account> all() const;
+    [[nodiscard]] QVector<Data::Account> all() const;
 
 private:
-    QSqlDatabase db() const;
+    [[nodiscard]] QSqlDatabase db() const;
     QString m_connectionName;
 };
+
+#endif // FINANCEDASHBOARD_DB_TABLES_AC

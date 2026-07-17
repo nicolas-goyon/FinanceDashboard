@@ -2,16 +2,30 @@
 
 #include "db/Database.h"
 #include "utils/Formatter.h"
+#include "models/Account.h"
+#include "models/Transaction.h"
 
+#include <QObject>
+#include <QString>
 #include <QTimer>
+#include <QVariantList>
 #include <QVariantMap>
+#include <Qt>
+#include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
+
+#include <algorithm>
+
+namespace {
+constexpr int kStatusClearDelayMs = 3000; // how long a status message stays visible
+} // namespace
 
 AccountController::AccountController(QObject* parent)
     : QObject(parent)
 {
     loadFromDb();
-    if (m_accounts.isEmpty() && m_accountCategories.isEmpty() && m_accountTypes.isEmpty())
+    if (m_accounts.isEmpty() && m_accountCategories.isEmpty() && m_accountTypes.isEmpty()) {
         seedDefaults();
+    }
 }
 
 void AccountController::loadFromDb()
@@ -32,7 +46,7 @@ void AccountController::reload()
 
 void AccountController::seedDefaults()
 {
-    Database& db = Database::instance();
+    Database& database = Database::instance();
 
     // Fixed list of banking/financial products, now DB-managed like
     // category (see models/Account.h) — same defaults as the old hardcoded
@@ -41,9 +55,10 @@ void AccountController::seedDefaults()
         "CCP", "Livret A", "LDDS", "PEL", "Assurance Vie", "PEA", "CTO", "Other",
     };
     for (const QString& name : kTypeSeed) {
-        const int id = db.addAccountType(name);
-        if (id >= 0)
-            m_accountTypes.append(Data::AccountType{ id, name });
+        const int typeId = database.addAccountType(name);
+        if (typeId >= 0) {
+            m_accountTypes.append(Data::AccountType{ typeId, name });
+        }
     }
 
     // Same 4 usage buckets named in the product request: day-to-day basis,
@@ -55,11 +70,12 @@ void AccountController::seedDefaults()
         { "Investments",    "#cba6f7" },
         { "Urgent savings", "#f9e2af" },
     };
-    for (const SeedCat& sc : kCatSeed) {
-        const int id = db.addAccountCategory(sc.name, sc.color);
-        if (id < 0)
+    for (const SeedCat& seedCat : kCatSeed) {
+        const int categoryId = database.addAccountCategory(seedCat.name, seedCat.color);
+        if (categoryId < 0) {
             continue;
-        m_accountCategories.append(Data::AccountCategory{ id, sc.name, sc.color });
+        }
+        m_accountCategories.append(Data::AccountCategory{ categoryId, seedCat.name, seedCat.color });
     }
 
     // Same accounts as before, minus iban/bic/number (no longer stored — see
@@ -77,18 +93,19 @@ void AccountController::seedDefaults()
         { "Assurance Vie",     "Assurance Vie", "Investments", "EUR", "" },
         { "Trading account",  "CTO",           "Investments", "EUR", "" },
     };
-    for (const SeedAcc& sa : kAccSeed) {
-        const int id = db.addAccount(sa.name, sa.type, sa.category, sa.currency, sa.notes);
-        if (id < 0)
+    for (const SeedAcc& seedAcc : kAccSeed) {
+        const int accountId = database.addAccount(seedAcc.name, seedAcc.type, seedAcc.category, seedAcc.currency, seedAcc.notes);
+        if (accountId < 0) {
             continue;
+        }
 
         Data::Account acc;
-        acc.id       = id;
-        acc.name     = sa.name;
-        acc.type     = sa.type;
-        acc.category = sa.category;
-        acc.currency = sa.currency;
-        acc.notes    = sa.notes;
+        acc.id       = accountId;
+        acc.name     = seedAcc.name;
+        acc.type     = seedAcc.type;
+        acc.category = seedAcc.category;
+        acc.currency = seedAcc.currency;
+        acc.notes    = seedAcc.notes;
         m_accounts.append(acc);
     }
 }
@@ -100,11 +117,11 @@ QVariantList AccountController::accounts() const
     for (const Data::Account& acc : m_accounts) {
         QVariantList hashes;
         hashes.reserve(acc.hashes.size());
-        for (const Data::AccountHash& h : acc.hashes) {
+        for (const Data::AccountHash& hash : acc.hashes) {
             hashes.append(QVariantMap{
-                { "id",     h.id },
-                { "hash",   h.hash },
-                { "source", h.source },
+                { "id",     hash.id },
+                { "hash",   hash.hash },
+                { "source", hash.source },
             });
         }
         out.append(QVariantMap{
@@ -139,39 +156,47 @@ QVariantList AccountController::accountTypes() const
 {
     QVariantList out;
     out.reserve(m_accountTypes.size());
-    for (const Data::AccountType& t : m_accountTypes)
-        out.append(QVariantMap{ { "name", t.name } });
+    for (const Data::AccountType& type : m_accountTypes) {
+        out.append(QVariantMap{ { "name", type.name } });
+    }
     return out;
 }
 
 QString AccountController::accountCategoryColor(const QString& categoryName) const
 {
-    for (const Data::AccountCategory& cat : m_accountCategories)
-        if (cat.name == categoryName)
+    for (const Data::AccountCategory& cat : m_accountCategories) {
+        if (cat.name == categoryName) {
             return cat.color;
-    return QString();
+        }
+    }
+    return {};
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+// positionally from AccountsManagePage.qml in this exact order; wrapping
+// params in a struct would require rewriting the QML call site too.
 void AccountController::addAccount(const QString& name, const QString& type, const QString& category,
                                     const QString& currency, const QString& notes)
 {
     const QString trimmed = name.trimmed();
-    if (trimmed.isEmpty())
+    if (trimmed.isEmpty()) {
         return;
-    for (const Data::Account& acc : m_accounts)
+    }
+    for (const Data::Account& acc : m_accounts) {
         if (acc.name.compare(trimmed, Qt::CaseInsensitive) == 0) {
             setStatus(QStringLiteral("⚠  An account with this name already exists"));
             return;
         }
+    }
 
-    const int id = Database::instance().addAccount(trimmed, type, category, currency, notes);
-    if (id < 0) {
+    const int accountId = Database::instance().addAccount(trimmed, type, category, currency, notes);
+    if (accountId < 0) {
         setStatus(QStringLiteral("⚠  Could not save the account"));
         return;
     }
 
     Data::Account acc;
-    acc.id       = id;
+    acc.id       = accountId;
     acc.name     = trimmed;
     acc.type     = type;
     acc.category = category;
@@ -183,26 +208,34 @@ void AccountController::addAccount(const QString& name, const QString& type, con
     setStatus(QStringLiteral("✓  Account added"));
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+// positionally from AccountsManagePage.qml in this exact order; wrapping
+// params in a struct would require rewriting the QML call site too.
 void AccountController::updateAccount(int index, const QString& name, const QString& type, const QString& category,
                                        const QString& currency, const QString& notes)
 {
-    if (index < 0 || index >= m_accounts.size())
+    if (index < 0 || index >= m_accounts.size()) {
         return;
+    }
     const QString trimmed = name.trimmed();
-    if (trimmed.isEmpty())
+    if (trimmed.isEmpty()) {
         return;
-    for (int i = 0; i < m_accounts.size(); ++i)
-        if (i != index && m_accounts[i].name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+    }
+    for (int i = 0; i < m_accounts.size(); ++i) {
+        if (i != index && m_accounts.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
             setStatus(QStringLiteral("⚠  An account with this name already exists"));
             return;
         }
+    }
 
-    if (!Database::instance().updateAccount(m_accounts[index].id, trimmed, type, category, currency, notes)) {
+    if (!Database::instance().updateAccount(m_accounts.at(index).id, trimmed, type, category, currency, notes)) {
         setStatus(QStringLiteral("⚠  Could not save the account"));
         return;
     }
 
-    Data::Account& acc = m_accounts[index];
+    // index is bounds-checked above; QList has no bounds-checked *mutable*
+    // accessor (at() is const-only), so operator[] is genuinely required here.
+    Data::Account& acc = m_accounts[index]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     acc.name     = trimmed;
     acc.type     = type;
     acc.category = category;
@@ -215,9 +248,10 @@ void AccountController::updateAccount(int index, const QString& name, const QStr
 
 void AccountController::removeAccount(int index)
 {
-    if (index < 0 || index >= m_accounts.size())
+    if (index < 0 || index >= m_accounts.size()) {
         return;
-    if (!Database::instance().removeAccount(m_accounts[index].id)) {
+    }
+    if (!Database::instance().removeAccount(m_accounts.at(index).id)) {
         setStatus(QStringLiteral("⚠  Could not remove the account"));
         return;
     }
@@ -226,45 +260,61 @@ void AccountController::removeAccount(int index)
     setStatus(QStringLiteral("✓  Account removed"));
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+// positionally from AccountTypesCategoriesPage.qml.
 void AccountController::addAccountCategory(const QString& name, const QString& color)
 {
     const QString trimmed = name.trimmed();
-    if (trimmed.isEmpty())
+    if (trimmed.isEmpty()) {
         return;
-    for (const Data::AccountCategory& cat : m_accountCategories)
-        if (cat.name.compare(trimmed, Qt::CaseInsensitive) == 0)
+    }
+    for (const Data::AccountCategory& cat : m_accountCategories) {
+        if (cat.name.compare(trimmed, Qt::CaseInsensitive) == 0) {
             return;
+        }
+    }
 
-    const int id = Database::instance().addAccountCategory(trimmed, color);
-    if (id < 0)
+    const int categoryId = Database::instance().addAccountCategory(trimmed, color);
+    if (categoryId < 0) {
         return;
+    }
 
-    m_accountCategories.append(Data::AccountCategory{ id, trimmed, color });
+    m_accountCategories.append(Data::AccountCategory{ categoryId, trimmed, color });
     emit accountCategoriesChanged();
 }
 
 void AccountController::renameAccountCategory(int index, const QString& newName)
 {
-    if (index < 0 || index >= m_accountCategories.size())
+    if (index < 0 || index >= m_accountCategories.size()) {
         return;
+    }
     const QString trimmed = newName.trimmed();
-    if (trimmed.isEmpty() || trimmed == m_accountCategories[index].name)
+    if (trimmed.isEmpty() || trimmed == m_accountCategories.at(index).name) {
         return;
-    if (!Database::instance().renameAccountCategory(m_accountCategories[index].id, trimmed))
+    }
+    if (!Database::instance().renameAccountCategory(m_accountCategories.at(index).id, trimmed)) {
         return;
-    m_accountCategories[index].name = trimmed;
+    }
+    // index bounds-checked above; QList's at() is const-only, so mutating
+    // through operator[] is genuinely required here.
+    m_accountCategories[index].name = trimmed; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     emit accountCategoriesChanged();
 }
 
 void AccountController::setAccountCategoryColor(int index, const QString& color)
 {
-    if (index < 0 || index >= m_accountCategories.size())
+    if (index < 0 || index >= m_accountCategories.size()) {
         return;
-    if (m_accountCategories[index].color == color)
+    }
+    if (m_accountCategories.at(index).color == color) {
         return;
-    if (!Database::instance().setAccountCategoryColor(m_accountCategories[index].id, color))
+    }
+    if (!Database::instance().setAccountCategoryColor(m_accountCategories.at(index).id, color)) {
         return;
-    m_accountCategories[index].color = color;
+    }
+    // index bounds-checked above; QList's at() is const-only, so mutating
+    // through operator[] is genuinely required here.
+    m_accountCategories[index].color = color; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     emit accountCategoriesChanged();
 }
 
@@ -273,10 +323,12 @@ void AccountController::removeAccountCategory(int index)
     // No guard against in-use accounts still referencing this category name
     // by string — same known-limitation convention as
     // CategoryController::removeCategory() (see ARCHITECTURE.MD TODOs).
-    if (index < 0 || index >= m_accountCategories.size())
+    if (index < 0 || index >= m_accountCategories.size()) {
         return;
-    if (!Database::instance().removeAccountCategory(m_accountCategories[index].id))
+    }
+    if (!Database::instance().removeAccountCategory(m_accountCategories.at(index).id)) {
         return;
+    }
     m_accountCategories.removeAt(index);
     emit accountCategoriesChanged();
 }
@@ -284,62 +336,83 @@ void AccountController::removeAccountCategory(int index)
 void AccountController::addAccountType(const QString& name)
 {
     const QString trimmed = name.trimmed();
-    if (trimmed.isEmpty())
+    if (trimmed.isEmpty()) {
         return;
-    for (const Data::AccountType& t : m_accountTypes)
-        if (t.name.compare(trimmed, Qt::CaseInsensitive) == 0)
+    }
+    for (const Data::AccountType& type : m_accountTypes) {
+        if (type.name.compare(trimmed, Qt::CaseInsensitive) == 0) {
             return;
+        }
+    }
 
-    const int id = Database::instance().addAccountType(trimmed);
-    if (id < 0)
+    const int typeId = Database::instance().addAccountType(trimmed);
+    if (typeId < 0) {
         return;
+    }
 
-    m_accountTypes.append(Data::AccountType{ id, trimmed });
+    m_accountTypes.append(Data::AccountType{ typeId, trimmed });
     emit accountTypesChanged();
 }
 
 void AccountController::renameAccountType(int index, const QString& newName)
 {
-    if (index < 0 || index >= m_accountTypes.size())
+    if (index < 0 || index >= m_accountTypes.size()) {
         return;
+    }
     const QString trimmed = newName.trimmed();
-    if (trimmed.isEmpty() || trimmed == m_accountTypes[index].name)
+    if (trimmed.isEmpty() || trimmed == m_accountTypes.at(index).name) {
         return;
-    if (!Database::instance().renameAccountType(m_accountTypes[index].id, trimmed))
+    }
+    if (!Database::instance().renameAccountType(m_accountTypes.at(index).id, trimmed)) {
         return;
-    m_accountTypes[index].name = trimmed;
+    }
+    // index bounds-checked above; QList's at() is const-only, so mutating
+    // through operator[] is genuinely required here.
+    m_accountTypes[index].name = trimmed; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     emit accountTypesChanged();
 }
 
 void AccountController::removeAccountType(int index)
 {
     // Same no-guard convention as removeAccountCategory().
-    if (index < 0 || index >= m_accountTypes.size())
+    if (index < 0 || index >= m_accountTypes.size()) {
         return;
-    if (!Database::instance().removeAccountType(m_accountTypes[index].id))
+    }
+    if (!Database::instance().removeAccountType(m_accountTypes.at(index).id)) {
         return;
+    }
     m_accountTypes.removeAt(index);
     emit accountTypesChanged();
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — private helper, both
+// call sites below pass a literal source ("manual"/"auto"), not a variable
+// that could be swapped with hash.
 bool AccountController::addHashInternal(int accountIndex, const QString& hash, const QString& source)
 {
-    if (accountIndex < 0 || accountIndex >= m_accounts.size())
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
         return false;
+    }
     const QString trimmed = hash.trimmed();
-    if (trimmed.isEmpty())
+    if (trimmed.isEmpty()) {
         return false;
+    }
 
-    Data::Account& acc = m_accounts[accountIndex];
-    for (const Data::AccountHash& h : acc.hashes)
-        if (h.hash.compare(trimmed, Qt::CaseInsensitive) == 0)
+    // accountIndex bounds-checked above; QList's at() is const-only, so
+    // mutating through operator[] is genuinely required here.
+    Data::Account& acc = m_accounts[accountIndex]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (const Data::AccountHash& existingHash : acc.hashes) {
+        if (existingHash.hash.compare(trimmed, Qt::CaseInsensitive) == 0) {
             return false; // already linked
+        }
+    }
 
-    const int id = Database::instance().addAccountHash(acc.id, trimmed, source);
-    if (id < 0)
+    const int hashId = Database::instance().addAccountHash(acc.id, trimmed, source);
+    if (hashId < 0) {
         return false;
+    }
 
-    acc.hashes.append(Data::AccountHash{ id, trimmed, source });
+    acc.hashes.append(Data::AccountHash{ hashId, trimmed, source });
     return true;
 }
 
@@ -363,15 +436,22 @@ bool AccountController::linkAccountHash(int accountIndex, const QString& hash)
     return added;
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+// positionally from AccountsManagePage.qml as (accountIndex, hashIndex).
 void AccountController::removeHash(int accountIndex, int hashIndex)
 {
-    if (accountIndex < 0 || accountIndex >= m_accounts.size())
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
         return;
-    Data::Account& acc = m_accounts[accountIndex];
-    if (hashIndex < 0 || hashIndex >= acc.hashes.size())
+    }
+    // accountIndex bounds-checked above; QList's at() is const-only, so
+    // mutating through operator[] is genuinely required here.
+    Data::Account& acc = m_accounts[accountIndex]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (hashIndex < 0 || hashIndex >= acc.hashes.size()) {
         return;
-    if (!Database::instance().removeAccountHash(acc.hashes[hashIndex].id))
+    }
+    if (!Database::instance().removeAccountHash(acc.hashes.at(hashIndex).id)) {
         return;
+    }
     acc.hashes.removeAt(hashIndex);
     emit accountsChanged();
     setStatus(QStringLiteral("✓  Hash removed"));
@@ -379,35 +459,38 @@ void AccountController::removeHash(int accountIndex, int hashIndex)
 
 bool AccountController::accountHasHash(int accountIndex, const QString& hash) const
 {
-    if (accountIndex < 0 || accountIndex >= m_accounts.size())
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
         return false;
+    }
     const QString trimmed = hash.trimmed();
-    if (trimmed.isEmpty())
+    if (trimmed.isEmpty()) {
         return false;
-    for (const Data::AccountHash& h : m_accounts[accountIndex].hashes)
-        if (h.hash.compare(trimmed, Qt::CaseInsensitive) == 0)
-            return true;
-    return false;
+    }
+    const auto& hashes = m_accounts.at(accountIndex).hashes;
+    return std::any_of(hashes.cbegin(), hashes.cend(), [&trimmed](const Data::AccountHash& existingHash) {
+        return existingHash.hash.compare(trimmed, Qt::CaseInsensitive) == 0;
+    });
 }
 
 QVariantList AccountController::transactionsForAccount(int accountIndex) const
 {
     QVariantList rows;
-    if (accountIndex < 0 || accountIndex >= m_accounts.size())
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
         return rows;
+    }
 
-    const auto txs = Database::instance().transactionsForAccount(m_accounts[accountIndex].id);
+    const auto txs = Database::instance().transactionsForAccount(m_accounts.at(accountIndex).id);
     rows.reserve(txs.size());
-    for (const Data::Transaction& tx : txs) {
+    for (const Data::Transaction& transaction : txs) {
         rows.append(QVariantMap{
-            { "confirmationDate", Fmt::dateOrDash(tx.confirmationDate) },
-            { "operationDate",    Fmt::dateOrDash(tx.operationDate) },
-            { "description",      tx.description },
-            { "debitText",        tx.debit  > 0.0 ? Fmt::money(-tx.debit) : QStringLiteral("—") },
-            { "creditText",       tx.credit > 0.0 ? Fmt::money(tx.credit, true) : QStringLiteral("—") },
-            { "balanceText",      Fmt::money(tx.balanceAfter) },
-            { "category",         tx.category },
-            { "subcategory",      tx.subcategory },
+            { "confirmationDate", Fmt::dateOrDash(transaction.confirmationDate) },
+            { "operationDate",    Fmt::dateOrDash(transaction.operationDate) },
+            { "description",      transaction.description },
+            { "debitText",        transaction.debit  > 0.0 ? Fmt::money(-transaction.debit) : QStringLiteral("—") },
+            { "creditText",       transaction.credit > 0.0 ? Fmt::money(transaction.credit, true) : QStringLiteral("—") },
+            { "balanceText",      Fmt::money(transaction.balanceAfter) },
+            { "category",         transaction.category },
+            { "subcategory",      transaction.subcategory },
         });
     }
     return rows;
@@ -415,16 +498,17 @@ QVariantList AccountController::transactionsForAccount(int accountIndex) const
 
 int AccountController::transactionCountForAccount(int accountIndex) const
 {
-    if (accountIndex < 0 || accountIndex >= m_accounts.size())
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
         return 0;
-    return Database::instance().transactionCountForAccount(m_accounts[accountIndex].id);
+    }
+    return Database::instance().transactionCountForAccount(m_accounts.at(accountIndex).id);
 }
 
 void AccountController::setStatus(const QString& msg)
 {
     m_statusText = msg;
     emit statusChanged();
-    QTimer::singleShot(3000, this, [this]() {
+    QTimer::singleShot(kStatusClearDelayMs, this, [this]() {
         m_statusText.clear();
         emit statusChanged();
     });

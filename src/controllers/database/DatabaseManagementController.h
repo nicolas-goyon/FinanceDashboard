@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_CONTROLLERS_DATABASE_DATABASEMANAGEMENTCONTROLLER_H
+#define FINANCEDASHBOARD_CONTROLLERS_DATABASE_DATABASEMANAGEMENTCONTROLLER_H
 
 #include <QObject>
 #include <QString>
@@ -45,7 +46,7 @@ class DatabaseManagementController : public QObject
 public:
     explicit DatabaseManagementController(QObject* parent = nullptr);
 
-    QString statusText() const { return m_statusText; }
+    [[nodiscard]] QString statusText() const { return m_statusText; }
 
     // Wipes every table to empty. Leaves categories/account-categories/
     // account-types/accounts/transactions all genuinely empty — does NOT
@@ -68,7 +69,9 @@ signals:
 
 private:
     void setStatus(const QString& msg);
-    void seedMockData();
+    static void seedMockData();
 
     QString m_statusText;
 };
+
+#endif // FINANCEDASHBOARD_CONTROLLERS_DATABASE_DATABASEMANAGEMENTCONTROLLER_H

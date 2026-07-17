@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_MODELS_CATEGORY_H
+#define FINANCEDASHBOARD_MODELS_CATEGORY_H
 
 #include <QString>
 #include <QVector>
@@ -28,3 +29,5 @@ struct Category {
 };
 
 } // namespace Data
+
+#endif // FINANCEDASHBOARD_MODELS_CATEGORY_H

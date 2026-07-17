@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_SNAPSHOTIMPORTCONTROLLER_H
+#define FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_SNAPSHOTIMPORTCONTROLLER_H
 
 #include "models/ImportedStatement.h"
 #include "models/ImportLog.h"
@@ -64,20 +65,20 @@ class SnapshotImportController : public QObject
 public:
     explicit SnapshotImportController(QObject* parent = nullptr);
 
-    QVariantList templates() const { return m_templates; }
+    [[nodiscard]] QVariantList templates() const { return m_templates; }
 
-    bool    hasParsed() const       { return m_hasParsed; }
-    bool    lastParseFailed() const { return m_lastParseFailed; }
-    QString sourceFileName() const  { return m_sourceFileName; }
+    [[nodiscard]] bool    hasParsed() const       { return m_hasParsed; }
+    [[nodiscard]] bool    lastParseFailed() const { return m_lastParseFailed; }
+    [[nodiscard]] QString sourceFileName() const  { return m_sourceFileName; }
 
-    QVariantMap  statementInfo() const;
-    QVariantList transactionRows() const;
+    [[nodiscard]] QVariantMap  statementInfo() const;
+    [[nodiscard]] QVariantList transactionRows() const;
 
-    QVariantList logEntries() const;
-    int errorCount() const;
-    int warningCount() const;
+    [[nodiscard]] QVariantList logEntries() const;
+    [[nodiscard]] int errorCount() const;
+    [[nodiscard]] int warningCount() const;
 
-    QString statusText() const { return m_statusText; }
+    [[nodiscard]] QString statusText() const { return m_statusText; }
 
     // Run the selected template's parser over the picked file.
     Q_INVOKABLE void parseFile(const QUrl& fileUrl, const QString& templateId);
@@ -99,7 +100,7 @@ public:
     // the only match path, so an account with none stored just shows as
     // unmatched until linked (see the "not linked" badge / "Link this
     // account" action on ImportSnapshotPage.qml).
-    Q_INVOKABLE int matchAccountIndex(const QVariantList& accounts) const;
+    Q_INVOKABLE [[nodiscard]] int matchAccountIndex(const QVariantList& accounts) const;
 
     // Clears the parsed statement and returns to the file/template picker.
     Q_INVOKABLE void reset();
@@ -136,3 +137,5 @@ private:
 
     QString m_statusText;
 };
+
+#endif // FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_SNAPSHOTIMPORTCONTROLLER_H

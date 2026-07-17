@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -206,6 +208,7 @@ Item {
                         Repeater {
                             model: controller.biggestRows
                             delegate: Rectangle {
+                                id: expenseRow
                                 required property var modelData
                                 required property int index
                                 Layout.fillWidth: true
@@ -220,16 +223,16 @@ Item {
                                     anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                     spacing: 10
 
-                                    Rectangle { width: 8; height: 8; radius: 4; color: modelData.color }
+                                    Rectangle { Layout.preferredWidth: 8; Layout.preferredHeight: 8; radius: 4; color: expenseRow.modelData.color }
                                     Text {
                                         Layout.fillWidth: true
-                                        text: modelData.label
+                                        text: expenseRow.modelData.label
                                         font.pixelSize: 15
                                         color: "#cdd6f4"
                                         elide: Text.ElideRight
                                     }
-                                    Text { text: modelData.category; font.pixelSize: 14; color: "#6c7086" }
-                                    Text { text: modelData.amount; font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
+                                    Text { text: expenseRow.modelData.category; font.pixelSize: 14; color: "#6c7086" }
+                                    Text { text: expenseRow.modelData.amount; font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
                                 }
                             }
                         }
@@ -274,7 +277,7 @@ Item {
                 }
             }
 
-            Item { height: 8 }
+            Item { Layout.preferredHeight: 8 }
         }
     }
 }

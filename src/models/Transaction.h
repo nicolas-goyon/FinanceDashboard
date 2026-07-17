@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_MODELS_TRANSACTION_H
+#define FINANCEDASHBOARD_MODELS_TRANSACTION_H
 
 #include <QString>
 #include <QDate>
@@ -30,3 +31,5 @@ struct Transaction {
 };
 
 } // namespace Data
+
+#endif // FINANCEDASHBOARD_MODELS_TRANSACTION_H

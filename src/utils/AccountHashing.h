@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_UTILS_ACCOUNTHASHING_H
+#define FINANCEDASHBOARD_UTILS_ACCOUNTHASHING_H
 
 #include <QString>
 #include <QCryptographicHash>
@@ -21,18 +22,22 @@
 
 namespace AccountHashing {
 
-inline QString normalize(QString s)
+inline QString normalize(QString value)
 {
-    s = s.trimmed().toUpper();
-    s.remove(QLatin1Char(' '));
-    return s;
+    value = value.trimmed().toUpper();
+    value.remove(QLatin1Char(' '));
+    return value;
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — both call sites
+// (AccountController, SnapshotImportController) pass local variables already
+// named iban/bic matching these params, so a swap isn't a realistic mistake.
 inline QString compute(const QString& iban, const QString& bic)
 {
     const QString ibanNorm = normalize(iban);
-    if (ibanNorm.isEmpty())
-        return QString();
+    if (ibanNorm.isEmpty()) {
+        return {};
+    }
 
     QMessageAuthenticationCode mac(QCryptographicHash::Sha256);
     mac.setKey(normalize(bic).toUtf8());
@@ -41,3 +46,5 @@ inline QString compute(const QString& iban, const QString& bic)
 }
 
 } // namespace AccountHashing
+
+#endif // FINANCEDASHBOARD_UTILS_ACCOUNTHASHING_H

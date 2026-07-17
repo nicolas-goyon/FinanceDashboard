@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import FinanceDashboard
 
@@ -88,12 +87,12 @@ Item {
                     PillButton {
                         text: "Reset Database"
                         variant: "danger"
-                        height: 32
+                        Layout.preferredHeight: 32
                         onClicked: confirmDialog.openFor("reset")
                     }
                 }
 
-                Rectangle { Layout.fillWidth: true; height: 1; color: "#313244" }
+                Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#313244" }
 
                 RowLayout {
                     Layout.fillWidth: true
@@ -114,14 +113,14 @@ Item {
                     PillButton {
                         text: "Reset to Mock Data"
                         variant: "primary"
-                        height: 32
+                        Layout.preferredHeight: 32
                         onClicked: confirmDialog.openFor("mock")
                     }
                 }
             }
         }
 
-        Item { height: 8 }
+        Item { Layout.preferredHeight: 8 }
     }
 
     // ── Confirmation dialog (shared by both actions) ──────────────────────────

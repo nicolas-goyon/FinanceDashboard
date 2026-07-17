@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_DB_TABLES_ASSETENTRIESTABLE_H
+#define FINANCEDASHBOARD_DB_TABLES_ASSETENTRIESTABLE_H
 
 #include "models/AssetEntry.h"
 
@@ -27,7 +28,7 @@
 class AssetEntriesTable
 {
 public:
-    explicit AssetEntriesTable(const QString& connectionName);
+    explicit AssetEntriesTable(QString connectionName);
 
     // Create the table and its index.  Called once by Database::open().
     bool createTable();
@@ -44,10 +45,12 @@ public:
     // Reconstruct a FinancialSnapshot from the stored rows for a snapshot.
     // Returns nullopt only on a SQL error; an empty snapshot is still returned
     // when there are simply no entries.
-    std::optional<Data::FinancialSnapshot> loadForSnapshot(int snapshotId,
+    [[nodiscard]] std::optional<Data::FinancialSnapshot> loadForSnapshot(int snapshotId,
                                                             const QDate& date) const;
 
 private:
-    QSqlDatabase db() const;
+    [[nodiscard]] QSqlDatabase db() const;
     QString m_connectionName;
 };
+
+#endif // FINANCEDASHBOARD_DB_TABLES_ASSETENTRIESTABLE_H

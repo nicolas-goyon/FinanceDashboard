@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_IMPORT_CHECKINGCSVTEMPLATEV1_H
+#define FINANCEDASHBOARD_IMPORT_CHECKINGCSVTEMPLATEV1_H
 
 #include "ImportTemplate.h"
 
@@ -36,11 +37,13 @@
 class CheckingCsvTemplateV1 final : public ImportTemplate
 {
 public:
-    QString id() const override { return QStringLiteral("checking_csv_v1"); }
-    QString displayName() const override { return QStringLiteral("Checking Account Statement (CSV)"); }
-    QString fileFilter() const override { return QStringLiteral("CSV files (*.csv)"); }
+    [[nodiscard]] QString id() const override { return QStringLiteral("checking_csv_v1"); }
+    [[nodiscard]] QString displayName() const override { return QStringLiteral("Checking Account Statement (CSV)"); }
+    [[nodiscard]] QString fileFilter() const override { return QStringLiteral("CSV files (*.csv)"); }
 
     bool parse(const QString& filePath,
                Data::ImportedStatement& outStatement,
                QVector<Data::ImportLogEntry>& outLog) const override;
 };
+
+#endif // FINANCEDASHBOARD_IMPORT_CHECKINGCSVTEMPLATEV1_H

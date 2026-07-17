@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -93,6 +95,7 @@ Item {
                     Repeater {
                         model: page.rows
                         delegate: Rectangle {
+                            id: txRow
                             required property var modelData
                             required property int index
                             Layout.fillWidth: true
@@ -102,25 +105,25 @@ Item {
                             RowLayout {
                                 anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                 spacing: 8
-                                Text { Layout.preferredWidth: 90; text: modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
+                                Text { Layout.preferredWidth: 90; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
                                 Text {
                                     Layout.fillWidth: true
-                                    text: modelData.description
+                                    text: txRow.modelData.description
                                     font.pixelSize: 15
                                     color: "#cdd6f4"
                                     elide: Text.ElideRight
                                 }
-                                Text { Layout.preferredWidth: 90;  text: modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 90;  text: modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 100; text: modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 120; text: modelData.category.length > 0 ? modelData.category : "—"; font.pixelSize: 14; color: "#6c7086" }
+                                Text { Layout.preferredWidth: 90;  text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 90;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 100; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 120; text: txRow.modelData.category.length > 0 ? txRow.modelData.category : "—"; font.pixelSize: 14; color: "#6c7086" }
                             }
                         }
                     }
                 }
             }
 
-            Item { height: 8 }
+            Item { Layout.preferredHeight: 8 }
         }
     }
 }

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_DB_TABLES_TRANSACTIONSTABLE_H
+#define FINANCEDASHBOARD_DB_TABLES_TRANSACTIONSTABLE_H
 
 #include "models/Transaction.h"
 
@@ -37,7 +38,7 @@
 class TransactionsTable
 {
 public:
-    explicit TransactionsTable(const QString& connectionName);
+    explicit TransactionsTable(QString connectionName);
 
     bool createTable();
 
@@ -51,11 +52,13 @@ public:
     bool removeForAccount(int accountId);
 
     // All transactions for one account, most recent operation date first.
-    QVector<Data::Transaction> allForAccount(int accountId) const;
+    [[nodiscard]] QVector<Data::Transaction> allForAccount(int accountId) const;
 
-    int countForAccount(int accountId) const;
+    [[nodiscard]] int countForAccount(int accountId) const;
 
 private:
-    QSqlDatabase db() const;
+    [[nodiscard]] QSqlDatabase db() const;
     QString m_connectionName;
 };
+
+#endif // FINANCEDASHBOARD_DB_TABLES_TRANSACTIONSTABLE_H

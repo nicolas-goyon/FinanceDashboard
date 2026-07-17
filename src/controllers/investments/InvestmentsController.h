@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_CONTROLLERS_INVESTMENTS_INVESTMENTSCONTROLLER_H
+#define FINANCEDASHBOARD_CONTROLLERS_INVESTMENTS_INVESTMENTSCONTROLLER_H
 
 #include <QObject>
 #include <QStringList>
@@ -33,21 +34,21 @@ class InvestmentsController : public QObject
 public:
     explicit InvestmentsController(QObject* parent = nullptr);
 
-    QVariantList kpis()       const { return m_kpis; }
-    QVariantList allocation() const { return m_allocation; }
-    QStringList  monthLabels() const { return m_monthLabels; }
-    QVariantList perfGains()  const { return m_perfGains; }
-    QVariantList perfLosses() const { return m_perfLosses; }
-    double perfMax()  const { return m_perfMax; }
-    double perfMin()  const { return m_perfMin; }
-    double valueMax() const { return m_valueMax; }
-    double minTimeMs() const { return m_minTimeMs; }
-    double maxTimeMs() const { return m_maxTimeMs; }
+    [[nodiscard]] QVariantList kpis()       const { return m_kpis; }
+    [[nodiscard]] QVariantList allocation() const { return m_allocation; }
+    [[nodiscard]] QStringList  monthLabels() const { return m_monthLabels; }
+    [[nodiscard]] QVariantList perfGains()  const { return m_perfGains; }
+    [[nodiscard]] QVariantList perfLosses() const { return m_perfLosses; }
+    [[nodiscard]] double perfMax()  const { return m_perfMax; }
+    [[nodiscard]] double perfMin()  const { return m_perfMin; }
+    [[nodiscard]] double valueMax() const { return m_valueMax; }
+    [[nodiscard]] double minTimeMs() const { return m_minTimeMs; }
+    [[nodiscard]] double maxTimeMs() const { return m_maxTimeMs; }
 
     // Portfolio value vs cumulative deposits (two LineSeries)
-    Q_INVOKABLE QVariantList timestamps()      const { return m_timestamps; }
-    Q_INVOKABLE QVariantList portfolioValues() const { return m_portfolioValues; }
-    Q_INVOKABLE QVariantList depositValues()   const { return m_depositValues; }
+    Q_INVOKABLE [[nodiscard]] QVariantList timestamps()      const { return m_timestamps; }
+    Q_INVOKABLE [[nodiscard]] QVariantList portfolioValues() const { return m_portfolioValues; }
+    Q_INVOKABLE [[nodiscard]] QVariantList depositValues()   const { return m_depositValues; }
 
 private:
     QVariantList m_kpis, m_allocation;
@@ -57,3 +58,5 @@ private:
     double m_perfMax = 0, m_perfMin = 0, m_valueMax = 0;
     double m_minTimeMs = 0, m_maxTimeMs = 0;
 };
+
+#endif // FINANCEDASHBOARD_CONTROLLERS_INVESTMENTS_INVESTMENTSCONTROLLER_H

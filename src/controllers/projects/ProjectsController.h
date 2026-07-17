@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_CONTROLLERS_PROJECTS_PROJECTSCONTROLLER_H
+#define FINANCEDASHBOARD_CONTROLLERS_PROJECTS_PROJECTSCONTROLLER_H
 
 #include <QDate>
 #include <QObject>
@@ -39,9 +40,9 @@ class ProjectsController : public QObject
 public:
     explicit ProjectsController(QObject* parent = nullptr);
 
-    QStringList projectNames() const { return m_projectNames; }
-    QVariantList projectCards() const { return m_projectCards; }
-    int  currentProject() const { return m_currentProject; }
+    [[nodiscard]] QStringList projectNames() const { return m_projectNames; }
+    [[nodiscard]] QVariantList projectCards() const { return m_projectCards; }
+    [[nodiscard]] int  currentProject() const { return m_currentProject; }
     void setCurrentProject(int index);
 
     // Create a new project (mock — not persisted). monthsToTarget from today.
@@ -49,20 +50,20 @@ public:
                                 int monthsToTarget, double earmarked,
                                 double monthly);
 
-    QVariantList kpis() const { return m_kpis; }
-    double targetAmount() const { return m_targetAmount; }
-    double chartMax()  const { return m_chartMax; }
-    double minTimeMs() const { return m_minTimeMs; }
-    double maxTimeMs() const { return m_maxTimeMs; }
+    [[nodiscard]] QVariantList kpis() const { return m_kpis; }
+    [[nodiscard]] double targetAmount() const { return m_targetAmount; }
+    [[nodiscard]] double chartMax()  const { return m_chartMax; }
+    [[nodiscard]] double minTimeMs() const { return m_minTimeMs; }
+    [[nodiscard]] double maxTimeMs() const { return m_maxTimeMs; }
 
-    double loanRatePct() const { return m_loanRatePct; }
+    [[nodiscard]] double loanRatePct() const { return m_loanRatePct; }
     void setLoanRatePct(double pct);
-    QVariantList loanScenarios() const { return m_loanScenarios; }
-    QString saveVsBorrowText() const { return m_saveVsBorrowText; }
+    [[nodiscard]] QVariantList loanScenarios() const { return m_loanScenarios; }
+    [[nodiscard]] QString saveVsBorrowText() const { return m_saveVsBorrowText; }
 
     // Projected savings line (x = ms since epoch, y = €)
-    Q_INVOKABLE QVariantList projectionTimestamps() const { return m_projTimestamps; }
-    Q_INVOKABLE QVariantList projectionValues()     const { return m_projValues; }
+    Q_INVOKABLE [[nodiscard]] QVariantList projectionTimestamps() const { return m_projTimestamps; }
+    Q_INVOKABLE [[nodiscard]] QVariantList projectionValues()     const { return m_projValues; }
 
 signals:
     void projectsChanged();   // list of projects changed (add / rename)
@@ -91,7 +92,10 @@ private:
     double m_targetAmount = 0, m_chartMax = 0, m_minTimeMs = 0, m_maxTimeMs = 0;
     double m_fundingGap = 0;
 
-    double m_loanRatePct = 3.5;
+    static constexpr double kDefaultLoanRatePct = 3.5; // MOCK default annual rate shown in the loan simulator
+    double m_loanRatePct = kDefaultLoanRatePct;
     QVariantList m_loanScenarios;
     QString m_saveVsBorrowText;
 };
+
+#endif // FINANCEDASHBOARD_CONTROLLERS_PROJECTS_PROJECTSCONTROLLER_H

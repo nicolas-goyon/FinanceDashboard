@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_DB_TABLES_ACCOUNTTYPESTABLE_H
+#define FINANCEDASHBOARD_DB_TABLES_ACCOUNTTYPESTABLE_H
 
 #include "models/Account.h"
 
@@ -22,20 +23,22 @@
 class AccountTypesTable
 {
 public:
-    explicit AccountTypesTable(const QString& connectionName);
+    explicit AccountTypesTable(QString connectionName);
 
     bool createTable();
 
     // Returns the new row id, or -1 on failure (including a UNIQUE(name)
     // violation — callers check for duplicate names themselves first).
     int  insert(const QString& name);
-    bool rename(int id, const QString& newName);
-    bool remove(int id);
+    bool rename(int typeId, const QString& newName);
+    bool remove(int typeId);
 
     // All types, oldest first (insertion order via row id).
-    QVector<Data::AccountType> all() const;
+    [[nodiscard]] QVector<Data::AccountType> all() const;
 
 private:
-    QSqlDatabase db() const;
+    [[nodiscard]] QSqlDatabase db() const;
     QString m_connectionName;
 };
+
+#endif // FINANCEDASHBOARD_DB_TABLES_ACCOUNTTYPES

@@ -1,12 +1,20 @@
 #include "AssetEntriesTable.h"
+#include "models/AssetEntry.h"
 
+#include <QLatin1String>
+#include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QString>
 #include <QVariant>
+#include <QVector>
 #include <QDebug>
+#include <QtLogging>
+#include <optional>
+#include <utility>
 
-AssetEntriesTable::AssetEntriesTable(const QString& connectionName)
-    : m_connectionName(connectionName)
+AssetEntriesTable::AssetEntriesTable(QString connectionName)
+    : m_connectionName(std::move(connectionName))
 {}
 
 QSqlDatabase AssetEntriesTable::db() const
@@ -18,9 +26,9 @@ QSqlDatabase AssetEntriesTable::db() const
 
 bool AssetEntriesTable::createTable()
 {
-    QSqlQuery q(db());
-    const bool ok =
-        q.exec(QStringLiteral(
+    QSqlQuery query(db());
+    const bool success =
+        query.exec(QStringLiteral(
             "CREATE TABLE IF NOT EXISTS asset_entries ("
             "  id          INTEGER PRIMARY KEY AUTOINCREMENT,"
             "  snapshot_id INTEGER NOT NULL,"
@@ -29,51 +37,53 @@ bool AssetEntriesTable::createTable()
             "  value       REAL    NOT NULL DEFAULT 0.0"
             ");"
         )) &&
-        q.exec(QStringLiteral(
+        query.exec(QStringLiteral(
             "CREATE INDEX IF NOT EXISTS idx_entries_snapshot"
             " ON asset_entries(snapshot_id);"
         ));
 
-    if (!ok)
-        qWarning() << "[AssetEntriesTable] createTable error:" << q.lastError().text();
-    return ok;
+    if (!success) {
+        qWarning() << "[AssetEntriesTable] createTable error:" << query.lastError().text();
+    }
+    return success;
 }
 
 // ── Write ─────────────────────────────────────────────────────────────────────
 
 bool AssetEntriesTable::deleteForSnapshot(int snapshotId)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "DELETE FROM asset_entries WHERE snapshot_id = ?;"
     ));
-    q.addBindValue(snapshotId);
+    query.addBindValue(snapshotId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[AssetEntriesTable] deleteForSnapshot error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[AssetEntriesTable] deleteForSnapshot error:" << query.lastError().text();
+    }
+    return success;
 }
 
 bool AssetEntriesTable::insertBatch(int snapshotId,
                                      const QString& category,
                                      const QVector<Data::AssetEntry>& entries)
 {
-    if (entries.isEmpty()) return true;
+    if (entries.isEmpty()) { return true; }
 
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "INSERT INTO asset_entries (snapshot_id, category, name, value)"
         " VALUES (?, ?, ?, ?);"
     ));
 
-    for (const Data::AssetEntry& e : entries) {
-        q.addBindValue(snapshotId);
-        q.addBindValue(category);
-        q.addBindValue(e.name);
-        q.addBindValue(e.value);
-        if (!q.exec()) {
-            qWarning() << "[AssetEntriesTable] insertBatch error:" << q.lastError().text();
+    for (const Data::AssetEntry& entry : entries) {
+        query.addBindValue(snapshotId);
+        query.addBindValue(category);
+        query.addBindValue(entry.name());
+        query.addBindValue(entry.value());
+        if (!query.exec()) {
+            qWarning() << "[AssetEntriesTable] insertBatch error:" << query.lastError().text();
             return false;
         }
     }
@@ -85,33 +95,38 @@ bool AssetEntriesTable::insertBatch(int snapshotId,
 std::optional<Data::FinancialSnapshot>
 AssetEntriesTable::loadForSnapshot(int snapshotId, const QDate& date) const
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "SELECT category, name, value"
         " FROM asset_entries"
         " WHERE snapshot_id = ?"
         " ORDER BY id ASC;"
     ));
-    q.addBindValue(snapshotId);
+    query.addBindValue(snapshotId);
 
-    if (!q.exec()) {
-        qWarning() << "[AssetEntriesTable] loadForSnapshot error:" << q.lastError().text();
+    if (!query.exec()) {
+        qWarning() << "[AssetEntriesTable] loadForSnapshot error:" << query.lastError().text();
         return std::nullopt;
     }
 
     Data::FinancialSnapshot snap;
-    snap.date = date;
+    snap.setDate(date);
 
-    while (q.next()) {
-        const QString cat = q.value(0).toString();
+    while (query.next()) {
+        const QString cat = query.value(0).toString();
         Data::AssetEntry entry;
-        entry.name  = q.value(1).toString();
-        entry.value = q.value(2).toDouble();
+        entry.setName(query.value(1).toString());
+        entry.setValue(query.value(2).toDouble());
 
-        if      (cat == QLatin1String("stock")) snap.stocks << entry;
-        else if (cat == QLatin1String("coin"))  snap.coins  << entry;
-        else if (cat == QLatin1String("metal")) snap.metals << entry;
-        else if (cat == QLatin1String("etf"))   snap.etfs   << entry;
+        if (cat == QLatin1String("stock")) {
+            snap.addStock(entry);
+        } else if (cat == QLatin1String("coin")) {
+            snap.addCoin(entry);
+        } else if (cat == QLatin1String("metal")) {
+            snap.addMetal(entry);
+        } else if (cat == QLatin1String("etf")) {
+            snap.addEtf(entry);
+        }
     }
 
     return snap;

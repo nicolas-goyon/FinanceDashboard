@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_DB_TABLES_ACCOUNTCATEGORIESTABLE_H
+#define FINANCEDASHBOARD_DB_TABLES_ACCOUNTCATEGORIESTABLE_H
 
 #include "models/Account.h"
 
@@ -22,21 +23,23 @@
 class AccountCategoriesTable
 {
 public:
-    explicit AccountCategoriesTable(const QString& connectionName);
+    explicit AccountCategoriesTable(QString connectionName);
 
     bool createTable();
 
     // Returns the new row id, or -1 on failure (including a UNIQUE(name)
     // violation — callers check for duplicate names themselves first).
     int  insert(const QString& name, const QString& color);
-    bool rename(int id, const QString& newName);
-    bool setColor(int id, const QString& color);
-    bool remove(int id);
+    bool rename(int accountCategoryId, const QString& newName);
+    bool setColor(int accountCategoryId, const QString& color);
+    bool remove(int accountCategoryId);
 
     // All categories, oldest first (insertion order via row id).
-    QVector<Data::AccountCategory> all() const;
+    [[nodiscard]] QVector<Data::AccountCategory> all() const;
 
 private:
-    QSqlDatabase db() const;
+    [[nodiscard]] QSqlDatabase db() const;
     QString m_connectionName;
 };
+
+#endif // FINANCE

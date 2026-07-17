@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -164,7 +166,7 @@ Item {
                                     anchors.centerIn: parent
                                     spacing: 6
                                     Rectangle {
-                                        width: 14; height: 14; radius: 7
+                                        Layout.preferredWidth: 14; Layout.preferredHeight: 14; radius: 7
                                         color: catChip.modelData.color
                                         border.color: "#313244"
                                     }
@@ -190,7 +192,7 @@ Item {
                 }
             }
 
-            Item { height: 8 }
+            Item { Layout.preferredHeight: 8 }
         }
     }
 
