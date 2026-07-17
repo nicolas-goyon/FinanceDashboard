@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_DB_TABLES_SNAPSHOTSTABLE_H
+#define FINANCEDASHBOARD_DB_TABLES_SNAPSHOTSTABLE_H
 
 #include <optional>
 #include <QString>
@@ -23,7 +24,7 @@
 class SnapshotsTable
 {
 public:
-    explicit SnapshotsTable(const QString& connectionName);
+    explicit SnapshotsTable(QString connectionName);
 
     // Create the table (and any related indexes).  Called once by Database::open().
     bool createTable();
@@ -33,15 +34,17 @@ public:
     bool upsert(const QDate& date);
 
     // Return the row id for a given date, or nullopt if not found.
-    std::optional<int> idForDate(const QDate& date) const;
+    [[nodiscard]] std::optional<int> idForDate(const QDate& date) const;
 
     // Return {id, date} of the snapshot with the highest date, or nullopt.
-    std::optional<QPair<int, QDate>> latest() const;
+    [[nodiscard]] std::optional<QPair<int, QDate>> latest() const;
 
     // All stored dates, newest first.
-    QVector<QDate> allDates() const;
+    [[nodiscard]] QVector<QDate> allDates() const;
 
 private:
-    QSqlDatabase db() const;
+    [[nodiscard]] QSqlDatabase db() const;
     QString m_connectionName;
 };
+
+#endif // FINANCEDASHBOARD_DB_TABLES_SNAPSHOTSTABLE_H

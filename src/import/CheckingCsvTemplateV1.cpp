@@ -1,15 +1,38 @@
 #include "CheckingCsvTemplateV1.h"
+#include "models/ImportLog.h"
+#include "models/ImportedStatement.h"
 
+#include <QChar>
+#include <QDate>
 #include <QFile>
-#include <QTextStream>
+#include <QLatin1Char>
+#include <QLatin1String>
 #include <QRegularExpression>
+#include <QString>
+#include <QStringConverter>
 #include <QStringList>
+#include <QTextStream>
+#include <QVector>
 #include <cmath>
 
 namespace {
 
 using Data::ImportLogEntry;
 using Data::LogLevel;
+
+constexpr char16_t kDownwardsArrowWithCorner = 0x21B5; // ↵ (embedded-newline marker in log previews)
+constexpr char16_t kNarrowNoBreakSpace = 0x202F;       // narrow no-break space (thousands sep)
+constexpr char16_t kNoBreakSpace = 0x00A0;             // no-break space
+constexpr int kPreviewMaxChars = 200;                  // parse-log preview truncation length
+
+// Transaction row column layout (see the format spec in this file's header comment).
+constexpr int kExpectedColumnCount = 6;
+constexpr int kColConfirmationDate = 0;
+constexpr int kColOperationDate = 1;
+constexpr int kColDescription = 2;
+constexpr int kColDebit = 3;
+constexpr int kColCredit = 4;
+constexpr int kColBalanceAfter = 5;
 
 // ── One logical CSV record (row), possibly spanning several physical lines
 //    when a quoted field — e.g. "Description and identifier" — contains
@@ -27,6 +50,11 @@ struct CsvRecord {
 //    newline only ends a record when it occurs outside an open quote;
 //    inside quotes it becomes part of the field's text (multi-line
 //    description). "" inside a quoted field is the standard escaped-quote.
+// NOLINTNEXTLINE(readability-function-cognitive-complexity) — quote-aware,
+// whole-file tokenizing genuinely needs this much branching in one pass (see
+// ARCHITECTURE.MD § Statement Import for why it isn't line-by-line); splitting
+// it up risks breaking the embedded-newline/escaped-quote handling described
+// there. Left as-is per product decision rather than refactored blind.
 QVector<CsvRecord> parseCsvRecords(const QString& content)
 {
     QVector<CsvRecord> records;
@@ -50,13 +78,13 @@ QVector<CsvRecord> parseCsvRecords(const QString& content)
     };
 
     for (int i = 0; i < content.size(); ++i) {
-        const QChar c = content.at(i);
-        rawText += c;
+        const QChar currentChar = content.at(i);
+        rawText += currentChar;
 
-        if (c == QLatin1Char('\n')) {
+        if (currentChar == QLatin1Char('\n')) {
             ++line;
             if (inQuotes) {
-                field += c; // embedded newline inside a quoted (multi-line) field
+                field += currentChar; // embedded newline inside a quoted (multi-line) field
             } else {
                 endRecord();
             }
@@ -64,7 +92,7 @@ QVector<CsvRecord> parseCsvRecords(const QString& content)
         }
 
         if (inQuotes) {
-            if (c == QLatin1Char('"')) {
+            if (currentChar == QLatin1Char('"')) {
                 if (i + 1 < content.size() && content.at(i + 1) == QLatin1Char('"')) {
                     field += QLatin1Char('"'); // escaped quote
                     rawText += content.at(i + 1);
@@ -73,33 +101,34 @@ QVector<CsvRecord> parseCsvRecords(const QString& content)
                     inQuotes = false;
                 }
             } else {
-                field += c;
+                field += currentChar;
             }
         } else {
-            if (c == QLatin1Char('"')) {
+            if (currentChar == QLatin1Char('"')) {
                 inQuotes = true;
-            } else if (c == QLatin1Char(',')) {
+            } else if (currentChar == QLatin1Char(',')) {
                 endField();
             } else {
-                field += c;
+                field += currentChar;
             }
         }
     }
 
     // Flush a trailing record that wasn't newline-terminated.
-    if (!field.isEmpty() || !fields.isEmpty())
+    if (!field.isEmpty() || !fields.isEmpty()) {
         endRecord();
+    }
 
     return records;
 }
 
 // A field can carry an embedded newline (multi-line description) — collapse
 // to single-line, whitespace-normalized text for display/matching/logging.
-QString normalizeField(QString s)
+QString normalizeField(QString text)
 {
-    s.replace(QLatin1Char('\n'), QLatin1Char(' '));
-    s.replace(QLatin1Char('\r'), QLatin1Char(' '));
-    return s.simplified();
+    text.replace(QLatin1Char('\n'), QLatin1Char(' '));
+    text.replace(QLatin1Char('\r'), QLatin1Char(' '));
+    return text.simplified();
 }
 
 // Single-line, truncated preview of a (possibly multi-line) raw record, for
@@ -107,29 +136,31 @@ QString normalizeField(QString s)
 // descriptions are still recognizable as such when debugging.
 QString previewRawText(const CsvRecord& rec)
 {
-    QString s = rec.rawText.trimmed();
-    s.replace(QLatin1Char('\n'), QChar(0x21B5)); // ↵
-    s.replace(QLatin1Char('\r'), QString());
-    if (s.size() > 200)
-        s = s.left(200) + QStringLiteral("…");
-    return s;
+    QString text = rec.rawText.trimmed();
+    text.replace(QLatin1Char('\n'), QChar(kDownwardsArrowWithCorner));
+    text.replace(QLatin1Char('\r'), QString());
+    if (text.size() > kPreviewMaxChars) {
+        text = text.left(kPreviewMaxChars) + QStringLiteral("…");
+    }
+    return text;
 }
 
 // ── Amount parser — tolerant of "1 234.56 €", "1234,56", "-86.40", "€"… ─────
 bool parseAmount(QString raw, double& outValue)
 {
     raw = raw.trimmed();
-    if (raw.isEmpty())
+    if (raw.isEmpty()) {
         return false;
+    }
 
     raw.remove(QChar(L'€'));
-    raw.remove(QChar(0x202F)); // narrow no-break space (thousands sep)
-    raw.remove(QChar(0x00A0)); // no-break space
+    raw.remove(QChar(kNarrowNoBreakSpace));
+    raw.remove(QChar(kNoBreakSpace));
     raw = raw.simplified();
     // raw.remove(QLatin1Char(' '));
 
-    const int lastComma = raw.lastIndexOf(QLatin1Char(','));
-    const int lastDot   = raw.lastIndexOf(QLatin1Char('.'));
+    const int lastComma = static_cast<int>(raw.lastIndexOf(QLatin1Char(',')));
+    const int lastDot   = static_cast<int>(raw.lastIndexOf(QLatin1Char('.')));
 
     if (lastComma >= 0 && lastDot >= 0) {
         // Both present — the later one is the decimal separator, the earlier
@@ -145,11 +176,12 @@ bool parseAmount(QString raw, double& outValue)
     }
     // else: only dot or no separator at all — already toDouble()-ready.
 
-    bool ok = false;
-    const double v = raw.toDouble(&ok);
-    if (ok)
-        outValue = v;
-    return ok;
+    bool success = false;
+    const double parsed = raw.toDouble(&success);
+    if (success) {
+        outValue = parsed;
+    }
+    return success;
 }
 
 QDate parseStatementDate(const QString& raw)
@@ -168,6 +200,12 @@ QDate parseStatementDateNoYear(const QString& raw, QDate refYear)
 
 } // namespace
 
+// NOLINTNEXTLINE(readability-function-cognitive-complexity) — the row-level
+// parsing loop (multi-line records, metadata lines, per-field validation,
+// per-row log entries) is documented in detail in ARCHITECTURE.MD § Statement
+// Import; splitting it up risks breaking one of the subtle cases described
+// there (embedded newlines, "" escaping, MM/dd/yyyy dates). Left as-is per
+// product decision rather than refactored blind.
 bool CheckingCsvTemplateV1::parse(const QString& filePath,
                                    Data::ImportedStatement& outStatement,
                                    QVector<ImportLogEntry>& outLog) const
@@ -179,9 +217,9 @@ bool CheckingCsvTemplateV1::parse(const QString& filePath,
         return false;
     }
 
-    QTextStream in(&file);
-    in.setEncoding(QStringConverter::Utf8);
-    const QString content = in.readAll();
+    QTextStream stream(&file);
+    stream.setEncoding(QStringConverter::Utf8);
+    const QString content = stream.readAll();
 
     if (content.trimmed().isEmpty()) {
         outLog.append(ImportLogEntry{ LogLevel::Error, 0,
@@ -234,8 +272,9 @@ bool CheckingCsvTemplateV1::parse(const QString& filePath,
     for (int i = 0; i < headerRecordIndex; ++i) {
         const CsvRecord& rec = records.at(i);
         const QString label = normalizeField(rec.fields.value(0));
-        if (label.isEmpty())
+        if (label.isEmpty()) {
             continue;
+        }
 
         const QString value = rec.fields.size() > 1
                              ? normalizeField(rec.fields.mid(1).join(QLatin1Char(',')))
@@ -256,24 +295,24 @@ bool CheckingCsvTemplateV1::parse(const QString& filePath,
         } else if (labelLower == QLatin1String("bic")) {
             outStatement.bic = value;
         } else if (labelLower == QLatin1String("period")) {
-            const QRegularExpressionMatch m = kPeriodRe.match(value);
-            if (m.hasMatch()) {
-                outStatement.periodFrom = parseStatementDate(m.captured(1));
-                outStatement.periodTo   = parseStatementDate(m.captured(2));
+            const QRegularExpressionMatch match = kPeriodRe.match(value);
+            if (match.hasMatch()) {
+                outStatement.periodFrom = parseStatementDate(match.captured(1));
+                outStatement.periodTo   = parseStatementDate(match.captured(2));
             } else {
                 outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
                     QStringLiteral("Could not parse the statement period"), previewRawText(rec) });
             }
         } else {
-            const QRegularExpressionMatch m = kBalanceLabelRe.match(label);
-            if (m.hasMatch()) {
+            const QRegularExpressionMatch match = kBalanceLabelRe.match(label);
+            if (match.hasMatch()) {
                 double amount = 0.0;
                 if (!parseAmount(value, amount)) {
                     outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
                         QStringLiteral("Could not parse a statement balance amount"), previewRawText(rec) });
                     continue;
                 }
-                const QDate date = parseStatementDate(m.captured(1));
+                const QDate date = parseStatementDate(match.captured(1));
                 if (balanceLinesSeen == 0) {
                     outStatement.balanceStartDate = date;
                     outStatement.balanceStart = amount;
@@ -301,27 +340,30 @@ bool CheckingCsvTemplateV1::parse(const QString& filePath,
     int parsedCount = 0;
     for (int i = headerRecordIndex + 1; i < records.size(); ++i) {
         const CsvRecord& rec = records.at(i);
-        if (rec.fields.join(QString()).trimmed().isEmpty())
+        if (rec.fields.join(QString()).trimmed().isEmpty()) {
             continue; // blank line
+        }
 
-        if (rec.fields.size() < 6) {
+        if (rec.fields.size() < kExpectedColumnCount) {
             outLog.append(ImportLogEntry{ LogLevel::Error, rec.startLine,
                 QStringLiteral("Expected 6 columns, found %1 — row skipped").arg(rec.fields.size()),
                 previewRawText(rec) });
             continue;
         }
 
-        const QDate confirmationDate = parseStatementDateNoYear(rec.fields.at(0), outStatement.periodFrom);
-        const QDate operationDate    = parseStatementDateNoYear(rec.fields.at(1), outStatement.periodFrom);
+        const QDate confirmationDate = parseStatementDateNoYear(rec.fields.at(kColConfirmationDate), outStatement.periodFrom);
+        const QDate operationDate    = parseStatementDateNoYear(rec.fields.at(kColOperationDate), outStatement.periodFrom);
         if (!confirmationDate.isValid() && !operationDate.isValid()) {
             outLog.append(ImportLogEntry{ LogLevel::Error, rec.startLine,
                 QStringLiteral("Could not parse either date on this row — row skipped"), previewRawText(rec) });
             continue;
         }
 
-        double debit = 0.0, credit = 0.0, balanceAfter = 0.0;
-        const bool hasDebit  = parseAmount(rec.fields.at(3), debit);
-        const bool hasCredit = parseAmount(rec.fields.at(4), credit);
+        double debit       = 0.0;
+        double credit      = 0.0;
+        double balanceAfter = 0.0;
+        const bool hasDebit  = parseAmount(rec.fields.at(kColDebit), debit);
+        const bool hasCredit = parseAmount(rec.fields.at(kColCredit), credit);
         if (!hasDebit && !hasCredit) {
             outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
                 QStringLiteral("Row has neither a debit nor a credit amount — row skipped"), previewRawText(rec) });
@@ -331,22 +373,22 @@ bool CheckingCsvTemplateV1::parse(const QString& filePath,
             outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
                 QStringLiteral("Row has both a debit and a credit amount — kept both, please check"), previewRawText(rec) });
         }
-        if (!parseAmount(rec.fields.at(5), balanceAfter)) {
+        if (!parseAmount(rec.fields.at(kColBalanceAfter), balanceAfter)) {
             outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
                 QStringLiteral("Could not parse the running balance for this row"), previewRawText(rec) });
         }
 
-        Data::ImportedTransaction tx;
-        tx.confirmationDate = confirmationDate;
-        tx.operationDate    = operationDate.isValid() ? operationDate : confirmationDate;
-        tx.description       = normalizeField(rec.fields.at(2)); // may have had embedded newlines
-        tx.debit              = std::abs(debit);
-        tx.credit             = std::abs(credit);
-        tx.balanceAfter       = balanceAfter;
+        Data::ImportedTransaction transaction;
+        transaction.confirmationDate = confirmationDate;
+        transaction.operationDate    = operationDate.isValid() ? operationDate : confirmationDate;
+        transaction.description       = normalizeField(rec.fields.at(kColDescription)); // may have had embedded newlines
+        transaction.debit              = std::abs(debit);
+        transaction.credit             = std::abs(credit);
+        transaction.balanceAfter       = balanceAfter;
         // No auto-suggestion — category/subcategory are left empty and picked
         // manually in the review table (see CategoryController, removed the
         // old CategoryKeywords keyword pass per product decision).
-        outStatement.transactions.append(tx);
+        outStatement.transactions.append(transaction);
         ++parsedCount;
     }
 

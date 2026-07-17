@@ -2,6 +2,8 @@
 #include "ImportTemplate.h"
 #include "CheckingCsvTemplateV1.h"
 
+#include <QVector>
+
 namespace ImportTemplateRegistry {
 
 QVector<const ImportTemplate*> all()
@@ -16,11 +18,13 @@ QVector<const ImportTemplate*> all()
     return kAll;
 }
 
-const ImportTemplate* byId(const QString& id)
+const ImportTemplate* byId(const QString& templateId)
 {
-    for (const ImportTemplate* tpl : all())
-        if (tpl->id() == id)
+    for (const ImportTemplate* tpl : all()) {
+        if (tpl->id() == templateId) {
             return tpl;
+        }
+    }
     return nullptr;
 }
 

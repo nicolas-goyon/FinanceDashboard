@@ -1,9 +1,12 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_CONTROLLERS_CASHFLOW_CASHFLOWCONTROLLER_H
+#define FINANCEDASHBOARD_CONTROLLERS_CASHFLOW_CASHFLOWCONTROLLER_H
 
 #include <QObject>
 #include <QStringList>
 #include <QVariantList>
 #include <QtQml/qqml.h>
+
+#include <array>
 
 // ── CashFlowController ────────────────────────────────────────────────────────
 //
@@ -39,30 +42,30 @@ class CashFlowController : public QObject
 public:
     explicit CashFlowController(QObject* parent = nullptr);
 
-    QStringList  monthLabels()   const { return m_monthLabels; }
-    QVariantList incomeValues()  const { return m_incomeValues; }
-    QVariantList expenseValues() const { return m_expenseValues; }
-    double       barsMax()       const { return m_barsMax; }
-    QVariantList categories()    const { return m_categories; }
+    [[nodiscard]] QStringList  monthLabels()   const { return m_monthLabels; }
+    [[nodiscard]] QVariantList incomeValues()  const { return m_incomeValues; }
+    [[nodiscard]] QVariantList expenseValues() const { return m_expenseValues; }
+    [[nodiscard]] double       barsMax()       const { return m_barsMax; }
+    [[nodiscard]] QVariantList categories()    const { return m_categories; }
 
-    int  selectedMonth() const { return m_selectedMonth; }
+    [[nodiscard]] int  selectedMonth() const { return m_selectedMonth; }
     void setSelectedMonth(int month);
-    QVariantList monthSlices() const;
-    QVariantList biggestRows() const;
-    QVariantList flowInputs() const;
-    QVariantList flowOutputs() const;
+    [[nodiscard]] QVariantList monthSlices() const;
+    [[nodiscard]] QVariantList biggestRows() const;
+    [[nodiscard]] QVariantList flowInputs() const;
+    [[nodiscard]] QVariantList flowOutputs() const;
 
     // Rolling 3-month average of expenses — points for a LineSeries
     // (x = ms since epoch, aligned with the month buckets)
-    Q_INVOKABLE QVariantList rollingTimestamps() const { return m_timestamps; }
-    Q_INVOKABLE QVariantList rollingValues()     const { return m_rollingValues; }
+    Q_INVOKABLE [[nodiscard]] QVariantList rollingTimestamps() const { return m_timestamps; }
+    Q_INVOKABLE [[nodiscard]] QVariantList rollingValues()     const { return m_rollingValues; }
     Q_PROPERTY(double minTimeMs READ minTimeMs CONSTANT)
     Q_PROPERTY(double maxTimeMs READ maxTimeMs CONSTANT)
-    double minTimeMs() const { return m_minTimeMs; }
-    double maxTimeMs() const { return m_maxTimeMs; }
+    [[nodiscard]] double minTimeMs() const { return m_minTimeMs; }
+    [[nodiscard]] double maxTimeMs() const { return m_maxTimeMs; }
 
     // Values of category `index` across all 12 months (for stacked BarSets)
-    Q_INVOKABLE QVariantList categoryValues(int index) const;
+    Q_INVOKABLE [[nodiscard]] QVariantList categoryValues(int index) const;
 
 signals:
     void monthChanged();
@@ -75,7 +78,9 @@ private:
     QVariantList m_incomeValues, m_expenseValues;
     QVariantList m_timestamps, m_rollingValues;
     QVariantList m_categories;
-    double m_categoryData[kCategories][kMonths] = {};
+    std::array<std::array<double, kMonths>, kCategories> m_categoryData = {};
     double m_barsMax = 0, m_minTimeMs = 0, m_maxTimeMs = 0;
     int    m_selectedMonth = kMonths - 1;
 };
+
+#endif // FINANCEDASHBOARD_CONTROLLERS_CASHFLOW_CASHFLOWCONTROLLER_H

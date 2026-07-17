@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_DB_DATABASE_H
+#define FINANCEDASHBOARD_DB_DATABASE_H
 
 #include "db/tables/SnapshotsTable.h"
 #include "db/tables/AssetEntriesTable.h"
@@ -35,8 +36,8 @@ public:
     // Open (and initialise) the SQLite file at `path`.
     // Creates tables on first run.  Returns false on failure.
     bool    open(const QString& path);
-    bool    isOpen() const;
-    QString lastError() const;
+    [[nodiscard]] bool    isOpen() const;
+    [[nodiscard]] QString lastError() const;
 
     // ── Table accessors (for future direct use by specialised services) ────────
     SnapshotsTable&         snapshots()             { return m_snapshots; }
@@ -50,7 +51,7 @@ public:
     TransactionsTable&      transactionsTable()     { return m_transactionsTable; }
 
     // Raw Qt database handle — needed by QSqlTableModel.
-    QSqlDatabase sqlDatabase() const  { return m_db; }
+    [[nodiscard]] QSqlDatabase sqlDatabase() const  { return m_db; }
 
     // ── High-level operations ─────────────────────────────────────────────────
 
@@ -58,37 +59,37 @@ public:
     bool saveSnapshot(const Data::FinancialSnapshot& snapshot);
 
     // Load the snapshot for a specific date, or nullopt if none exists.
-    std::optional<Data::FinancialSnapshot> loadSnapshot(const QDate& date) const;
+    [[nodiscard]] std::optional<Data::FinancialSnapshot> loadSnapshot(const QDate& date) const;
 
     // Load the most recently stored snapshot, or nullopt.
-    std::optional<Data::FinancialSnapshot> loadLatestSnapshot() const;
+    [[nodiscard]] std::optional<Data::FinancialSnapshot> loadLatestSnapshot() const;
 
     // All stored dates, newest first.
-    QVector<QDate> listDates() const;
+    [[nodiscard]] QVector<QDate> listDates() const;
 
     // ── Categories (see ARCHITECTURE.MD § Category Management) ─────────────────
 
     // Every category, insertion order, with its subcategories populated.
-    QVector<Data::Category> loadCategories() const;
+    [[nodiscard]] QVector<Data::Category> loadCategories() const;
 
     // Returns the new category's row id, or -1 on failure (DB not open, or a
     // UNIQUE(name) violation — callers check for duplicate names first).
     int  addCategory(const QString& name, const QString& color);
-    bool renameCategory(int id, const QString& newName);
-    bool setCategoryColor(int id, const QString& color);
+    bool renameCategory(int categoryId, const QString& newName);
+    bool setCategoryColor(int categoryId, const QString& color);
     // Deletes the category and all of its subcategories (one transaction).
-    bool removeCategory(int id);
+    bool removeCategory(int categoryId);
 
     // Returns the new subcategory's row id, or -1 on failure.
     int  addSubcategory(int categoryId, const QString& name, const QString& color);
-    bool renameSubcategory(int id, const QString& newName);
-    bool setSubcategoryColor(int id, const QString& color);
-    bool removeSubcategory(int id);
+    bool renameSubcategory(int subcategoryId, const QString& newName);
+    bool setSubcategoryColor(int subcategoryId, const QString& color);
+    bool removeSubcategory(int subcategoryId);
 
     // ── Accounts (see ARCHITECTURE.MD § Account Management) ─────────────────────
 
     // Every account, insertion order, with its hashes populated.
-    QVector<Data::Account> loadAccounts() const;
+    [[nodiscard]] QVector<Data::Account> loadAccounts() const;
 
     // Returns the new account's row id, or -1 on failure (DB not open, or a
     // UNIQUE(name) violation — callers check for duplicate names first). No
@@ -96,39 +97,39 @@ public:
     // see § Account Management).
     int  addAccount(const QString& name, const QString& type, const QString& category,
                      const QString& currency, const QString& notes);
-    bool updateAccount(int id, const QString& name, const QString& type, const QString& category,
+    bool updateAccount(int accountId, const QString& name, const QString& type, const QString& category,
                         const QString& currency, const QString& notes);
     // Deletes the account and all of its hashes and transactions (one transaction).
-    bool removeAccount(int id);
+    bool removeAccount(int accountId);
 
     // Returns the new hash row's id, or -1 on failure (including an
     // already-linked duplicate hash for this account).
     int  addAccountHash(int accountId, const QString& hash, const QString& source);
-    bool removeAccountHash(int id);
-    bool accountHasHash(int accountId, const QString& hash) const;
+    bool removeAccountHash(int hashId);
+    [[nodiscard]] bool accountHasHash(int accountId, const QString& hash) const;
 
     // ── Account categories (usage buckets: Day-to-day, Savings, …) ──────────────
 
-    QVector<Data::AccountCategory> loadAccountCategories() const;
+    [[nodiscard]] QVector<Data::AccountCategory> loadAccountCategories() const;
     int  addAccountCategory(const QString& name, const QString& color);
-    bool renameAccountCategory(int id, const QString& newName);
-    bool setAccountCategoryColor(int id, const QString& color);
-    bool removeAccountCategory(int id);
+    bool renameAccountCategory(int accountCategoryId, const QString& newName);
+    bool setAccountCategoryColor(int accountCategoryId, const QString& color);
+    bool removeAccountCategory(int accountCategoryId);
 
     // ── Account types (banking products: CCP, Livret A, …) ──────────────────────
 
-    QVector<Data::AccountType> loadAccountTypes() const;
+    [[nodiscard]] QVector<Data::AccountType> loadAccountTypes() const;
     int  addAccountType(const QString& name);
-    bool renameAccountType(int id, const QString& newName);
-    bool removeAccountType(int id);
+    bool renameAccountType(int typeId, const QString& newName);
+    bool removeAccountType(int typeId);
 
     // ── Transactions (persisted, categorized — see § Statement Import) ──────────
 
     // Appends every transaction in the batch to `accountId` (does not clear
     // existing rows — see TransactionsTable::insertBatch()).
     bool insertTransactions(int accountId, const QVector<Data::Transaction>& txs);
-    QVector<Data::Transaction> transactionsForAccount(int accountId) const;
-    int  transactionCountForAccount(int accountId) const;
+    [[nodiscard]] QVector<Data::Transaction> transactionsForAccount(int accountId) const;
+    [[nodiscard]] int  transactionCountForAccount(int accountId) const;
 
     // ── Whole-database reset (see ARCHITECTURE.MD § Database Management) ────────
     // Drops every table this app owns and recreates them empty, in one
@@ -155,3 +156,5 @@ private:
     AccountTypesTable       m_accountTypesTable;
     TransactionsTable       m_transactionsTable;
 };
+
+#endif // FINANCEDASHBOARD_DB_DATABASE_H

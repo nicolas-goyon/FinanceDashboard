@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_ACCOUNTCONTROLLER_H
+#define FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_ACCOUNTCONTROLLER_H
 
 #include "models/Account.h"
 #include "models/Transaction.h"
@@ -69,28 +70,34 @@ class AccountController : public QObject
 public:
     explicit AccountController(QObject* parent = nullptr);
 
-    QVariantList accounts() const;
-    QVariantList accountCategories() const;
-    QVariantList accountTypes() const;
-    QString      statusText() const   { return m_statusText; }
+    [[nodiscard]] QVariantList accounts() const;
+    [[nodiscard]] QVariantList accountCategories() const;
+    [[nodiscard]] QVariantList accountTypes() const;
+    [[nodiscard]] QString      statusText() const   { return m_statusText; }
 
     // Account CRUD (index into the current accounts() list). Each writes
     // through Database::instance() first; the in-memory list (and
     // accountsChanged()) only updates if that write succeeded. No
     // iban/bic/number params — deliberately not stored (security decision).
+    // NOLINTBEGIN(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+    // positionally from AccountsManagePage.qml in this exact order; wrapping
+    // params in a struct would require rewriting the QML call sites too.
     Q_INVOKABLE void addAccount(const QString& name, const QString& type, const QString& category,
                                  const QString& currency, const QString& notes);
     Q_INVOKABLE void updateAccount(int index, const QString& name, const QString& type, const QString& category,
                                     const QString& currency, const QString& notes);
+    // NOLINTEND(bugprone-easily-swappable-parameters)
     Q_INVOKABLE void removeAccount(int index);
 
     // Account category CRUD (index into accountCategories()).
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+    // positionally from AccountTypesCategoriesPage.qml.
     Q_INVOKABLE void addAccountCategory(const QString& name, const QString& color);
     Q_INVOKABLE void renameAccountCategory(int index, const QString& newName);
     Q_INVOKABLE void setAccountCategoryColor(int index, const QString& color);
     Q_INVOKABLE void removeAccountCategory(int index);
     // Convenience lookup for anywhere that only has the category as a string.
-    Q_INVOKABLE QString accountCategoryColor(const QString& categoryName) const;
+    Q_INVOKABLE [[nodiscard]] QString accountCategoryColor(const QString& categoryName) const;
 
     // Account type CRUD (index into accountTypes()). No color — types are
     // plain labels, unlike categories (see models/Account.h).
@@ -106,16 +113,18 @@ public:
     // this account.
     Q_INVOKABLE bool addHash(int accountIndex, const QString& hash);
     Q_INVOKABLE bool linkAccountHash(int accountIndex, const QString& hash);
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+    // positionally from AccountsManagePage.qml as (accountIndex, hashIndex).
     Q_INVOKABLE void removeHash(int accountIndex, int hashIndex);
-    Q_INVOKABLE bool accountHasHash(int accountIndex, const QString& hash) const;
+    Q_INVOKABLE [[nodiscard]] bool accountHasHash(int accountIndex, const QString& hash) const;
 
     // Formatted rows for the per-account transactions page
     // (AccountTransactionsPage.qml) — see models/Transaction.h /
     // db/tables/TransactionsTable.h.
     // [{ confirmationDate, operationDate, description, debitText, creditText,
     //    balanceText, category, subcategory }]
-    Q_INVOKABLE QVariantList transactionsForAccount(int accountIndex) const;
-    Q_INVOKABLE int transactionCountForAccount(int accountIndex) const;
+    Q_INVOKABLE [[nodiscard]] QVariantList transactionsForAccount(int accountIndex) const;
+    Q_INVOKABLE [[nodiscard]] int transactionCountForAccount(int accountIndex) const;
 
     // Re-reads accounts/account-categories/account-types from Database — no
     // auto-reseed, even if the result comes back completely empty
@@ -145,6 +154,9 @@ private:
     // time the app runs against an empty DB (or after a reset — see
     // reload()).
     void seedDefaults();
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — private helper,
+    // both call sites (addHash/linkAccountHash below) pass a literal source
+    // ("manual"/"auto"), not a variable that could be swapped with hash.
     bool addHashInternal(int accountIndex, const QString& hash, const QString& source);
 
     QVector<Data::Account>         m_accounts;
@@ -152,3 +164,5 @@ private:
     QVector<Data::AccountType>     m_accountTypes;
     QString                        m_statusText;
 };
+
+#endif // FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_ACCOUNTCONTROLLER_H

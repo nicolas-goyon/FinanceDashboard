@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
 
@@ -35,7 +34,7 @@ RowLayout {
     }
 
     Rectangle {
-        width: 32; height: 32; radius: 16
+        Layout.preferredWidth: 32; Layout.preferredHeight: 32; radius: 16
         color: root.selectedColor
         border.width: 2
         border.color: "#45475a"
@@ -44,7 +43,7 @@ RowLayout {
         }
     }
     Rectangle {
-        width: 110; height: 26; radius: 4
+        Layout.preferredWidth: 110; Layout.preferredHeight: 26; radius: 4
         color: swatchHover.hovered ? "#313244" : "#1e1e2e"
         border.color: "#313244"
         Text { anchors.centerIn: parent; text: "Choose color…"; font.pixelSize: 14; color: "#cdd6f4" }

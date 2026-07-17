@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_MODELS_ACCOUNT_H
+#define FINANCEDASHBOARD_MODELS_ACCOUNT_H
 
 #include <QString>
 #include <QVector>
@@ -60,3 +61,5 @@ struct AccountType {
 };
 
 } // namespace Data
+
+#endif // FINANCEDASHBOARD_MODELS_ACCOUNT_H

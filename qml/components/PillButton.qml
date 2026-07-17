@@ -1,5 +1,4 @@
 import QtQuick
-import QtQuick.Controls
 
 // ── PillButton ───────────────────────────────────────────────────────────────
 // The big colored action button used everywhere (Add/Save/Cancel/Delete in

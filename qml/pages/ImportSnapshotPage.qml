@@ -122,7 +122,7 @@ Item {
                         Layout.alignment: Qt.AlignRight
                         text: "Choose file & Import"
                         variant: "primary"
-                        height: 32
+                        Layout.preferredHeight: 32
                         onClicked: fileDialog.open()
                     }
                 }
@@ -153,11 +153,11 @@ Item {
                         }
                         RowLayout {
                             spacing: 10
-                            PillButton { text: "View log"; variant: "neutral"; height: 28; onClicked: logPopup.open() }
+                            PillButton { text: "View log"; variant: "neutral"; Layout.preferredHeight: 28; onClicked: logPopup.open() }
                             PillButton {
                                 text: "Try again"
                                 variant: "neutral"
-                                height: 28
+                                Layout.preferredHeight: 28
                                 onClicked: { controller.reset(); page.step = 0 }
                             }
                         }
@@ -226,7 +226,7 @@ Item {
                             }
                         }
 
-                        Rectangle { Layout.fillWidth: true; height: 1; color: "#313244" }
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#313244" }
 
                         RowLayout {
                             spacing: 10
@@ -289,7 +289,7 @@ Item {
                                     && !AccountController.accountHasHash(page.selectedAccountIndex, controller.statementInfo.accountHashRaw)
                                 text: "Link this account"
                                 variant: "primary"
-                                height: 24
+                                Layout.preferredHeight: 24
                                 fontSize: 13
                                 onClicked: AccountController.linkAccountHash(
                                     page.selectedAccountIndex, controller.statementInfo.accountHashRaw)
@@ -332,6 +332,7 @@ Item {
                         Repeater {
                             model: controller.transactionRows
                             delegate: Rectangle {
+                                id: txRow
                                 required property var modelData
                                 required property int index
                                 Layout.fillWidth: true
@@ -343,44 +344,44 @@ Item {
                                     anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                     spacing: 8
 
-                                    Text { Layout.preferredWidth: 80; text: modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
+                                    Text { Layout.preferredWidth: 80; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
                                     Text {
                                         Layout.fillWidth: true
-                                        text: modelData.description
+                                        text: txRow.modelData.description
                                         font.pixelSize: 15
                                         color: "#cdd6f4"
                                         elide: Text.ElideRight
                                     }
-                                    Text { Layout.preferredWidth: 90;  text: modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 90;  text: modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 100; text: modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 90;  text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 90;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 100; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
 
                                     ColorComboBox {
                                         id: categoryBox
                                         Layout.preferredWidth: 115
                                         Layout.preferredHeight: 36
                                         items: CategoryController.categories
-                                        currentName: modelData.category
-                                        onNameActivated: (name) => controller.setRowCategory(modelData.index, name)
+                                        currentName: txRow.modelData.category
+                                        onNameActivated: (name) => controller.setRowCategory(txRow.modelData.index, name)
                                     }
 
                                     ColorComboBox {
                                         Layout.preferredWidth: 115
                                         Layout.preferredHeight: 36
                                         readonly property var subItems: {
-                                            var cat = CategoryController.categories.find(function(c) { return c.name === modelData.category })
+                                            var cat = CategoryController.categories.find(function(c) { return c.name === txRow.modelData.category })
                                             return cat ? cat.subcategories : []
                                         }
                                         items: subItems
                                         enabled: subItems.length > 0
-                                        currentName: modelData.subcategory
-                                        onNameActivated: (name) => controller.setRowSubcategory(modelData.index, name)
+                                        currentName: txRow.modelData.subcategory
+                                        onNameActivated: (name) => controller.setRowSubcategory(txRow.modelData.index, name)
                                     }
 
                                     CheckBox {
                                         Layout.preferredWidth: 50
-                                        checked: modelData.included
-                                        onCheckedChanged: controller.setRowIncluded(modelData.index, checked)
+                                        checked: txRow.modelData.included
+                                        onCheckedChanged: controller.setRowIncluded(txRow.modelData.index, checked)
                                     }
                                 }
                             }
@@ -420,7 +421,7 @@ Item {
                 }
             }
 
-            Item { height: 8 }
+            Item { Layout.preferredHeight: 8 }
         }
     }
 
@@ -470,6 +471,7 @@ Item {
                     Repeater {
                         model: controller.logEntries
                         delegate: ColumnLayout {
+                            id: logRow
                             required property var modelData
                             Layout.fillWidth: true
                             spacing: 2
@@ -483,28 +485,28 @@ Item {
                                     // level already used everywhere else (a positive/
                                     // neutral log signal), now a full pill instead of
                                     // the old grey-bg/green-text hybrid.
-                                    variant: modelData.level === "Error" ? "danger"
-                                           : modelData.level === "Warning" ? "warning" : "success"
-                                    text: modelData.level
+                                    variant: logRow.modelData.level === "Error" ? "danger"
+                                           : logRow.modelData.level === "Warning" ? "warning" : "success"
+                                    text: logRow.modelData.level
                                 }
                                 Text {
-                                    text: "L" + modelData.line
+                                    text: "L" + logRow.modelData.line
                                     font.pixelSize: 13
                                     color: "#6c7086"
                                 }
                                 Text {
                                     Layout.fillWidth: true
-                                    text: modelData.message
+                                    text: logRow.modelData.message
                                     font.pixelSize: 15
                                     color: "#cdd6f4"
                                     wrapMode: Text.WordWrap
                                 }
                             }
                             Text {
-                                visible: modelData.rawLine.length > 0
+                                visible: logRow.modelData.rawLine.length > 0
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 70
-                                text: modelData.rawLine
+                                text: logRow.modelData.rawLine
                                 font.pixelSize: 13
                                 font.family: "monospace"
                                 color: "#45475a"

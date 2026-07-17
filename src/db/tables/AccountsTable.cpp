@@ -1,12 +1,28 @@
 #include "AccountsTable.h"
+#include "models/Account.h"
 
+#include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QString>
 #include <QVariant>
+#include <QVector>
 #include <QDebug>
+#include <QtLogging>
+#include <utility>
 
-AccountsTable::AccountsTable(const QString& connectionName)
-    : m_connectionName(connectionName)
+namespace {
+// Column indices for the SELECT in all() (must match its column list order).
+constexpr int kColId = 0;
+constexpr int kColName = 1;
+constexpr int kColType = 2;
+constexpr int kColCategory = 3;
+constexpr int kColCurrency = 4;
+constexpr int kColNotes = 5;
+} // namespace
+
+AccountsTable::AccountsTable(QString connectionName)
+    : m_connectionName(std::move(connectionName))
 {}
 
 QSqlDatabase AccountsTable::db() const
@@ -16,8 +32,8 @@ QSqlDatabase AccountsTable::db() const
 
 bool AccountsTable::createTable()
 {
-    QSqlQuery q(db());
-    const bool ok = q.exec(QStringLiteral(
+    QSqlQuery query(db());
+    const bool success = query.exec(QStringLiteral(
         "CREATE TABLE IF NOT EXISTS accounts ("
         "  id       INTEGER PRIMARY KEY AUTOINCREMENT,"
         "  name     TEXT    NOT NULL UNIQUE,"
@@ -27,84 +43,93 @@ bool AccountsTable::createTable()
         "  notes    TEXT    NOT NULL DEFAULT ''"
         ");"
     ));
-    if (!ok)
-        qWarning() << "[AccountsTable] createTable error:" << q.lastError().text();
-    return ok;
+    if (!success) {
+        qWarning() << "[AccountsTable] createTable error:" << query.lastError().text();
+    }
+    return success;
 }
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — mirrors the table's
+// (name, type, category, currency, notes) column order used consistently by
+// every call site (Database::addAccount() and AccountController).
 int AccountsTable::insert(const QString& name, const QString& type, const QString& category,
                            const QString& currency, const QString& notes)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "INSERT INTO accounts (name, type, category, currency, notes)"
         " VALUES (?, ?, ?, ?, ?);"
     ));
-    q.addBindValue(name);
-    q.addBindValue(type);
-    q.addBindValue(category);
-    q.addBindValue(currency);
-    q.addBindValue(notes);
+    query.addBindValue(name);
+    query.addBindValue(type);
+    query.addBindValue(category);
+    query.addBindValue(currency);
+    query.addBindValue(notes);
 
-    if (!q.exec()) {
-        qWarning() << "[AccountsTable] insert error:" << q.lastError().text();
+    if (!query.exec()) {
+        qWarning() << "[AccountsTable] insert error:" << query.lastError().text();
         return -1;
     }
-    return q.lastInsertId().toInt();
+    return query.lastInsertId().toInt();
 }
 
-bool AccountsTable::update(int id, const QString& name, const QString& type, const QString& category,
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — mirrors the table's
+// (name, type, category, currency, notes) column order used consistently by
+// every call site (Database::updateAccount() and AccountController).
+bool AccountsTable::update(int accountId, const QString& name, const QString& type, const QString& category,
                            const QString& currency, const QString& notes)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "UPDATE accounts SET name = ?, type = ?, category = ?,"
         " currency = ?, notes = ? WHERE id = ?;"
     ));
-    q.addBindValue(name);
-    q.addBindValue(type);
-    q.addBindValue(category);
-    q.addBindValue(currency);
-    q.addBindValue(notes);
-    q.addBindValue(id);
+    query.addBindValue(name);
+    query.addBindValue(type);
+    query.addBindValue(category);
+    query.addBindValue(currency);
+    query.addBindValue(notes);
+    query.addBindValue(accountId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[AccountsTable] update error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[AccountsTable] update error:" << query.lastError().text();
+    }
+    return success;
 }
 
-bool AccountsTable::remove(int id)
+bool AccountsTable::remove(int accountId)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("DELETE FROM accounts WHERE id = ?;"));
-    q.addBindValue(id);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("DELETE FROM accounts WHERE id = ?;"));
+    query.addBindValue(accountId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[AccountsTable] remove error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[AccountsTable] remove error:" << query.lastError().text();
+    }
+    return success;
 }
 
 QVector<Data::Account> AccountsTable::all() const
 {
     QVector<Data::Account> result;
-    QSqlQuery q(db());
-    if (!q.exec(QStringLiteral(
+    QSqlQuery query(db());
+    if (!query.exec(QStringLiteral(
             "SELECT id, name, type, category, currency, notes"
             " FROM accounts ORDER BY id ASC;"))) {
-        qWarning() << "[AccountsTable] all error:" << q.lastError().text();
+        qWarning() << "[AccountsTable] all error:" << query.lastError().text();
         return result;
     }
 
-    while (q.next()) {
+    while (query.next()) {
         Data::Account acc;
-        acc.id       = q.value(0).toInt();
-        acc.name     = q.value(1).toString();
-        acc.type     = q.value(2).toString();
-        acc.category = q.value(3).toString();
-        acc.currency = q.value(4).toString();
-        acc.notes    = q.value(5).toString();
+        acc.id       = query.value(kColId).toInt();
+        acc.name     = query.value(kColName).toString();
+        acc.type     = query.value(kColType).toString();
+        acc.category = query.value(kColCategory).toString();
+        acc.currency = query.value(kColCurrency).toString();
+        acc.notes    = query.value(kColNotes).toString();
         result << acc;
     }
     return result;

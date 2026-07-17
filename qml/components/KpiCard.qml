@@ -3,6 +3,8 @@ import QtQuick.Layouts
 
 // Small stat card: LABEL / value / optional sub-line.
 Rectangle {
+    id: root
+
     property string label: ""
     property string value: ""
     property string sub: ""
@@ -20,20 +22,20 @@ Rectangle {
         spacing: 2
 
         Text {
-            text: label.toUpperCase()
+            text: root.label.toUpperCase()
             font.pixelSize: 13
             font.bold: true
             color: "#6c7086"
         }
         Text {
-            text: value
+            text: root.value
             font.pixelSize: 22
             font.bold: true
-            color: valueColor
+            color: root.valueColor
         }
         Text {
-            visible: sub.length > 0
-            text: sub
+            visible: root.sub.length > 0
+            text: root.sub
             font.pixelSize: 13
             color: "#6c7086"
         }

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_DB_TABLES_SUBCATEGORIESTABLE_H
+#define FINANCEDASHBOARD_DB_TABLES_SUBCATEGORIESTABLE_H
 
 #include "models/Category.h"
 
@@ -25,7 +26,7 @@
 class SubcategoriesTable
 {
 public:
-    explicit SubcategoriesTable(const QString& connectionName);
+    explicit SubcategoriesTable(QString connectionName);
 
     // Create the table and its index. Called once by Database::open().
     bool createTable();
@@ -36,9 +37,9 @@ public:
     // as CategoriesTable::insert().
     int insert(int categoryId, const QString& name, const QString& color);
 
-    bool rename(int id, const QString& newName);
-    bool setColor(int id, const QString& color);
-    bool remove(int id);
+    bool rename(int subcategoryId, const QString& newName);
+    bool setColor(int subcategoryId, const QString& color);
+    bool remove(int subcategoryId);
 
     // Delete every subcategory belonging to categoryId. Called by
     // Database::removeCategory() before deleting the category row itself —
@@ -47,9 +48,11 @@ public:
     bool removeForCategory(int categoryId);
 
     // All subcategories for one category, oldest first (insertion order).
-    QVector<Data::Subcategory> allForCategory(int categoryId) const;
+    [[nodiscard]] QVector<Data::Subcategory> allForCategory(int categoryId) const;
 
 private:
-    QSqlDatabase db() const;
+    [[nodiscard]] QSqlDatabase db() const;
     QString m_connectionName;
 };
+
+#endif // FINANCEDASHBOAR

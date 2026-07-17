@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_MODELS_IMPORTEDSTATEMENT_H
+#define FINANCEDASHBOARD_MODELS_IMPORTEDSTATEMENT_H
 
 #include <QString>
 #include <QDate>
@@ -48,3 +49,5 @@ struct ImportedStatement {
 };
 
 } // namespace Data
+
+#endif // FINANCEDASHBOARD_MODELS_IMPORTEDSTATEMENT_H

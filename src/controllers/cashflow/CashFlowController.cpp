@@ -3,19 +3,42 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QObject>
+#include <QVector>
+#include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
+#include <QtMinMax>
+
+#include <array>
 
 namespace {
 
 struct Category { const char* name; const char* color; };
 
-const Category kCats[6] = {
+const std::array<Category, 6> kCats = {{
     { "Rent",      "#f38ba8" },
     { "Groceries", "#a6e3a1" },
     { "Transport", "#89b4fa" },
     { "Utilities", "#fab387" },
     { "Leisure",   "#f9e2af" },
     { "Other",     "#cba6f7" },
-};
+}};
+
+// Indices into kCats / m_categoryData — named so biggestRows() below doesn't
+// pass raw magic numbers (cppcoreguidelines-avoid-magic-numbers).
+constexpr int kCatRent      = 0;
+constexpr int kCatGroceries = 1;
+constexpr int kCatUtilities = 3;
+constexpr int kCatLeisure   = 4;
+constexpr int kCatOther     = 5;
+
+constexpr double kBarsAxisHeadroom = 1.15; // 15% headroom above the max bar value for the chart axis
+
+// MOCK: fractions applied to the selected month's category totals to derive
+// a plausible "biggest expenses" list (biggestRows()).
+constexpr double kGroceriesBiggestFactor = 0.45;
+constexpr double kLeisureBiggestFactor   = 0.55;
+constexpr double kOtherBiggestFactor     = 0.60;
+constexpr double kUtilitiesBiggestFactor = 0.65;
 
 } // namespace
 
@@ -23,7 +46,7 @@ CashFlowController::CashFlowController(QObject* parent)
     : QObject(parent)
 {
     // MOCK: category spending per month
-    const double data[kCategories][kMonths] = {
+    const std::array<std::array<double, kMonths>, kCategories> data = {{
         // Rent (fixed)
         { 950, 950, 950, 950, 950, 950, 950, 950, 950, 950, 950, 950 },
         // Groceries
@@ -36,48 +59,59 @@ CashFlowController::CashFlowController(QObject* parent)
         { 260, 310, 205, 340, 280, 225, 350, 240, 300, 265, 330, 290 },
         // Other
         { 180, 220, 160, 290, 175, 240, 195, 300, 210, 185, 260, 230 },
-    };
-    for (int c = 0; c < kCategories; ++c)
-        for (int m = 0; m < kMonths; ++m)
-            m_categoryData[c][m] = data[c][m];
+    }};
+    for (int catIdx = 0; catIdx < kCategories; ++catIdx) {
+        for (int monthIdx = 0; monthIdx < kMonths; ++monthIdx) {
+            m_categoryData.at(catIdx).at(monthIdx) = data.at(catIdx).at(monthIdx);
+        }
+    }
 
     // MOCK: monthly income
-    const double income[kMonths] = { 3250, 3250, 3250, 3250, 3250, 3380,
-                                     3380, 3380, 3380, 3380, 3380, 3380 };
+    const std::array<double, kMonths> income = { 3250, 3250, 3250, 3250, 3250, 3380,
+                                                 3380, 3380, 3380, 3380, 3380, 3380 };
 
     const QDate today = QDate::currentDate();
     const QDate firstMonth = QDate(today.year(), today.month(), 1).addMonths(-11);
 
-    QVector<double> expenses(kMonths, 0.0);
-    for (int m = 0; m < kMonths; ++m) {
-        for (int c = 0; c < kCategories; ++c)
-            expenses[m] += data[c][m];
+    // Built with append() (monthIdx runs 0..kMonths-1 in order) rather than a
+    // pre-sized QVector written by index — QVector/QList's operator[] has no
+    // bounds-checked mutable equivalent (at() is const-only), so appending
+    // avoids indexed writes entirely instead of suppressing the warning.
+    QVector<double> expenses;
+    expenses.reserve(kMonths);
+    for (int monthIdx = 0; monthIdx < kMonths; ++monthIdx) {
+        double monthTotal = 0.0;
+        for (const auto& row : data) {
+            monthTotal += row.at(monthIdx);
+        }
+        expenses.append(monthTotal);
 
-        const QDate month = firstMonth.addMonths(m);
+        const QDate month = firstMonth.addMonths(monthIdx);
         m_monthLabels.append(month.toString("MMM"));
-        m_timestamps.append(double(month.startOfDay().toMSecsSinceEpoch()));
-        m_incomeValues.append(income[m]);
-        m_expenseValues.append(expenses[m]);
-        m_barsMax = qMax(m_barsMax, qMax(income[m], expenses[m]));
+        m_timestamps.append(static_cast<double>(month.startOfDay().toMSecsSinceEpoch()));
+        m_incomeValues.append(income.at(monthIdx));
+        m_expenseValues.append(monthTotal);
+        m_barsMax = qMax(m_barsMax, qMax(income.at(monthIdx), monthTotal));
     }
-    m_barsMax *= 1.15;
+    m_barsMax *= kBarsAxisHeadroom;
     m_minTimeMs = m_timestamps.first().toDouble();
     m_maxTimeMs = m_timestamps.last().toDouble();
 
     // Rolling 3-month average of expenses
-    for (int m = 0; m < kMonths; ++m) {
-        double sum = 0; int n = 0;
-        for (int k = qMax(0, m - 2); k <= m; ++k) { sum += expenses[k]; ++n; }
-        m_rollingValues.append(sum / n);
+    for (int monthIdx = 0; monthIdx < kMonths; ++monthIdx) {
+        double sum = 0; int count = 0;
+        for (int k = qMax(0, monthIdx - 2); k <= monthIdx; ++k) { sum += expenses.at(k); ++count; }
+        m_rollingValues.append(sum / count);
     }
 
-    for (const Category& c : kCats)
-        m_categories.append(QVariantMap{ { "name", c.name }, { "color", c.color } });
+    for (const Category& category : kCats) {
+        m_categories.append(QVariantMap{ { "name", category.name }, { "color", category.color } });
+    }
 }
 
 void CashFlowController::setSelectedMonth(int month)
 {
-    if (month < 0 || month >= kMonths || month == m_selectedMonth) return;
+    if (month < 0 || month >= kMonths || month == m_selectedMonth) { return; }
     m_selectedMonth = month;
     emit monthChanged();
 }
@@ -85,40 +119,41 @@ void CashFlowController::setSelectedMonth(int month)
 QVariantList CashFlowController::monthSlices() const
 {
     QVariantList slices;
-    for (int c = 0; c < kCategories; ++c)
+    for (int catIdx = 0; catIdx < kCategories; ++catIdx) {
         slices.append(QVariantMap{
-            { "label", kCats[c].name },
-            { "value", m_categoryData[c][m_selectedMonth] },
-            { "color", kCats[c].color },
+            { "label", kCats.at(catIdx).name },
+            { "value", m_categoryData.at(catIdx).at(m_selectedMonth) },
+            { "color", kCats.at(catIdx).color },
         });
+    }
     return slices;
 }
 
 QVariantList CashFlowController::biggestRows() const
 {
     // MOCK: a plausible "biggest expenses" list derived from the category data
-    const int m = m_selectedMonth;
+    const int month = m_selectedMonth;
     QVariantList rows;
     auto add = [&](const QString& label, int cat, double amount) {
         rows.append(QVariantMap{
             { "label", label },
-            { "category", kCats[cat].name },
+            { "category", kCats.at(cat).name },
             { "amount", Fmt::money(amount) },
-            { "color", kCats[cat].color },
+            { "color", kCats.at(cat).color },
         });
     };
-    add("Monthly rent",            0, m_categoryData[0][m]);
-    add("Supermarket — largest",   1, m_categoryData[1][m] * 0.45);
-    add("Leisure — largest",       4, m_categoryData[4][m] * 0.55);
-    add("Misc — largest",          5, m_categoryData[5][m] * 0.60);
-    add("Electricity bill",        3, m_categoryData[3][m] * 0.65);
+    add("Monthly rent",            kCatRent,      m_categoryData.at(kCatRent).at(month));
+    add("Supermarket — largest",   kCatGroceries, m_categoryData.at(kCatGroceries).at(month) * kGroceriesBiggestFactor);
+    add("Leisure — largest",       kCatLeisure,   m_categoryData.at(kCatLeisure).at(month) * kLeisureBiggestFactor);
+    add("Misc — largest",          kCatOther,     m_categoryData.at(kCatOther).at(month) * kOtherBiggestFactor);
+    add("Electricity bill",        kCatUtilities, m_categoryData.at(kCatUtilities).at(month) * kUtilitiesBiggestFactor);
     return rows;
 }
 
 QVariantList CashFlowController::flowInputs() const
 {
     // MOCK: one salary input; totals match flowOutputs()
-    double income = m_incomeValues[m_selectedMonth].toDouble();
+    double income = m_incomeValues.at(m_selectedMonth).toDouble();
     return {
         QVariantMap{ { "name", "Salary" }, { "value", income }, { "color", "#a6e3a1" } },
     };
@@ -127,19 +162,19 @@ QVariantList CashFlowController::flowInputs() const
 QVariantList CashFlowController::flowOutputs() const
 {
     QVariantList out;
-    const int m = m_selectedMonth;
+    const int month = m_selectedMonth;
     double spent = 0;
-    for (int c = 0; c < kCategories; ++c) {
-        const double v = m_categoryData[c][m];
-        spent += v;
+    for (int catIdx = 0; catIdx < kCategories; ++catIdx) {
+        const double value = m_categoryData.at(catIdx).at(month);
+        spent += value;
         out.append(QVariantMap{
-            { "name", kCats[c].name },
-            { "value", v },
-            { "color", kCats[c].color },
+            { "name", kCats.at(catIdx).name },
+            { "value", value },
+            { "color", kCats.at(catIdx).color },
         });
     }
     // Leftover = savings — keeps input and output totals equal.
-    const double leftover = m_incomeValues[m].toDouble() - spent;
+    const double leftover = m_incomeValues.at(month).toDouble() - spent;
     out.append(QVariantMap{
         { "name", "Savings" },
         { "value", qMax(leftover, 0.0) },
@@ -150,9 +185,10 @@ QVariantList CashFlowController::flowOutputs() const
 
 QVariantList CashFlowController::categoryValues(int index) const
 {
-    QVariantList v;
-    if (index < 0 || index >= kCategories) return v;
-    for (int m = 0; m < kMonths; ++m)
-        v.append(m_categoryData[index][m]);
-    return v;
+    QVariantList result;
+    if (index < 0 || index >= kCategories) { return result; }
+    for (int monthIdx = 0; monthIdx < kMonths; ++monthIdx) {
+        result.append(m_categoryData.at(index).at(monthIdx));
+    }
+    return result;
 }

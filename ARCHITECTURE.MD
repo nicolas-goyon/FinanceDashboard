@@ -1014,6 +1014,7 @@ When a TableView/Repeater delegate declares ANY `required property`, model roles
 
 ### `models/AssetEntry.h/.cpp`
 - `Data::AssetEntry` — `{name, value}`; `Data::FinancialSnapshot` — `{date, stocks[], coins[], metals[], etfs[]}`. Both with `toJson()` / `fromJson()`.
+- Fields are private with getter/setter accessors (`name()`/`setName()`, `date()`/`setDate()`, `stocks()`/`setStocks()`/`addStock()`, etc.) rather than public members — `cppcoreguidelines-non-private-member-variables-in-classes` flags public data on a type with behavior (unlike the plain PODs below, which have no member functions and so aren't flagged). Call sites: `AssetEntry.cpp` (`toJson`/`fromJson`), `AssetEntriesTable.cpp`, `Database.cpp`.
 
 ### `models/Category.h`
 - Header-only POD: `Data::Subcategory` — `{id, name, color}`; `Data::Category` — `{id, name, color, subcategories[]}`. `id` is the SQLite row id (`-1` for a not-yet-persisted instance). No JSON (de)serialization — unlike `AssetEntry`, nothing round-trips these through a file.

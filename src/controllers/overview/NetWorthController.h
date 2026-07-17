@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_CONTROLLERS_OVERVIEW_NETWORTHCONTROLLER_H
+#define FINANCEDASHBOARD_CONTROLLERS_OVERVIEW_NETWORTHCONTROLLER_H
 
 #include <QObject>
 #include <QStringList>
@@ -35,22 +36,22 @@ class NetWorthController : public QObject
 public:
     explicit NetWorthController(QObject* parent = nullptr);
 
-    QVariantList kpis()       const { return m_kpis; }
-    QVariantList allocation() const { return m_allocation; }
-    QStringList  monthLabels() const { return m_monthLabels; }
-    QVariantList netGains()   const { return m_netGains; }
-    QVariantList netLosses()  const { return m_netLosses; }
-    double netChangeMax() const { return m_netChangeMax; }
-    double netChangeMin() const { return m_netChangeMin; }
-    double maxTotal()  const { return m_maxTotal; }
-    double minTimeMs() const { return m_minTimeMs; }
-    double maxTimeMs() const { return m_maxTimeMs; }
+    [[nodiscard]] QVariantList kpis()       const { return m_kpis; }
+    [[nodiscard]] QVariantList allocation() const { return m_allocation; }
+    [[nodiscard]] QStringList  monthLabels() const { return m_monthLabels; }
+    [[nodiscard]] QVariantList netGains()   const { return m_netGains; }
+    [[nodiscard]] QVariantList netLosses()  const { return m_netLosses; }
+    [[nodiscard]] double netChangeMax() const { return m_netChangeMax; }
+    [[nodiscard]] double netChangeMin() const { return m_netChangeMin; }
+    [[nodiscard]] double maxTotal()  const { return m_maxTotal; }
+    [[nodiscard]] double minTimeMs() const { return m_minTimeMs; }
+    [[nodiscard]] double maxTimeMs() const { return m_maxTimeMs; }
 
     // Stacked area boundaries (cumulative, bottom → top: checking, savings, trading)
-    Q_INVOKABLE QVariantList timestamps()    const { return m_timestamps; }
-    Q_INVOKABLE QVariantList checkingBound() const { return m_checkingBound; }
-    Q_INVOKABLE QVariantList savingsBound()  const { return m_savingsBound; }
-    Q_INVOKABLE QVariantList tradingBound()  const { return m_tradingBound; }
+    Q_INVOKABLE [[nodiscard]] QVariantList timestamps()    const { return m_timestamps; }
+    Q_INVOKABLE [[nodiscard]] QVariantList checkingBound() const { return m_checkingBound; }
+    Q_INVOKABLE [[nodiscard]] QVariantList savingsBound()  const { return m_savingsBound; }
+    Q_INVOKABLE [[nodiscard]] QVariantList tradingBound()  const { return m_tradingBound; }
 
 private:
     QVariantList m_kpis, m_allocation, m_netGains, m_netLosses;
@@ -59,3 +60,5 @@ private:
     double m_maxTotal = 0, m_minTimeMs = 0, m_maxTimeMs = 0;
     double m_netChangeMax = 0, m_netChangeMin = 0;
 };
+
+#endif // FINANCEDASHBOARD_CONTROLLERS_OVERVIEW_NETWORTHCONTROLLER_H

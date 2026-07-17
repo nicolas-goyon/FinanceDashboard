@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -32,7 +34,7 @@ Item {
     Component.onCompleted: rebuildChart()
     Connections {
         target: controller
-        function onProjectChanged() { rebuildChart() }
+        function onProjectChanged() { page.rebuildChart() }
     }
 
     // ══════════════════════════ LIST VIEW ════════════════════════════════════
@@ -66,6 +68,7 @@ Item {
                 Repeater {
                     model: controller.projectCards
                     delegate: Rectangle {
+                        id: projectCard
                         required property var modelData
                         required property int index
 
@@ -78,7 +81,7 @@ Item {
                         HoverHandler { id: cardHover }
                         TapHandler {
                             onTapped: {
-                                controller.currentProject = index
+                                controller.currentProject = projectCard.index
                                 page.showDetail = true
                             }
                         }
@@ -92,7 +95,7 @@ Item {
                                 Layout.fillWidth: true
                                 Text {
                                     Layout.fillWidth: true
-                                    text: modelData.name
+                                    text: projectCard.modelData.name
                                     font.pixelSize: 18
                                     font.bold: true
                                     color: "#cdd6f4"
@@ -103,9 +106,9 @@ Item {
                                     // typo (every other danger badge in the app uses
                                     // "#3d2028") and the one badge missing a border.
                                     // Routing through StatusBadge fixes both.
-                                    variant: modelData.onTrack ? "success" : "danger"
+                                    variant: projectCard.modelData.onTrack ? "success" : "danger"
                                     pillHeight: 20
-                                    text: modelData.onTrack ? "on track" : "gap " + modelData.gapText
+                                    text: projectCard.modelData.onTrack ? "on track" : "gap " + projectCard.modelData.gapText
                                 }
                             }
 
@@ -119,14 +122,14 @@ Item {
                                     radius: 4
                                     color: "#11111b"
                                     Rectangle {
-                                        width: parent.width * modelData.progressPct
+                                        width: parent.width * projectCard.modelData.progressPct
                                         height: parent.height
                                         radius: 4
                                         color: "#89b4fa"
                                     }
                                 }
                                 Text {
-                                    text: Math.round(modelData.progressPct * 100) + " %"
+                                    text: Math.round(projectCard.modelData.progressPct * 100) + " %"
                                     font.pixelSize: 14
                                     color: "#6c7086"
                                 }
@@ -139,20 +142,20 @@ Item {
                                 columnSpacing: 16
 
                                 Text { text: "Target";     font.pixelSize: 13; color: "#6c7086" }
-                                Text { text: modelData.targetText;     font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
+                                Text { text: projectCard.modelData.targetText;     font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
                                 Text { text: "Saved";      font.pixelSize: 13; color: "#6c7086" }
-                                Text { text: modelData.earmarkedText + "   (" + modelData.monthlyText + ")"; font.pixelSize: 15; color: "#cdd6f4" }
+                                Text { text: projectCard.modelData.earmarkedText + "   (" + projectCard.modelData.monthlyText + ")"; font.pixelSize: 15; color: "#cdd6f4" }
                                 Text { text: "Target date"; font.pixelSize: 13; color: "#6c7086" }
-                                Text { text: modelData.targetDateText; font.pixelSize: 15; color: "#cdd6f4" }
+                                Text { text: projectCard.modelData.targetDateText; font.pixelSize: 15; color: "#cdd6f4" }
                                 Text { text: "Completion"; font.pixelSize: 13; color: "#6c7086" }
-                                Text { text: modelData.completionText; font.pixelSize: 15; color: modelData.onTrack ? "#a6e3a1" : "#f9e2af" }
+                                Text { text: projectCard.modelData.completionText; font.pixelSize: 15; color: projectCard.modelData.onTrack ? "#a6e3a1" : "#f9e2af" }
                             }
                         }
                     }
                 }
             }
 
-            Item { height: 8 }
+            Item { Layout.preferredHeight: 8 }
         }
     }
 
@@ -294,6 +297,7 @@ Item {
                     Repeater {
                         model: controller.loanScenarios
                         delegate: Rectangle {
+                            id: loanRow
                             required property var modelData
                             required property int index
                             Layout.fillWidth: true
@@ -302,10 +306,10 @@ Item {
                             radius: 4
                             RowLayout {
                                 anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                Text { Layout.preferredWidth: 180; text: modelData.label;         font.pixelSize: 15; color: "#cdd6f4" }
-                                Text { Layout.fillWidth: true;     text: modelData.monthly;       font.pixelSize: 15; font.bold: true; color: "#89b4fa"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 140; text: modelData.totalInterest; font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 140; text: modelData.totalCost;     font.pixelSize: 15; color: "#cdd6f4"; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 180; text: loanRow.modelData.label;         font.pixelSize: 15; color: "#cdd6f4" }
+                                Text { Layout.fillWidth: true;     text: loanRow.modelData.monthly;       font.pixelSize: 15; font.bold: true; color: "#89b4fa"; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 140; text: loanRow.modelData.totalInterest; font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 140; text: loanRow.modelData.totalCost;     font.pixelSize: 15; color: "#cdd6f4"; horizontalAlignment: Text.AlignRight }
                             }
                         }
                     }
@@ -328,7 +332,7 @@ Item {
                 }
             }
 
-            Item { height: 8 }
+            Item { Layout.preferredHeight: 8 }
         }
     }
 

@@ -1,18 +1,29 @@
 #include "db/Database.h"
 
+#include <QCoreApplication>
+#include <QDebug>
+#include <QDir>
 #include <QGuiApplication>
+#include <QObject>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
 #include <QStandardPaths>
-#include <QDir>
-#include <QDebug>
+#include <QString>
+#include <Qt>
+#include <QtLogging>
 
-int main(int argc, char* argv[])
+// argv's C-array signature is mandated by the C++ standard for main() — it
+// cannot be a std::array (size isn't known at compile time) or std::vector
+// (main() is constructed by the runtime, not by our code).
+// The "no header providing main" warning below is a known clang-tidy/Qt
+// false positive (Qt's Windows entry-point shim redefines `main` via a
+// macro), not a real missing include — there is no header for it to add.
+int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays,misc-include-cleaner)
 {
     QGuiApplication app(argc, argv);
-    app.setApplicationName("FinanceDashboard");
-    app.setApplicationVersion("0.2.0");
-    app.setOrganizationName("DataAnalysis");
+    QGuiApplication::setApplicationName("FinanceDashboard");
+    QGuiApplication::setApplicationVersion("0.2.0");
+    QGuiApplication::setOrganizationName("DataAnalysis");
 
     // Must be set before any QML importing Qt Quick Controls is loaded
     // (QQuickStyle docs: "before loading QML that imports Qt Quick Controls").
@@ -55,5 +66,5 @@ int main(int argc, char* argv[])
 
     engine.loadFromModule("FinanceDashboard", "Main");
 
-    return app.exec();
+    return QGuiApplication::exec();
 }

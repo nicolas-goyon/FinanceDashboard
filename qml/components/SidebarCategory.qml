@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Layouts
 
@@ -45,7 +47,7 @@ Rectangle {
         Rectangle {
             id: headerRow
             Layout.fillWidth: true
-            height: 40
+            Layout.preferredHeight: 40
             color: root.current ? "#313244" : (labelArea.containsMouse ? "#1e1e2e" : "transparent")
 
             Rectangle {

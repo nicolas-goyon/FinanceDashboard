@@ -1,12 +1,18 @@
 #include "SubcategoriesTable.h"
+#include "models/Category.h"
 
+#include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QString>
 #include <QVariant>
+#include <QVector>
 #include <QDebug>
+#include <QtLogging>
+#include <utility>
 
-SubcategoriesTable::SubcategoriesTable(const QString& connectionName)
-    : m_connectionName(connectionName)
+SubcategoriesTable::SubcategoriesTable(QString connectionName)
+    : m_connectionName(std::move(connectionName))
 {}
 
 QSqlDatabase SubcategoriesTable::db() const
@@ -18,9 +24,9 @@ QSqlDatabase SubcategoriesTable::db() const
 
 bool SubcategoriesTable::createTable()
 {
-    QSqlQuery q(db());
-    const bool ok =
-        q.exec(QStringLiteral(
+    QSqlQuery query(db());
+    const bool success =
+        query.exec(QStringLiteral(
             "CREATE TABLE IF NOT EXISTS subcategories ("
             "  id          INTEGER PRIMARY KEY AUTOINCREMENT,"
             "  category_id INTEGER NOT NULL,"
@@ -29,83 +35,90 @@ bool SubcategoriesTable::createTable()
             "  UNIQUE(category_id, name)"
             ");"
         )) &&
-        q.exec(QStringLiteral(
+        query.exec(QStringLiteral(
             "CREATE INDEX IF NOT EXISTS idx_subcategories_category"
             " ON subcategories(category_id);"
         ));
 
-    if (!ok)
-        qWarning() << "[SubcategoriesTable] createTable error:" << q.lastError().text();
-    return ok;
+    if (!success) {
+        qWarning() << "[SubcategoriesTable] createTable error:" << query.lastError().text();
+    }
+    return success;
 }
 
 // ── Write ─────────────────────────────────────────────────────────────────────
 
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — mirrors the table's
+// (name, color) column order; every call site passes them in that order.
 int SubcategoriesTable::insert(int categoryId, const QString& name, const QString& color)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "INSERT INTO subcategories (category_id, name, color) VALUES (?, ?, ?);"
     ));
-    q.addBindValue(categoryId);
-    q.addBindValue(name);
-    q.addBindValue(color);
+    query.addBindValue(categoryId);
+    query.addBindValue(name);
+    query.addBindValue(color);
 
-    if (!q.exec()) {
-        qWarning() << "[SubcategoriesTable] insert error:" << q.lastError().text();
+    if (!query.exec()) {
+        qWarning() << "[SubcategoriesTable] insert error:" << query.lastError().text();
         return -1;
     }
-    return q.lastInsertId().toInt();
+    return query.lastInsertId().toInt();
 }
 
-bool SubcategoriesTable::rename(int id, const QString& newName)
+bool SubcategoriesTable::rename(int subcategoryId, const QString& newName)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("UPDATE subcategories SET name = ? WHERE id = ?;"));
-    q.addBindValue(newName);
-    q.addBindValue(id);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("UPDATE subcategories SET name = ? WHERE id = ?;"));
+    query.addBindValue(newName);
+    query.addBindValue(subcategoryId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[SubcategoriesTable] rename error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[SubcategoriesTable] rename error:" << query.lastError().text();
+    }
+    return success;
 }
 
-bool SubcategoriesTable::setColor(int id, const QString& color)
+bool SubcategoriesTable::setColor(int subcategoryId, const QString& color)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("UPDATE subcategories SET color = ? WHERE id = ?;"));
-    q.addBindValue(color);
-    q.addBindValue(id);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("UPDATE subcategories SET color = ? WHERE id = ?;"));
+    query.addBindValue(color);
+    query.addBindValue(subcategoryId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[SubcategoriesTable] setColor error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[SubcategoriesTable] setColor error:" << query.lastError().text();
+    }
+    return success;
 }
 
-bool SubcategoriesTable::remove(int id)
+bool SubcategoriesTable::remove(int subcategoryId)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("DELETE FROM subcategories WHERE id = ?;"));
-    q.addBindValue(id);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("DELETE FROM subcategories WHERE id = ?;"));
+    query.addBindValue(subcategoryId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[SubcategoriesTable] remove error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[SubcategoriesTable] remove error:" << query.lastError().text();
+    }
+    return success;
 }
 
 bool SubcategoriesTable::removeForCategory(int categoryId)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("DELETE FROM subcategories WHERE category_id = ?;"));
-    q.addBindValue(categoryId);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("DELETE FROM subcategories WHERE category_id = ?;"));
+    query.addBindValue(categoryId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[SubcategoriesTable] removeForCategory error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[SubcategoriesTable] removeForCategory error:" << query.lastError().text();
+    }
+    return success;
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────────
@@ -113,23 +126,23 @@ bool SubcategoriesTable::removeForCategory(int categoryId)
 QVector<Data::Subcategory> SubcategoriesTable::allForCategory(int categoryId) const
 {
     QVector<Data::Subcategory> result;
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral(
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral(
         "SELECT id, name, color FROM subcategories"
         " WHERE category_id = ? ORDER BY id ASC;"
     ));
-    q.addBindValue(categoryId);
+    query.addBindValue(categoryId);
 
-    if (!q.exec()) {
-        qWarning() << "[SubcategoriesTable] allForCategory error:" << q.lastError().text();
+    if (!query.exec()) {
+        qWarning() << "[SubcategoriesTable] allForCategory error:" << query.lastError().text();
         return result;
     }
 
-    while (q.next()) {
+    while (query.next()) {
         Data::Subcategory sub;
-        sub.id    = q.value(0).toInt();
-        sub.name  = q.value(1).toString();
-        sub.color = q.value(2).toString();
+        sub.id    = query.value(0).toInt();
+        sub.name  = query.value(1).toString();
+        sub.color = query.value(2).toString();
         result << sub;
     }
     return result;

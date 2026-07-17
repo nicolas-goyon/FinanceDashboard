@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FINANCEDASHBOARD_IMPORT_IMPORTTEMPLATEREGISTRY_H
+#define FINANCEDASHBOARD_IMPORT_IMPORTTEMPLATEREGISTRY_H
 
 #include <QString>
 #include <QVector>
@@ -18,6 +19,8 @@ class ImportTemplate;
 namespace ImportTemplateRegistry {
 
 QVector<const ImportTemplate*> all();
-const ImportTemplate* byId(const QString& id);
+const ImportTemplate* byId(const QString& templateId);
 
 } // namespace ImportTemplateRegistry
+
+#endif // FINANCEDASHBOARD_IMPORT_IMPORTTEMPLATEREGISTRY_H

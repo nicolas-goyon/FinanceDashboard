@@ -1,12 +1,18 @@
 #include "AccountTypesTable.h"
+#include "models/Account.h"
 
+#include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
+#include <QString>
 #include <QVariant>
+#include <QVector>
 #include <QDebug>
+#include <QtLogging>
+#include <utility>
 
-AccountTypesTable::AccountTypesTable(const QString& connectionName)
-    : m_connectionName(connectionName)
+AccountTypesTable::AccountTypesTable(QString connectionName)
+    : m_connectionName(std::move(connectionName))
 {}
 
 QSqlDatabase AccountTypesTable::db() const
@@ -16,70 +22,73 @@ QSqlDatabase AccountTypesTable::db() const
 
 bool AccountTypesTable::createTable()
 {
-    QSqlQuery q(db());
-    const bool ok = q.exec(QStringLiteral(
+    QSqlQuery query(db());
+    const bool success = query.exec(QStringLiteral(
         "CREATE TABLE IF NOT EXISTS account_types ("
         "  id    INTEGER PRIMARY KEY AUTOINCREMENT,"
         "  name  TEXT    NOT NULL UNIQUE"
         ");"
     ));
-    if (!ok)
-        qWarning() << "[AccountTypesTable] createTable error:" << q.lastError().text();
-    return ok;
+    if (!success) {
+        qWarning() << "[AccountTypesTable] createTable error:" << query.lastError().text();
+    }
+    return success;
 }
 
 int AccountTypesTable::insert(const QString& name)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("INSERT INTO account_types (name) VALUES (?);"));
-    q.addBindValue(name);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("INSERT INTO account_types (name) VALUES (?);"));
+    query.addBindValue(name);
 
-    if (!q.exec()) {
-        qWarning() << "[AccountTypesTable] insert error:" << q.lastError().text();
+    if (!query.exec()) {
+        qWarning() << "[AccountTypesTable] insert error:" << query.lastError().text();
         return -1;
     }
-    return q.lastInsertId().toInt();
+    return query.lastInsertId().toInt();
 }
 
-bool AccountTypesTable::rename(int id, const QString& newName)
+bool AccountTypesTable::rename(int typeId, const QString& newName)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("UPDATE account_types SET name = ? WHERE id = ?;"));
-    q.addBindValue(newName);
-    q.addBindValue(id);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("UPDATE account_types SET name = ? WHERE id = ?;"));
+    query.addBindValue(newName);
+    query.addBindValue(typeId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[AccountTypesTable] rename error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[AccountTypesTable] rename error:" << query.lastError().text();
+    }
+    return success;
 }
 
-bool AccountTypesTable::remove(int id)
+bool AccountTypesTable::remove(int typeId)
 {
-    QSqlQuery q(db());
-    q.prepare(QStringLiteral("DELETE FROM account_types WHERE id = ?;"));
-    q.addBindValue(id);
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("DELETE FROM account_types WHERE id = ?;"));
+    query.addBindValue(typeId);
 
-    const bool ok = q.exec();
-    if (!ok)
-        qWarning() << "[AccountTypesTable] remove error:" << q.lastError().text();
-    return ok;
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[AccountTypesTable] remove error:" << query.lastError().text();
+    }
+    return success;
 }
 
 QVector<Data::AccountType> AccountTypesTable::all() const
 {
     QVector<Data::AccountType> result;
-    QSqlQuery q(db());
-    if (!q.exec(QStringLiteral("SELECT id, name FROM account_types ORDER BY id ASC;"))) {
-        qWarning() << "[AccountTypesTable] all error:" << q.lastError().text();
+    QSqlQuery query(db());
+    if (!query.exec(QStringLiteral("SELECT id, name FROM account_types ORDER BY id ASC;"))) {
+        qWarning() << "[AccountTypesTable] all error:" << query.lastError().text();
         return result;
     }
 
-    while (q.next()) {
-        Data::AccountType t;
-        t.id   = q.value(0).toInt();
-        t.name = q.value(1).toString();
-        result << t;
+    while (query.next()) {
+        Data::AccountType type;
+        type.id   = query.value(0).toInt();
+        type.name = query.value(1).toString();
+        result << type;
     }
     return result;
 }
