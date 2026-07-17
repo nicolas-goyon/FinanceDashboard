@@ -153,3 +153,31 @@ if(WIN32)
         WIN32_EXECUTABLE $<CONFIG:Release>
     )
 endif()
+
+# ── Static analysis — clang-tidy (opt-in) ──────────────────────────────────
+# OFF by default so normal dev builds stay fast. Enable with:
+#   cmake -B cmake-build-debug -DENABLE_CLANG_TIDY=ON
+# Checks are configured in .clang-tidy at the project root — see
+# ARCHITECTURE.MD § Static Analysis. For a one-off run without reconfiguring,
+# use tools/run-clang-tidy.ps1 instead (works regardless of this option).
+option(ENABLE_CLANG_TIDY "Run clang-tidy on FinanceDashboard sources during the build (uses CMAKE_<LANG>_CLANG_TIDY, see https://cmake.org/cmake/help/latest/prop_tgt/LANG_CLANG_TIDY.html)" OFF)
+if(ENABLE_CLANG_TIDY)
+    find_program(CLANG_TIDY_EXE NAMES "clang-tidy")
+    if(CLANG_TIDY_EXE)
+        message(STATUS "ENABLE_CLANG_TIDY is ON — using ${CLANG_TIDY_EXE}")
+        set_target_properties(FinanceDashboard PROPERTIES
+            CXX_CLANG_TIDY "${CLANG_TIDY_EXE}"
+        )
+        # Silence clang-tidy for generated files (AUTOMOC/AUTORCC output,
+        # the qml type-registration .cpp, qmltyperegistrations, etc.) by
+        # dropping an all-checks-off .clang-tidy at the build directory
+        # root. clang-tidy walks up from the file being linted and uses the
+        # nearest .clang-tidy it finds, so anything physically inside the
+        # build tree hits this before the project-root .clang-tidy. This is
+        # a workaround (not an official Qt/CMake mechanism) — regenerated on
+        # every configure so it survives a clean build dir.
+        file(WRITE "${CMAKE_BINARY_DIR}/.clang-tidy" "Checks: '-*'\n")
+    else()
+        message(WARNING "ENABLE_CLANG_TIDY is ON but clang-tidy was not found on PATH — install LLVM (includes clang-tidy) and re-configure. See ARCHITECTURE.MD § Static Analysis.")
+    endif()
+endif()

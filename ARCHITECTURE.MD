@@ -1124,6 +1124,90 @@ from the app's existing patterns instead of a blank file:
 
 ---
 
+## Static Analysis
+
+CLI-only, text output (no HTML/graph reports) — set up 2026-07-17. Toolchain
+context: this project builds with CLion's bundled MinGW g++ against Qt
+6.11.1 mingw_64 (see `cmake-build-debug/CMakeCache.txt`), Ninja generator,
+`compile_commands.json` already generated at `cmake-build-debug/
+compile_commands.json`.
+
+### clang-tidy
+
+Config: `.clang-tidy` at the project root (comprehensive/aggressive check
+set — `bugprone-*`, `cert-*`, `clang-analyzer-*`, `concurrency-*`,
+`cppcoreguidelines-*`, `misc-*`, `modernize-*`, `performance-*`,
+`portability-*`, `readability-*` — with only the non-Qt/non-relevant check
+families and two documented Qt-friction checks disabled; see the comment
+block at the top of that file for the reasoning). Two ways to run it:
+
+1. **Build-time (opt-in):** `option(ENABLE_CLANG_TIDY)` in `CMakeLists.txt`,
+   OFF by default. `cmake -B cmake-build-debug -DENABLE_CLANG_TIDY=ON` then
+   build normally — clang-tidy runs alongside the compiler
+   (`CXX_CLANG_TIDY` target property, https://cmake.org/cmake/help/latest/
+   prop_tgt/LANG_CLANG_TIDY.html) and prints warnings inline in the build
+   log. Generated files (AUTOMOC/AUTORCC output, qml type-registration
+   .cpp) are silenced via an all-checks-off `.clang-tidy` written into the
+   build directory root at configure time (a workaround — clang-tidy's
+   nearest-directory config lookup, not an official Qt/CMake feature).
+2. **On-demand:** `tools/run-clang-tidy.ps1` — reads
+   `compile_commands.json`, runs clang-tidy on every `src/` file, plain
+   text to the console. `./tools/run-clang-tidy.ps1 -BuildDir
+   cmake-build-debug`.
+
+**Install (Windows):** clang-tidy isn't bundled with the MinGW toolchain
+this project builds with. Install LLVM (ships `clang-tidy.exe`) — official
+installer at https://releases.llvm.org, or `winget install LLVM.LLVM` —
+and ensure its `bin/` is on PATH. **Not yet verified end-to-end** against
+this project's actual MinGW `compile_commands.json` on the real dev
+machine (only researched/authored from documentation + the existing build
+output in this pass) — run it and report back anything that breaks
+(clang-tidy sometimes needs `--extra-arg=-Wno-unknown-warning-option` when
+fed a GCC/MinGW-flavored compile command, since GCC accepts flags clang
+doesn't recognize).
+
+### clazy
+
+**Not set up.** clazy's own README states it's only tested on Windows with
+MSVC — MinGW is unsupported ("Problems building clazy with MinGW" is a
+known open issue). A prebuilt `clazy-standalone.exe` exists via MSYS2's
+`mingw-w64-clang-x86_64-clazy` package (independent of this project's
+MinGW build), which is the path to take if Qt-specific checks (signal/slot
+misuse, needless `detach()`, etc.) are wanted later — revisit if useful.
+
+### Running everything at once
+
+`tools/run-static-analysis.ps1` runs every analyzer set up above (currently
+clang-tidy + qmllint; clazy is skipped, see below) and logs each one's full
+text output to its own file under `logs/` (gitignored) — `logs/
+clang-tidy.log`, `logs/qmllint.log` — while still streaming to the console.
+Prints a one-line clean/issues-found summary per analyzer at the end.
+
+```powershell
+./tools/run-static-analysis.ps1
+# custom build dir / log dir:
+./tools/run-static-analysis.ps1 -BuildDir cmake-build-debug -LogDir logs
+```
+
+### qmllint
+
+**Already wired — no setup needed.** `qt_add_qml_module` in
+`CMakeLists.txt` auto-creates a `FinanceDashboard_qmllint` target (and an
+`all_qmllint` convenience target) for every `QML_FILES` entry, confirmed
+present in the current `cmake-build-debug/build.ninja` and already pointed
+at `C:/Qt/6.11.1/mingw_64/bin/qmllint.exe`. Run it with:
+
+```
+cmake --build cmake-build-debug --target FinanceDashboard_qmllint
+```
+
+Plain text warnings to the console. (Source:
+https://doc.qt.io/qt-6/qt-add-qml-module.html — "a separate linting target
+will be automatically created if any .qml files are added ... unless the
+NO_LINT option is given.")
+
+---
+
 ## Known Limitations / TODOs
 
 - [ ] **Wire pages to real data** — replace the MOCK generators in the 5 mock page controllers (Overview/Cash Flow/Savings/Investments/Projects) with DB aggregation. The schema needs to grow: per-account monthly snapshots + categorized transactions (see PROJECT.md).
