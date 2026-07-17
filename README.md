@@ -73,6 +73,30 @@ Or open the project in **Qt Creator** (`File → Open File or Project → CMakeL
 
 ---
 
+## Static Analysis
+
+CLI-based, plain text output. See `ARCHITECTURE.MD § Static Analysis` for
+full details/rationale.
+
+```powershell
+# Run everything at once, logging each analyzer to its own file (logs/*.log)
+./tools/run-static-analysis.ps1
+
+# clang-tidy — on demand (needs LLVM installed, see ARCHITECTURE.MD)
+./tools/run-clang-tidy.ps1
+
+# clang-tidy — build-time (opt-in, off by default)
+cmake -B cmake-build-debug -DENABLE_CLANG_TIDY=ON
+
+# qmllint — already wired via qt_add_qml_module, no setup needed
+cmake --build cmake-build-debug --target FinanceDashboard_qmllint
+```
+
+clazy was evaluated but skipped for now — it isn't officially supported on
+MinGW (this project's toolchain), only MSVC.
+
+---
+
 ## Project Structure
 
 ```
