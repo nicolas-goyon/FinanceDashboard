@@ -1,0 +1,60 @@
+# clang-tidy configuration for FinanceDashboard.
+# Checks reference: https://clang.llvm.org/extra/clang-tidy/checks/list.html
+# Format reference (this file's own syntax): https://clang.llvm.org/extra/clang-tidy/
+#
+# Comprehensive/aggressive set by design (chosen 2026-07-17) — expect a large
+# first-run warning count on this ~150-file codebase. Only two categories of
+# checks are stripped out below, both for concrete, documented reasons (not
+# style preference):
+#   1. Check families that encode a *different* project's/company's C++ style
+#      (Google, Abseil, Fuchsia OS, Android NDK, LLVM's own codebase, Boost,
+#      Zircon, Darwin/Apple, the Linux kernel, Altera FPGA code) — irrelevant
+#      to a Qt/CMake desktop app and mostly noise here.
+#   2. Two checks that actively fight idiomatic Qt code:
+#        - cppcoreguidelines-owning-memory: flags every `new Foo(parent)`
+#          as a raw-owning-pointer violation. That pattern IS how Qt's
+#          parent/child ownership model works (the QObject parent deletes
+#          the child) — this check would fire on essentially every
+#          controller/widget construction in this codebase.
+#        - modernize-use-trailing-return-type: pure style churn (rewrites
+#          `int foo()` to `auto foo() -> int` everywhere), not a bug/perf
+#          finding — disabled to keep the check list focused on things
+#          worth fixing.
+#      hicpp-* is also dropped since it's almost entirely a relabeled
+#      subset of cppcoreguidelines-*/readability-* — keeping it on would
+#      just double-report the same findings under a second name.
+Checks: >
+  bugprone-*,
+  cert-*,
+  clang-analyzer-*,
+  concurrency-*,
+  cppcoreguidelines-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  portability-*,
+  readability-*,
+  -abseil-*,
+  -altera-*,
+  -android-*,
+  -boost-*,
+  -darwin-*,
+  -fuchsia-*,
+  -google-*,
+  -hicpp-*,
+  -linuxkernel-*,
+  -llvm-*,
+  -llvmlibc-*,
+  -objc-*,
+  -zircon-*,
+  -cppcoreguidelines-owning-memory,
+  -modernize-use-trailing-return-type
+
+# Only surface warnings whose primary location is in this project's own
+# headers (src/, qml/'s generated headers aren't C++) — keeps Qt/MinGW
+# system-header noise out of the report. Diagnostics on the .cpp file being
+# compiled are always shown regardless of this filter.
+HeaderFilterRegex: '.*[\\/]src[\\/].*'
+
+WarningsAsErrors: ''
+FormatStyle: none
