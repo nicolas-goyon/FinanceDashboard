@@ -10,6 +10,7 @@
 #include "db/tables/AccountCategoriesTable.h"
 #include "db/tables/AccountTypesTable.h"
 #include "db/tables/TransactionsTable.h"
+#include "db/tables/AccountBalanceCheckpointsTable.h"
 #include "models/Category.h"
 #include "models/Account.h"
 #include "models/Transaction.h"
@@ -49,6 +50,7 @@ public:
     AccountCategoriesTable& accountCategoriesTable(){ return m_accountCategoriesTable; }
     AccountTypesTable&      accountTypesTable()     { return m_accountTypesTable; }
     TransactionsTable&      transactionsTable()     { return m_transactionsTable; }
+    AccountBalanceCheckpointsTable& balanceCheckpointsTable() { return m_balanceCheckpointsTable; }
 
     // Raw Qt database handle — needed by QSqlTableModel.
     [[nodiscard]] QSqlDatabase sqlDatabase() const  { return m_db; }
@@ -130,6 +132,33 @@ public:
     bool insertTransactions(int accountId, const QVector<Data::Transaction>& txs);
     [[nodiscard]] QVector<Data::Transaction> transactionsForAccount(int accountId) const;
     [[nodiscard]] int  transactionCountForAccount(int accountId) const;
+    // Edits an already-persisted row in place (by Data::Transaction::id) —
+    // see TransactionsTable::updateById() for exactly which fields this
+    // touches. Returns false if the DB isn't open or the write failed.
+    bool updateTransaction(const Data::Transaction& tx);
+    // Deletes every transaction for `accountId` but leaves the account and
+    // its hashes/checkpoints in place — the "Clear transactions" action on
+    // Database Management (see ARCHITECTURE.MD § Database Management),
+    // distinct from removeAccount()'s full cascade below.
+    bool clearTransactionsForAccount(int accountId);
+    // Most recent transaction for `accountId` on or before `date` — see
+    // TransactionsTable::latestOnOrBefore(). Used by
+    // SnapshotImportController::checkReconciliation() as the fallback
+    // "previously recorded balance" reference when there's no closer
+    // balance checkpoint.
+    [[nodiscard]] std::optional<Data::Transaction> latestTransactionOnOrBefore(int accountId, const QDate& date) const;
+
+    // ── Balance checkpoints (the "magic number" anchor points — see
+    //    ARCHITECTURE.MD § Balance Checkpoints) ──────────────────────────────
+
+    [[nodiscard]] QVector<Data::AccountBalanceCheckpoint> loadBalanceCheckpoints(int accountId) const;
+    // Returns the new checkpoint's row id, or -1 on failure.
+    int  addBalanceCheckpoint(int accountId, const QDate& date, double balance, const QString& note);
+    bool removeBalanceCheckpoint(int checkpointId);
+    // Most recent checkpoint for `accountId` on or before `date`, or
+    // nullopt if the account has none (or none dated early enough) — see
+    // AccountBalanceCheckpointsTable::latestOnOrBefore().
+    [[nodiscard]] std::optional<Data::AccountBalanceCheckpoint> latestCheckpointOnOrBefore(int accountId, const QDate& date) const;
 
     // ── Whole-database reset (see ARCHITECTURE.MD § Database Management) ────────
     // Drops every table this app owns and recreates them empty, in one
@@ -155,6 +184,7 @@ private:
     AccountCategoriesTable  m_accountCategoriesTable;
     AccountTypesTable       m_accountTypesTable;
     TransactionsTable       m_transactionsTable;
+    AccountBalanceCheckpointsTable m_balanceCheckpointsTable;
 };
 
 #endif // FINANCEDASHBOARD_DB_DATABASE_H

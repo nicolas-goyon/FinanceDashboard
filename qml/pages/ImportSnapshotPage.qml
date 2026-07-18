@@ -2,25 +2,34 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtCore
+import QtGraphs
 import FinanceDashboard
 
 // ── Import Transactions — statement import ────────────────────────────────────
-// Reached from the sidebar: Transactions Management → "Import Transactions"
-// action (renamed from "New Monthly Snapshot" / "Data Entry" — see
-// ARCHITECTURE.MD § Transactions Management).
+// Reached from the sidebar: Transactions → "Import Transactions" action
+// (renamed from "New Monthly Snapshot" / "Data Entry"; category renamed from
+// "Transactions Management" 2026-07-18 — see ARCHITECTURE.MD § Transactions).
 // Step 1: pick a template + file → real parsing (SnapshotImportController,
 //         backed by src/import/ — see ARCHITECTURE.MD § Statement Import).
 // Step 2: review header info, match/pick the target account, edit rows and
 //         categories, inspect the parse log, save for real (see
 //         SnapshotImportController class comment for scope — persists to
-//         the `transactions` table and auto-links the account hash).
+//         the `transactions` table and auto-links the account hash). Save
+//         is gated on a reconciliation check first — see requestSave()/
+//         reconciliationDialog below and ARCHITECTURE.MD § Statement
+//         Import — Import Report.
+// Step 3: import report — income/expense/net + category breakdown of what
+//         was just saved, plus the reconciliation results. Still the same
+//         Item/controller (not a separate overlay page) so
+//         SnapshotImportController's state survives the transition.
 
 Item {
     id: page
 
     signal closeRequested()
 
-    property int step: 0   // 0 = pick template/file · 1 = review/edit
+    property int step: 0   // 0 = pick template/file · 1 = review/edit · 2 = import report
 
     SnapshotImportController { id: controller }
     // Accounts now come from AccountController (QML_SINGLETON,
@@ -46,6 +55,107 @@ Item {
         matchedAccountIndex = controller.matchAccountIndex(AccountController.accounts)
         selectedAccountIndex = matchedAccountIndex
         page.step = 1
+    }
+
+    // ── Save flow — reconciliation gate + brief disable + report step ────────
+    // Disabling the Save button for a couple of seconds after it's clicked
+    // is a double-click guard (see saveButtonResetTimer below); the
+    // reconciliation check runs first and can interrupt the flow entirely
+    // (see reconciliationDialog) — see ARCHITECTURE.MD § Statement Import —
+    // Import Report.
+    property bool saveBusy: false
+
+    Timer {
+        id: saveButtonResetTimer
+        interval: 2000
+        onTriggered: page.saveBusy = false
+    }
+
+    function requestSave() {
+        if (page.saveBusy || page.selectedAccount === null) {
+            return
+        }
+        var check = controller.checkReconciliation(page.selectedAccount.id)
+        if (check.available && !check.endOk) {
+            reconciliationDialog.check = check
+            reconciliationDialog.open()
+            return
+        }
+        doSave()
+    }
+
+    function doSave() {
+        page.saveBusy = true
+        saveButtonResetTimer.restart()
+        var accountId = page.selectedAccount !== null ? page.selectedAccount.id : -1
+        var label = page.selectedAccount !== null ? page.selectedAccount.name : "(no account selected)"
+        controller.save(accountId, label)
+        // Pick up the transactions/hash write this just made (and a
+        // possible new "Reconciliation Adjustment" category) — see
+        // AccountController.reload()/CategoryController.reload() doc
+        // comments (no C++-to-C++ coupling between these controllers).
+        AccountController.reload()
+        CategoryController.reload()
+        page.step = 2
+    }
+
+    // ── Confidence display helpers ──────────────────────────────────────────
+    // `confidence` (0.0-1.0, ImportedTransaction::confidence) is a review-
+    // screen-only hint from a (future) category-prediction model — see
+    // ARCHITECTURE.MD § Statement Import. No model exists yet, so every row's
+    // value is always 0.0 today; per that field's documented convention,
+    // "0.0" means "not scored" (never persisted), not "the model is 0% sure
+    // this category is wrong" — so it's shown as "—" / a neutral badge rather
+    // than "0%" / a danger badge, to avoid implying a real, low score exists.
+    function confidenceVariant(confidence) {
+        if (confidence <= 0) return "neutral"
+        if (confidence < 0.5) return "danger"
+        if (confidence < 0.8) return "warning"
+        return "success"
+    }
+    function confidenceText(confidence) {
+        return confidence <= 0 ? "—" : Math.round(confidence * 100) + "%"
+    }
+
+    // ── Transaction-table column widths — resizable + persisted ────────────
+    // Defaults below match the table's original hand-picked widths, except:
+    // NAME was 400 (a leftover from before NAME/DESC. were split into a short
+    // editable label + a view-icon popup — see the DESC. column comment
+    // below), now 100 since it only ever holds a short label today; CATEGORY/
+    // SUBCATEGORY were 115, widened to 160 since category/subcategory names
+    // were cropping. Every header cell (see the table below) drags its own
+    // width via ColumnHeaderCell.qml's handle; both the header row and each
+    // data row read the same `columnWidths` properties, so they always stay
+    // aligned. Persisted across app restarts via QtCore's `Settings` type
+    // (https://doc.qt.io/qt-6/qml-qtcore-settings.html — the recommended
+    // property-alias pattern from that page's own docs; supersedes the now-
+    // deprecated Qt.labs.settings, https://doc.qt.io/qt-6/qml-qt-labs-settings-settings.html).
+    QtObject {
+        id: columnWidths
+        property real opDate: 80
+        property real name: 100
+        property real desc: 44
+        property real debit: 90
+        property real credit: 90
+        property real balance: 100
+        property real category: 160
+        property real subcategory: 160
+        property real confidence: 90
+        property real keep: 50
+    }
+
+    Settings {
+        category: "ImportTransactionsColumns"
+        property alias opDateWidth: columnWidths.opDate
+        property alias nameWidth: columnWidths.name
+        property alias descWidth: columnWidths.desc
+        property alias debitWidth: columnWidths.debit
+        property alias creditWidth: columnWidths.credit
+        property alias balanceWidth: columnWidths.balance
+        property alias categoryWidth: columnWidths.category
+        property alias subcategoryWidth: columnWidths.subcategory
+        property alias confidenceWidth: columnWidths.confidence
+        property alias keepWidth: columnWidths.keep
     }
 
     FileDialog {
@@ -275,8 +385,19 @@ Item {
                                 visible: page.selectedAccount !== null && page.selectedAccount.linked
                                 pillHeight: 24
                                 variant: "success"
-                                text: "✓ Linked (" + page.selectedAccount.hashCount + " hash"
-                                    + (page.selectedAccount.hashCount === 1 ? "" : "es") + ")"
+                                // Guard against null even though `visible` above already
+                                // excludes this case at display time — bindings in QML are
+                                // still evaluated when their dependencies change regardless
+                                // of the item's own `visible` value (it's not a guard), so
+                                // `page.selectedAccount.hashCount` alone would throw
+                                // "Cannot read property 'hashCount' of null" the moment
+                                // `page.selectedAccount` becomes null (e.g. AccountController
+                                // reloads and `selectedAccountIndex` momentarily points past
+                                // the end) even while this badge itself stays invisible.
+                                text: page.selectedAccount !== null
+                                    ? "✓ Linked (" + page.selectedAccount.hashCount + " hash"
+                                      + (page.selectedAccount.hashCount === 1 ? "" : "es") + ")"
+                                    : ""
                             }
 
                             // Offer to link this statement's fingerprint to
@@ -310,6 +431,21 @@ Item {
                         anchors.fill: parent
                         spacing: 0
 
+                        // CONFIDENCE (below) is always "—" today — see the
+                        // confidenceText()/confidenceVariant() comment above for why. Called
+                        // out here so it doesn't read as broken/unfinished before a
+                        // prediction model exists to actually fill it in.
+                        Text {
+                            Layout.fillWidth: true
+                            Layout.bottomMargin: 8
+                            wrapMode: Text.WordWrap
+                            text: "CONFIDENCE shows how sure a (future) category-prediction model is about "
+                                + "the category/subcategory it picked — always “—” for now, since no "
+                                + "such model exists yet."
+                            font.pixelSize: 13
+                            color: "#6c7086"
+                        }
+
                         Rectangle {
                             Layout.fillWidth: true
                             Layout.preferredHeight: 28
@@ -318,14 +454,77 @@ Item {
                             RowLayout {
                                 anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                 spacing: 8
-                                Text { Layout.preferredWidth: 80;  text: "OP. DATE";  font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                                Text { Layout.fillWidth: true;     text: "DESCRIPTION"; font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                                Text { Layout.preferredWidth: 90;  text: "DEBIT";     font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 90;  text: "CREDIT";    font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 100; text: "BALANCE";   font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 115; text: "CATEGORY";    font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                                Text { Layout.preferredWidth: 115; text: "SUBCATEGORY"; font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                                Text { Layout.preferredWidth: 50;  text: "KEEP";      font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+
+                                ColumnHeaderCell {
+                                    Layout.preferredWidth: columnWidths.opDate
+                                    text: "OP. DATE"
+                                    minWidth: 60
+                                    onWidthChangeRequested: (w) => columnWidths.opDate = w
+                                }
+                                ColumnHeaderCell {
+                                    Layout.preferredWidth: columnWidths.name
+                                    text: "NAME"
+                                    minWidth: 60
+                                    onWidthChangeRequested: (w) => columnWidths.name = w
+                                }
+                                // Narrow column — rows only show a view-icon here (see the
+                                // "Full description" Popup below), the fillWidth spacer after
+                                // it takes up the space the old fillWidth DESCRIPTION text
+                                // column used to, so DEBIT/CREDIT/… stay pinned to the right.
+                                ColumnHeaderCell {
+                                    Layout.preferredWidth: columnWidths.desc
+                                    text: "DESC."
+                                    minWidth: 32
+                                    onWidthChangeRequested: (w) => columnWidths.desc = w
+                                }
+                                Item { Layout.fillWidth: true }
+                                ColumnHeaderCell {
+                                    Layout.preferredWidth: columnWidths.debit
+                                    text: "DEBIT"
+                                    horizontalAlignment: Text.AlignRight
+                                    minWidth: 50
+                                    onWidthChangeRequested: (w) => columnWidths.debit = w
+                                }
+                                ColumnHeaderCell {
+                                    Layout.preferredWidth: columnWidths.credit
+                                    text: "CREDIT"
+                                    horizontalAlignment: Text.AlignRight
+                                    minWidth: 50
+                                    onWidthChangeRequested: (w) => columnWidths.credit = w
+                                }
+                                ColumnHeaderCell {
+                                    Layout.preferredWidth: columnWidths.balance
+                                    text: "BALANCE"
+                                    horizontalAlignment: Text.AlignRight
+                                    minWidth: 60
+                                    onWidthChangeRequested: (w) => columnWidths.balance = w
+                                }
+                                ColumnHeaderCell {
+                                    Layout.preferredWidth: columnWidths.category
+                                    text: "CATEGORY"
+                                    minWidth: 70
+                                    onWidthChangeRequested: (w) => columnWidths.category = w
+                                }
+                                ColumnHeaderCell {
+                                    Layout.preferredWidth: columnWidths.subcategory
+                                    text: "SUBCATEGORY"
+                                    minWidth: 70
+                                    onWidthChangeRequested: (w) => columnWidths.subcategory = w
+                                }
+                                ColumnHeaderCell {
+                                    Layout.preferredWidth: columnWidths.confidence
+                                    text: "CONFIDENCE"
+                                    horizontalAlignment: Text.AlignHCenter
+                                    minWidth: 60
+                                    onWidthChangeRequested: (w) => columnWidths.confidence = w
+                                }
+                                ColumnHeaderCell {
+                                    Layout.preferredWidth: columnWidths.keep
+                                    text: "KEEP"
+                                    horizontalAlignment: Text.AlignRight
+                                    minWidth: 40
+                                    onWidthChangeRequested: (w) => columnWidths.keep = w
+                                }
                             }
                         }
 
@@ -344,21 +543,50 @@ Item {
                                     anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                     spacing: 8
 
-                                    Text { Layout.preferredWidth: 80; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: txRow.modelData.description
+                                    Text { Layout.preferredWidth: columnWidths.opDate; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
+                                    TextField {
+                                        id: nameField
+                                        Layout.preferredWidth: columnWidths.name
+                                        Layout.preferredHeight: 32
+                                        text: txRow.modelData.name
                                         font.pixelSize: 15
                                         color: "#cdd6f4"
-                                        elide: Text.ElideRight
+                                        placeholderTextColor: "#45475a"
+                                        placeholderText: "(no name)"
+                                        // Same recipe as FormRow.qml's TextField — see
+                                        // ARCHITECTURE.MD § Shared Components.
+                                        background: Rectangle {
+                                            color: "#11111b"
+                                            radius: 4
+                                            border.color: nameField.activeFocus ? "#89b4fa" : "#313244"
+                                        }
+                                        // Auto-extracted at parse time (see
+                                        // extractTransactionName() in
+                                        // SumeriaCcpCsvExtractionTemplate.cpp); editable here in
+                                        // case the extraction picked the wrong thing.
+                                        onEditingFinished: controller.setRowName(txRow.modelData.index, text)
                                     }
-                                    Text { Layout.preferredWidth: 90;  text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 90;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 100; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                                    // Full description is no longer shown inline — just an icon
+                                    // that opens descriptionPopup (see below) with the full,
+                                    // selectable/copyable text. Keeps the row from being
+                                    // dominated by often-long multi-line bank text now that NAME
+                                    // (above) carries the at-a-glance label.
+                                    GhostButton {
+                                        Layout.preferredWidth: columnWidths.desc
+                                        text: "🔍"
+                                        onClicked: {
+                                            descriptionPopup.descriptionText = txRow.modelData.description
+                                            descriptionPopup.open()
+                                        }
+                                    }
+                                    Item { Layout.fillWidth: true }
+                                    Text { Layout.preferredWidth: columnWidths.debit;   text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: columnWidths.credit;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: columnWidths.balance; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
 
                                     ColorComboBox {
                                         id: categoryBox
-                                        Layout.preferredWidth: 115
+                                        Layout.preferredWidth: columnWidths.category
                                         Layout.preferredHeight: 36
                                         items: CategoryController.categories
                                         currentName: txRow.modelData.category
@@ -366,7 +594,7 @@ Item {
                                     }
 
                                     ColorComboBox {
-                                        Layout.preferredWidth: 115
+                                        Layout.preferredWidth: columnWidths.subcategory
                                         Layout.preferredHeight: 36
                                         readonly property var subItems: {
                                             var cat = CategoryController.categories.find(function(c) { return c.name === txRow.modelData.category })
@@ -378,8 +606,20 @@ Item {
                                         onNameActivated: (name) => controller.setRowSubcategory(txRow.modelData.index, name)
                                     }
 
+                                    // See confidenceVariant()/confidenceText() at the top of
+                                    // this file — always the neutral "—" badge today (no
+                                    // prediction model yet); colors itself red/yellow/green
+                                    // once real per-row confidence values start arriving.
+                                    StatusBadge {
+                                        Layout.preferredWidth: columnWidths.confidence
+                                        Layout.alignment: Qt.AlignHCenter
+                                        pillHeight: 24
+                                        variant: page.confidenceVariant(txRow.modelData.confidence)
+                                        text: page.confidenceText(txRow.modelData.confidence)
+                                    }
+
                                     CheckBox {
-                                        Layout.preferredWidth: 50
+                                        Layout.preferredWidth: columnWidths.keep
                                         checked: txRow.modelData.included
                                         onCheckedChanged: controller.setRowIncluded(txRow.modelData.index, checked)
                                     }
@@ -403,21 +643,265 @@ Item {
                     }
                     Item { Layout.fillWidth: true }
                     PillButton {
-                        text: "Save"
+                        text: page.saveBusy ? "Saving…" : "Save"
                         variant: "primary"
-                        onClicked: {
-                            var accountId = page.selectedAccount !== null ? page.selectedAccount.id : -1
-                            var label = page.selectedAccount !== null
-                                ? page.selectedAccount.name
-                                : "(no account selected)"
-                            controller.save(accountId, label)
-                            // Pick up the transactions/hash write this
-                            // just made — see AccountController.reload()
-                            // doc comment (no C++-to-C++ singleton
-                            // coupling between the two controllers).
-                            AccountController.reload()
+                        enabled: !page.saveBusy && page.selectedAccount !== null
+                        onClicked: page.requestSave()
+                    }
+                }
+            }
+
+            // ── Step 3 — import report ──────────────────────────────────────────
+            // Shown right after a successful Save (see doSave() above) — a third
+            // step inside this same Item/controller rather than a separate
+            // overlay page, so SnapshotImportController's state (and the report
+            // it just built) survives the transition; a separate Loader-based
+            // overlay would destroy/recreate the controller (see ARCHITECTURE.MD
+            // § Statement Import — Import Report for why).
+            ColumnLayout {
+                id: reportStep
+                visible: page.step === 2
+                Layout.fillWidth: true
+                spacing: 16
+
+                readonly property var report: controller.lastImportReport
+                readonly property var reconciliation: reportStep.report.reconciliation ? reportStep.report.reconciliation : ({})
+                readonly property var byCategory: reportStep.report.byCategory ? reportStep.report.byCategory : []
+
+                ChartCard {
+                    Layout.fillWidth: true
+                    implicitHeight: reportSummaryCol.implicitHeight + 50
+                    title: "Import report — " + (reportStep.report.accountLabel ? reportStep.report.accountLabel : "")
+
+                    ColumnLayout {
+                        id: reportSummaryCol
+                        anchors.fill: parent
+                        spacing: 14
+
+                        GridLayout {
+                            columns: 4
+                            columnSpacing: 24
+                            rowSpacing: 6
+                            Layout.fillWidth: true
+
+                            Text { text: "Transactions saved"; font.pixelSize: 13; color: "#6c7086" }
+                            Text { text: "Total income";       font.pixelSize: 13; color: "#6c7086" }
+                            Text { text: "Total expenses";     font.pixelSize: 13; color: "#6c7086" }
+                            Text { text: "Net change";         font.pixelSize: 13; color: "#6c7086" }
+
+                            Text { text: reportStep.report.transactionCount !== undefined ? reportStep.report.transactionCount : 0; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
+                            Text { text: reportStep.report.totalIncomeText ? reportStep.report.totalIncomeText : "—"; font.pixelSize: 18; font.bold: true; color: "#a6e3a1" }
+                            Text { text: reportStep.report.totalExpenseText ? reportStep.report.totalExpenseText : "—"; font.pixelSize: 18; font.bold: true; color: "#f38ba8" }
+                            Text { text: reportStep.report.netChangeText ? reportStep.report.netChangeText : "—"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
                         }
                     }
+                }
+
+                // ── Reconciliation results ──────────────────────────────────────
+                ChartCard {
+                    Layout.fillWidth: true
+                    implicitHeight: reconCol.implicitHeight + 50
+                    title: "Reconciliation"
+
+                    ColumnLayout {
+                        id: reconCol
+                        anchors.fill: parent
+                        spacing: 10
+
+                        RowLayout {
+                            spacing: 10
+                            StatusBadge {
+                                pillHeight: 22
+                                variant: !reportStep.reconciliation.hasStartReference ? "neutral"
+                                    : (reportStep.reconciliation.startOk ? "success" : "warning")
+                                text: !reportStep.reconciliation.hasStartReference ? "Start balance — no prior record"
+                                    : (reportStep.reconciliation.startOk ? "Start balance OK" : "Start balance mismatch")
+                            }
+                            Text {
+                                visible: reportStep.reconciliation.hasStartReference === true
+                                text: "declared " + (reportStep.reconciliation.startDeclaredText || "—")
+                                    + " vs. " + (reportStep.reconciliation.startExpectedText || "—")
+                                    + " (" + (reportStep.reconciliation.startSourceLabel || "") + " on "
+                                    + (reportStep.reconciliation.startSourceDateText || "—") + ") — diff "
+                                    + (reportStep.reconciliation.startDiffText || "—")
+                                font.pixelSize: 13
+                                color: "#6c7086"
+                            }
+                        }
+
+                        RowLayout {
+                            spacing: 10
+                            StatusBadge {
+                                pillHeight: 22
+                                variant: reportStep.reconciliation.endOk ? "success" : "danger"
+                                text: reportStep.reconciliation.endOk ? "End balance OK" : "End balance mismatch"
+                            }
+                            Text {
+                                text: "computed " + (reportStep.reconciliation.endComputedText || "—")
+                                    + " vs. declared " + (reportStep.reconciliation.endDeclaredText || "—")
+                                    + " — diff " + (reportStep.reconciliation.endDiffText || "—")
+                                font.pixelSize: 13
+                                color: "#6c7086"
+                            }
+                        }
+                    }
+                }
+
+                // ── Category / subcategory breakdown — pie chart + legend ───────
+                ChartCard {
+                    Layout.fillWidth: true
+                    implicitHeight: breakdownCol.implicitHeight + 50
+                    title: "By category — click a slice"
+
+                    ColumnLayout {
+                        id: breakdownCol
+                        anchors.fill: parent
+                        spacing: 10
+
+                        EmptyState {
+                            visible: reportStep.byCategory.length === 0
+                            message: "No transactions were saved."
+                        }
+
+                        // Pie chart: slice size is each category's spending/income
+                        // *magnitude* (Math.abs of the net total) — a pie of signed
+                        // net amounts (income positive, expenses negative) isn't a
+                        // meaningful "share of the whole", so this shows "how much
+                        // of the money that moved went through each category"
+                        // regardless of direction; the exact signed totals are still
+                        // shown in the legend rows below. Same GraphsView/PieSeries
+                        // recipe as CashFlowPage.qml's category donut (verified
+                        // against that page, not invented — see ARCHITECTURE.MD
+                        // header note on checking QtGraphsExamples/doc.qt.io first).
+                        GraphsView {
+                            visible: reportStep.byCategory.length > 0
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 260
+                            theme: GraphsTheme { colorScheme: GraphsTheme.ColorScheme.Dark }
+
+                            PieSeries {
+                                id: categoryPie
+                                pieSize: 0.75
+                                holeSize: 0.42
+
+                                function rebuild() {
+                                    clear()
+                                    pieSliceInfo.text = "Click a slice for details"
+                                    var cats = reportStep.byCategory
+                                    for (var i = 0; i < cats.length; i++) {
+                                        var magnitude = Math.abs(cats[i].totalRaw)
+                                        if (magnitude <= 0)
+                                            continue
+                                        var slice = append(cats[i].category, magnitude)
+                                        slice.color = CategoryController.categoryColor(cats[i].category) || "#6c7086"
+                                        slice.labelVisible = true
+                                    }
+                                }
+                                Component.onCompleted: rebuild()
+
+                                onClicked: (slice) => {
+                                    pieSliceInfo.text = slice.label + "  —  "
+                                        + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
+                                        + " €  (" + Math.round(slice.percentage * 100) + " %)"
+                                }
+                            }
+
+                            Connections {
+                                target: reportStep
+                                function onByCategoryChanged() { categoryPie.rebuild() }
+                            }
+                        }
+                        Text {
+                            id: pieSliceInfo
+                            Layout.alignment: Qt.AlignHCenter
+                            visible: reportStep.byCategory.length > 0
+                            text: "Click a slice for details"
+                            font.pixelSize: 14
+                            color: "#6c7086"
+                        }
+
+                        Rectangle {
+                            visible: reportStep.byCategory.length > 0
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 1
+                            color: "#313244"
+                        }
+
+                        Repeater {
+                            model: reportStep.byCategory
+                            delegate: ColumnLayout {
+                                id: catRow
+                                required property var modelData
+                                Layout.fillWidth: true
+                                spacing: 4
+
+                                RowLayout {
+                                    spacing: 10
+                                    Rectangle {
+                                        Layout.preferredWidth: catBadge.implicitWidth + 16
+                                        Layout.preferredHeight: 22
+                                        radius: 11
+                                        color: Qt.rgba(1, 1, 1, 0.08)
+                                        border.color: CategoryController.categoryColor(catRow.modelData.category) || "#6c7086"
+                                        Text {
+                                            id: catBadge
+                                            anchors.centerIn: parent
+                                            text: catRow.modelData.category
+                                            font.pixelSize: 13
+                                            color: CategoryController.categoryColor(catRow.modelData.category) || "#6c7086"
+                                        }
+                                    }
+                                    Text {
+                                        text: catRow.modelData.totalText
+                                        font.pixelSize: 15
+                                        font.bold: true
+                                        color: catRow.modelData.totalRaw >= 0 ? "#a6e3a1" : "#f38ba8"
+                                    }
+                                }
+
+                                Flow {
+                                    Layout.fillWidth: true
+                                    Layout.leftMargin: 20
+                                    spacing: 6
+
+                                    Repeater {
+                                        model: catRow.modelData.subcategories
+                                        delegate: Rectangle {
+                                            id: subChip
+                                            required property var modelData
+                                            width: subChipRow.implicitWidth + 14
+                                            height: 20
+                                            radius: 10
+                                            color: "#181825"
+                                            border.color: CategoryController.subcategoryColor(catRow.modelData.category, subChip.modelData.subcategory) || "#313244"
+
+                                            RowLayout {
+                                                id: subChipRow
+                                                anchors.centerIn: parent
+                                                spacing: 6
+                                                Text {
+                                                    text: subChip.modelData.subcategory + " · " + subChip.modelData.totalText
+                                                    font.pixelSize: 11
+                                                    color: "#a6adc8"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    PillButton {
+                        text: "Import another file"
+                        variant: "primary"
+                        onClicked: { controller.reset(); page.step = 0 }
+                    }
+                    Item { Layout.fillWidth: true }
+                    PillButton { text: "Done"; variant: "neutral"; onClicked: page.closeRequested() }
                 }
             }
 
@@ -521,6 +1005,138 @@ Item {
                 Layout.topMargin: 6
                 Item { Layout.fillWidth: true }
                 PillButton { text: "Close"; variant: "neutral"; onClicked: logPopup.close() }
+            }
+        }
+    }
+
+    // ── Full-description popup ──────────────────────────────────────────────────
+    // Opened by the 🔍 icon in the transaction table (replaced the old inline
+    // DESCRIPTION text column — see the table above). One shared instance for
+    // every row; the row's onClicked sets descriptionText right before open().
+    // Text is selectable (TextEdit.selectByMouse) so the raw bank description
+    // (refs included) can be copy-pasted elsewhere.
+    Popup {
+        id: descriptionPopup
+        anchors.centerIn: parent
+        width: 480
+        height: 280
+        padding: 16
+        modal: true
+
+        property string descriptionText: ""
+
+        background: Rectangle {
+            color: "#181825"
+            border.color: "#45475a"
+            radius: 8
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 10
+
+            Text { text: "Full description"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
+
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+
+                TextEdit {
+                    width: descriptionPopup.width - 32
+                    text: descriptionPopup.descriptionText
+                    readOnly: true
+                    selectByMouse: true
+                    persistentSelection: true
+                    wrapMode: TextEdit.WordWrap
+                    font.pixelSize: 15
+                    color: "#cdd6f4"
+                    selectionColor: "#89b4fa"
+                    selectedTextColor: "#11111b"
+                }
+            }
+
+            RowLayout {
+                Layout.topMargin: 6
+                Item { Layout.fillWidth: true }
+                PillButton { text: "Close"; variant: "neutral"; onClicked: descriptionPopup.close() }
+            }
+        }
+    }
+
+    // ── Reconciliation mismatch dialog ────────────────────────────────────────
+    // Opened by requestSave() (see above) when checkReconciliation()'s check 2
+    // (declared start + kept rows vs. declared end) fails — the "tell the user,
+    // and ask what he wants to do" step from the product request. Two ways
+    // forward, neither of which saves automatically: "Review kept transactions"
+    // just closes the dialog so the user can toggle KEEP checkboxes in the
+    // table and hit Save again; "Add adjustment transaction" appends one
+    // synthetic row for the exact gap (see
+    // SnapshotImportController::addReconciliationAdjustment()) tagged with the
+    // "Reconciliation Adjustment" category, then also just closes — the user
+    // reviews the new row and clicks Save again themselves rather than this
+    // dialog re-triggering the save on their behalf.
+    Popup {
+        id: reconciliationDialog
+        anchors.centerIn: parent
+        width: 480
+        padding: 16
+        modal: true
+
+        property var check: ({})
+
+        background: Rectangle {
+            color: "#181825"
+            border.color: "#f38ba8"
+            radius: 8
+        }
+
+        contentItem: ColumnLayout {
+            spacing: 12
+
+            Text { text: "Balance doesn't add up"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
+
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "The statement declares an ending balance of "
+                    + (reconciliationDialog.check.endDeclaredText || "—")
+                    + ", but the declared starting balance plus every currently-kept transaction only "
+                    + "adds up to " + (reconciliationDialog.check.endComputedText || "—")
+                    + " — a difference of " + (reconciliationDialog.check.endDiffText || "—") + "."
+                font.pixelSize: 14
+                color: "#cdd6f4"
+            }
+
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "Either a kept transaction was unchecked by mistake, or a real amount is missing. "
+                    + "Review the KEEP column, or add a matching adjustment transaction (category "
+                    + "\"Reconciliation Adjustment\") to close the gap."
+                font.pixelSize: 13
+                color: "#6c7086"
+            }
+
+            RowLayout {
+                Layout.topMargin: 6
+                Layout.fillWidth: true
+                spacing: 10
+                PillButton {
+                    text: "Review kept transactions"
+                    variant: "neutral"
+                    onClicked: reconciliationDialog.close()
+                }
+                Item { Layout.fillWidth: true }
+                PillButton {
+                    text: "Add adjustment transaction"
+                    variant: "danger"
+                    onClicked: {
+                        var accountId = page.selectedAccount !== null ? page.selectedAccount.id : -1
+                        controller.addReconciliationAdjustment(accountId)
+                        CategoryController.reload()
+                        reconciliationDialog.close()
+                    }
+                }
             }
         }
     }

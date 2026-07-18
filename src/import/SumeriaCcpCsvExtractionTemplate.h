@@ -1,12 +1,13 @@
-#ifndef FINANCEDASHBOARD_IMPORT_CHECKINGCSVTEMPLATEV1_H
-#define FINANCEDASHBOARD_IMPORT_CHECKINGCSVTEMPLATEV1_H
+#ifndef FINANCEDASHBOARD_IMPORT_SUMERIACCPCSVEXTRACTIONTEMPLATE_H
+#define FINANCEDASHBOARD_IMPORT_SUMERIACCPCSVEXTRACTIONTEMPLATE_H
 
 #include "ImportTemplate.h"
 
-// ── CheckingCsvTemplateV1 ─────────────────────────────────────────────────────
+// ── SumeriaCcpCsvExtractionTemplate ───────────────────────────────────────────
 //
-// First supported bank-export format: a checking-account CSV statement whose
-// layout is (as given, verbatim, when this template was written):
+// First supported bank-export format: a Sumeria CCP checking-account CSV
+// statement whose layout is (as given, verbatim, when this template was
+// written):
 //
 //   Prénom Nom,{Name} {Surname}
 //   Account name,{Account name}
@@ -34,11 +35,11 @@
 // several bogus rows and corrupt every row after it. Embedded newlines are
 // collapsed to spaces in the final Data::ImportedTransaction::description.
 
-class CheckingCsvTemplateV1 final : public ImportTemplate
+class SumeriaCcpCsvExtractionTemplate final : public ImportTemplate
 {
 public:
-    [[nodiscard]] QString id() const override { return QStringLiteral("checking_csv_v1"); }
-    [[nodiscard]] QString displayName() const override { return QStringLiteral("Checking Account Statement (CSV)"); }
+    [[nodiscard]] QString id() const override { return QStringLiteral("sumeria_ccp_csv_extraction"); }
+    [[nodiscard]] QString displayName() const override { return QStringLiteral("Sumeria CCP — CSV Statement"); }
     [[nodiscard]] QString fileFilter() const override { return QStringLiteral("CSV files (*.csv)"); }
 
     bool parse(const QString& filePath,
@@ -46,4 +47,4 @@ public:
                QVector<Data::ImportLogEntry>& outLog) const override;
 };
 
-#endif // FINANCEDASHBOARD_IMPORT_CHECKINGCSVTEMPLATEV1_H
+#endif // FINANCEDASHBOARD_IMPORT_SUMERIACCPCSVEXTRACTIONTEMPLATE_H

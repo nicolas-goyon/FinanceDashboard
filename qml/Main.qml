@@ -45,8 +45,19 @@ ApplicationWindow {
     // Which account (index into AccountController.accounts) the
     // AccountTransactionsPage overlay should show — set right before
     // currentViewId becomes "accountTransactions" (see the accountsPage
-    // Loader's onViewTransactionsRequested below).
+    // Loader's onViewTransactionsRequested below, and the sidebar
+    // onActionTriggered handler). -1 lets the page itself fall back to the
+    // first account (see AccountTransactionsPage.qml's own default), which is
+    // what happens when it's reached directly from the sidebar rather than
+    // via a specific account's "Transactions" button.
     property int accountTransactionsIndex: -1
+
+    // Where the back arrow on AccountTransactionsPage returns to — it has two
+    // entry points since the 2026-07-18 restructure: the sidebar's own
+    // "View & Edit Transactions" action (back → "transactionsManagement",
+    // its category landing page) and Manage Accounts' per-row "Transactions"
+    // button (back → "manageAccounts", unchanged from before the restructure).
+    property string accountTransactionsReturnViewId: "transactionsManagement"
 
     // Overlay views: full-content pages reached from a sidebar action (or,
     // for "accountTransactions", from a button inside another overlay) that
@@ -54,7 +65,7 @@ ApplicationWindow {
     // below and ARCHITECTURE.MD § Sidebar Navigation → Overlay pages.
     readonly property var overlayViewIds: [
         "importTransactions", "manageCategories",
-        "manageAccounts", "accountTypes", "accountTransactions"
+        "manageAccounts", "accountTypes", "accountTransactions", "accountDetails"
     ]
     readonly property bool isOverlayView: root.overlayViewIds.indexOf(root.currentViewId) !== -1
 
@@ -70,7 +81,15 @@ ApplicationWindow {
                 { id: "netWorthTrend", label: "Net Worth Trend" },
                 { id: "allocationBreakdown", label: "Allocation Breakdown" },
                 { id: "monthlyNetChange", label: "Monthly Net Change" },
-                { id: "kpiSummary", label: "KPI Summary" }
+                { id: "kpiSummary", label: "KPI Summary" },
+                // Moved here from Account Management (2026-07-18) — this is a
+                // day-to-day "look at my data" view (per-account balance
+                // history/current balance), not an admin/CRUD operation like
+                // its former siblings ("Manage Accounts", "Account types &
+                // categories"), so it belongs with the other analysis pages
+                // rather than the account-admin category. See ARCHITECTURE.MD
+                // § Account History.
+                { id: "accountDetails", label: "Account Details" }
             ]
         },
         {
@@ -108,22 +127,42 @@ ApplicationWindow {
             ]
         },
         {
-            id: "transactionsManagement", label: "Transactions Management",
+            // Renamed from "Transactions Management" (2026-07-18) — the old
+            // name implied it manages saved transactions, but its actions are
+            // actually import + categorization + (now) the transaction table
+            // itself. Id kept as "transactionsManagement" — only the label
+            // changed, same "label ≠ id/class name" precedent as
+            // SnapshotImportController backing "Import Transactions" (see
+            // ARCHITECTURE.MD § Sidebar Navigation).
+            id: "transactionsManagement", label: "Transactions",
             actions: [
                 { id: "importTransactions", label: "Import Transactions" },
-                { id: "manageCategories", label: "Manage Categories" }
+                { id: "manageCategories", label: "Categories & Subcategories" },
+                // Moved here from Account Management (2026-07-18, product
+                // feedback) — viewing/editing the saved transaction table is
+                // a transaction-domain action, not account-admin, so it now
+                // lives alongside Import Transactions / Categories &
+                // Subcategories as a real sidebar action instead of being
+                // reachable only via a button inside Manage Accounts. Still
+                // also reachable that way (Manage Accounts → "Transactions"
+                // button) — see the dual return-view handling in the
+                // accountTransactions Loader/Component below and
+                // ARCHITECTURE.MD § Account Management.
+                { id: "accountTransactions", label: "View & Edit Transactions" }
             ]
         },
         {
+            // "ADMIN" divider (rendered by the sidebar Repeater below) starts
+            // here — Account Management and Database Management are
+            // destructive/CRUD operations on the app's own data model, not
+            // day-to-day analysis or data entry, per product feedback
+            // (2026-07-18). See ARCHITECTURE.MD § Sidebar Navigation.
             id: "accountManagement", label: "Account Management",
+            sectionLabel: "ADMIN",
             actions: [
                 { id: "manageAccounts", label: "Manage Accounts" },
                 { id: "accountTypes", label: "Account types & categories" }
-            ],
-            // Reached only via the "Transactions" button inside Manage
-            // Accounts, not a sidebar action of its own — still belongs to
-            // this category for sidebar-highlight purposes.
-            relatedViewIds: ["accountTransactions"]
+            ]
         },
         {
             id: "databaseManagement", label: "Database Management",
@@ -184,24 +223,67 @@ ApplicationWindow {
 
                 Repeater {
                     model: root.categories
-                    delegate: SidebarCategory {
+                    // Delegate is a small ColumnLayout (not a bare
+                    // SidebarCategory) so it can optionally render an "ADMIN"
+                    // section divider above categories that declare
+                    // `sectionLabel` (currently just Account Management —
+                    // see `categories` above and ARCHITECTURE.MD § Sidebar
+                    // Navigation).
+                    delegate: ColumnLayout {
                         required property var modelData
                         Layout.fillWidth: true
-                        categoryLabel: modelData.label
-                        actions: modelData.actions
-                        current: root.isCategoryActive(modelData)
-                        currentActionId: root.currentViewId
-                        onSelected: root.currentViewId = modelData.id
-                        onActionTriggered: (actionId) => {
-                            // Only actions with a real page behind them
-                            // change the view; every other action on the
-                            // first 5 categories is still a no-op
-                            // placeholder (see ARCHITECTURE.MD § Sidebar
-                            // Navigation). Add a page + its id here (and to
-                            // `categories` above) to wire up a new one.
-                            if (root.overlayViewIds.indexOf(actionId) !== -1
-                                    && actionId !== "accountTransactions") {
-                                root.currentViewId = actionId
+                        spacing: 0
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            Layout.topMargin: 12
+                            Layout.bottomMargin: 4
+                            visible: modelData.sectionLabel !== undefined
+                            spacing: 4
+
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 16
+                                Layout.rightMargin: 16
+                                height: 1
+                                color: "#313244"
+                            }
+                            Text {
+                                Layout.leftMargin: 16
+                                text: modelData.sectionLabel !== undefined ? modelData.sectionLabel : ""
+                                color: "#6c7086"
+                                font { pixelSize: 11; bold: true; letterSpacing: 1 }
+                            }
+                        }
+
+                        SidebarCategory {
+                            Layout.fillWidth: true
+                            categoryLabel: modelData.label
+                            actions: modelData.actions
+                            current: root.isCategoryActive(modelData)
+                            currentActionId: root.currentViewId
+                            onSelected: root.currentViewId = modelData.id
+                            onActionTriggered: (actionId) => {
+                                // Only actions with a real page behind them
+                                // change the view; every other action on the
+                                // first 5 categories is still a no-op
+                                // placeholder (see ARCHITECTURE.MD § Sidebar
+                                // Navigation). Add a page + its id here (and
+                                // to `categories` above) to wire up a new
+                                // one.
+                                if (root.overlayViewIds.indexOf(actionId) !== -1) {
+                                    if (actionId === "accountTransactions") {
+                                        // Reached directly from the sidebar,
+                                        // not via a specific account's
+                                        // "Transactions" button — let the
+                                        // page fall back to its own default
+                                        // account, and return here (not to
+                                        // Manage Accounts) on back.
+                                        root.accountTransactionsIndex = -1
+                                        root.accountTransactionsReturnViewId = "transactionsManagement"
+                                    }
+                                    root.currentViewId = actionId
+                                }
                             }
                         }
                     }
@@ -291,17 +373,21 @@ ApplicationWindow {
             onCloseRequested: root.currentViewId = "accountManagement"
             // "Transactions" on an account row routes to a full page, not a
             // modal (product decision — see ARCHITECTURE.MD § Account
-            // Management) — remember which account, then switch views.
+            // Management) — remember which account and that back should
+            // return here, then switch views.
             onViewTransactionsRequested: (accountIndex) => {
                 root.accountTransactionsIndex = accountIndex
+                root.accountTransactionsReturnViewId = "manageAccounts"
                 root.currentViewId = "accountTransactions"
             }
         }
     }
 
-    // ── Overlay — Account Transactions (reached from Manage Accounts, not a
-    //    sidebar action — see above). Lazily loaded/unloaded via
-    //    Loader.active. ─────────────────────────────────────────────────────
+    // ── Overlay — View & Edit Transactions (Transactions category's own
+    //    sidebar action *and* reachable from Manage Accounts' per-row
+    //    "Transactions" button — see the sidebar's onActionTriggered handler
+    //    and accountsPageComponent's onViewTransactionsRequested above).
+    //    Lazily loaded/unloaded via Loader.active. ───────────────────────────
     Loader {
         anchors {
             top: parent.top; bottom: parent.bottom
@@ -316,9 +402,9 @@ ApplicationWindow {
         id: accountTransactionsPageComponent
         AccountTransactionsPage {
             accountIndex: root.accountTransactionsIndex
-            // Back arrow returns to Manage Accounts, not the sidebar view —
-            // this page is reached *from* that page, not from the sidebar.
-            onCloseRequested: root.currentViewId = "manageAccounts"
+            // Back arrow's target depends on how this page was reached — see
+            // accountTransactionsReturnViewId's own doc comment above.
+            onCloseRequested: root.currentViewId = root.accountTransactionsReturnViewId
         }
     }
 
@@ -338,6 +424,31 @@ ApplicationWindow {
         id: accountTypesPageComponent
         AccountTypesCategoriesPage {
             onCloseRequested: root.currentViewId = "accountManagement"
+        }
+    }
+
+    // ── Overlay — Account Details (see SidebarCategory.actionTriggered
+    //    handling above). Lazily loaded/unloaded via Loader.active. Own
+    //    sidebar action under Overview (not Account Management — this is a
+    //    read-only analysis view, not an admin/CRUD page, see
+    //    ARCHITECTURE.MD § Account History for the naming/placement note).
+    //    Backing QML type/file is still AccountHistoryPage.qml — same
+    //    "sidebar label renamed, class name unchanged" precedent as
+    //    SnapshotImportController backing "Import Transactions". ──────────
+    Loader {
+        anchors {
+            top: parent.top; bottom: parent.bottom
+            left: sidebarDivider.right; right: parent.right
+        }
+        active: root.currentViewId === "accountDetails"
+        visible: active
+        sourceComponent: accountHistoryPageComponent
+    }
+
+    Component {
+        id: accountHistoryPageComponent
+        AccountHistoryPage {
+            onCloseRequested: root.currentViewId = "overview"
         }
     }
 }

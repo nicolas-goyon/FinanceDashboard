@@ -120,11 +120,64 @@ public:
 
     // Formatted rows for the per-account transactions page
     // (AccountTransactionsPage.qml) — see models/Transaction.h /
-    // db/tables/TransactionsTable.h.
-    // [{ confirmationDate, operationDate, description, debitText, creditText,
-    //    balanceText, category, subcategory }]
+    // db/tables/TransactionsTable.h. Includes the row's real `id` (needed by
+    // updateTransaction() below) and the raw ISO dates/amounts alongside the
+    // display-formatted text, so the "✎ Edit" dialog can pre-fill its fields
+    // without re-parsing Fmt-formatted strings.
+    // [{ id, confirmationDate, confirmationDateIso, operationDate, operationDateIso,
+    //    name, description, debitText, debit, creditText, credit, balanceText,
+    //    category, subcategory }]
     Q_INVOKABLE [[nodiscard]] QVariantList transactionsForAccount(int accountIndex) const;
     Q_INVOKABLE [[nodiscard]] int transactionCountForAccount(int accountIndex) const;
+
+    // Edits an already-persisted transaction (by its real row id, from
+    // transactionsForAccount()'s "id" field — NOT an index) — backs
+    // AccountTransactionsPage.qml's "✎ Edit" dialog (see ARCHITECTURE.MD §
+    // Account Management). Dates are "yyyy-MM-dd" (Qt::ISODate) or empty.
+    // balance_after/account_id/source_template are never touched here — see
+    // TransactionsTable::updateById()'s doc comment for why (balance
+    // continuity is NOT recomputed when debit/credit changes — a known
+    // limitation). Returns false if the write failed or the id/dates don't
+    // parse; the caller is responsible for re-reading transactionsForAccount()
+    // afterward (this method doesn't touch any NOTIFYable property, so QML
+    // must re-invoke it explicitly — same reasoning as CategoryController's
+    // convenience lookups).
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+    // positionally from AccountTransactionsPage.qml's edit dialog.
+    Q_INVOKABLE bool updateTransaction(int transactionId, const QString& confirmationDateIso, const QString& operationDateIso,
+                                        const QString& name, const QString& description, double debit, double credit,
+                                        const QString& category, const QString& subcategory);
+
+    // ── Balance checkpoints (the "magic number" anchor points — see
+    //    ARCHITECTURE.MD § Balance Checkpoints) ──────────────────────────────
+    // [{ id, date (yyyy-MM-dd), dateText, balance, balanceText, note }],
+    // oldest date first.
+    Q_INVOKABLE [[nodiscard]] QVariantList balanceCheckpoints(int accountIndex) const;
+    // `dateIso` is "yyyy-MM-dd" (Qt::ISODate) — returns false if it doesn't
+    // parse or the account index is invalid.
+    Q_INVOKABLE bool addBalanceCheckpoint(int accountIndex, const QString& dateIso, double balance, const QString& note);
+    Q_INVOKABLE void removeBalanceCheckpoint(int accountIndex, int checkpointIndex);
+
+    // ── Account History (AccountHistoryPage.qml — read-only, see
+    //    ARCHITECTURE.MD § Account History) ─────────────────────────────────
+    // Day-by-day running balance, computed by replaying every persisted
+    // transaction with a valid operation date in chronological order (one
+    // point per calendar day that has at least one transaction, cumulative
+    // through that day's last transaction) — the "using each transaction to
+    // compute the balance each day" line chart from the product request.
+    // Seeded from the latest AccountBalanceCheckpoint on or before the
+    // first transaction's date if one exists; otherwise inferred by
+    // subtracting the first transaction's own (credit - debit) from its own
+    // declared balanceAfter, so the line starts somewhere plausible instead
+    // of at a misleading 0 (product decision — see ARCHITECTURE.MD).
+    // Returns [] if the account has no dated transactions at all.
+    // [{ dateIso, dateText, timeMs, balance, balanceText }, ...] ascending.
+    Q_INVOKABLE [[nodiscard]] QVariantList accountBalanceHistory(int accountIndex) const;
+    // Current balance = the last point of accountBalanceHistory(), or (if
+    // there are no dated transactions at all) the latest balance checkpoint
+    // on or before today, or empty/zero if neither exists.
+    // { currentBalanceText, currentBalanceRaw, asOfDateText, transactionCount, hasHistory }
+    Q_INVOKABLE [[nodiscard]] QVariantMap accountBalanceSummary(int accountIndex) const;
 
     // Re-reads accounts/account-categories/account-types from Database — no
     // auto-reseed, even if the result comes back completely empty
