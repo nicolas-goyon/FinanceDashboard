@@ -27,6 +27,7 @@ Database::Database()
     , m_accountCategoriesTable(kConnection)
     , m_accountTypesTable(kConnection)
     , m_transactionsTable(kConnection)
+    , m_balanceCheckpointsTable(kConnection)
 {}
 
 Database& Database::instance()
@@ -62,7 +63,8 @@ bool Database::open(const QString& path)
         !m_accountTypesTable.createTable()     ||
         !m_accountsTable.createTable()         ||
         !m_accountHashesTable.createTable()    ||
-        !m_transactionsTable.createTable())
+        !m_transactionsTable.createTable()     ||
+        !m_balanceCheckpointsTable.createTable())
     {
         m_lastError = "Failed to create tables.";
         return false;
@@ -244,11 +246,12 @@ bool Database::removeAccount(int accountId)
 
     m_db.transaction();
 
-    // Manual cascade: hashes and transactions first, then the account row
-    // itself — same "delete-then-insert" transaction style as
-    // removeCategory()/saveSnapshot().
-    if (!m_accountHashesTable.removeForAccount(accountId) ||
-        !m_transactionsTable.removeForAccount(accountId)  ||
+    // Manual cascade: hashes, transactions, and balance checkpoints first,
+    // then the account row itself — same "delete-then-insert" transaction
+    // style as removeCategory()/saveSnapshot().
+    if (!m_accountHashesTable.removeForAccount(accountId)      ||
+        !m_transactionsTable.removeForAccount(accountId)       ||
+        !m_balanceCheckpointsTable.removeForAccount(accountId) ||
         !m_accountsTable.remove(accountId)) {
         m_db.rollback();
         m_lastError = "Failed to remove account.";
@@ -353,6 +356,50 @@ int Database::transactionCountForAccount(int accountId) const
     return m_transactionsTable.countForAccount(accountId);
 }
 
+bool Database::updateTransaction(const Data::Transaction& tx)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_transactionsTable.updateById(tx);
+}
+
+bool Database::clearTransactionsForAccount(int accountId)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_transactionsTable.removeForAccount(accountId);
+}
+
+std::optional<Data::Transaction> Database::latestTransactionOnOrBefore(int accountId, const QDate& date) const
+{
+    if (!isOpen()) { return std::nullopt; }
+    return m_transactionsTable.latestOnOrBefore(accountId, date);
+}
+
+// ── Balance checkpoints ───────────────────────────────────────────────────────
+
+QVector<Data::AccountBalanceCheckpoint> Database::loadBalanceCheckpoints(int accountId) const
+{
+    if (!isOpen()) { return {}; }
+    return m_balanceCheckpointsTable.allForAccount(accountId);
+}
+
+int Database::addBalanceCheckpoint(int accountId, const QDate& date, double balance, const QString& note)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    return m_balanceCheckpointsTable.insert(accountId, date, balance, note);
+}
+
+bool Database::removeBalanceCheckpoint(int checkpointId)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_balanceCheckpointsTable.remove(checkpointId);
+}
+
+std::optional<Data::AccountBalanceCheckpoint> Database::latestCheckpointOnOrBefore(int accountId, const QDate& date) const
+{
+    if (!isOpen()) { return std::nullopt; }
+    return m_balanceCheckpointsTable.latestOnOrBefore(accountId, date);
+}
+
 // ── Whole-database reset ──────────────────────────────────────────────────────
 
 bool Database::resetAll()
@@ -365,10 +412,10 @@ bool Database::resetAll()
     // actually matter here — no FK constraints are declared anywhere in
     // this schema — but listed in roughly the same order tables were
     // introduced for readability).
-    static const std::array<const char*, 9> kTables = {
+    static const std::array<const char*, 10> kTables = {
         "asset_entries", "snapshots",
         "subcategories", "categories",
-        "account_hashes", "transactions", "accounts",
+        "account_hashes", "transactions", "account_balance_checkpoints", "accounts",
         "account_categories", "account_types",
     };
 
@@ -392,7 +439,8 @@ bool Database::resetAll()
         !m_accountTypesTable.createTable()     ||
         !m_accountsTable.createTable()         ||
         !m_accountHashesTable.createTable()    ||
-        !m_transactionsTable.createTable())
+        !m_transactionsTable.createTable()     ||
+        !m_balanceCheckpointsTable.createTable())
     {
         m_db.rollback();
         m_lastError = "Failed to recreate tables after reset.";

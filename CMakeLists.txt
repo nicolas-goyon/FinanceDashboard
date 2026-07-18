@@ -40,6 +40,8 @@ qt_add_executable(FinanceDashboard
     src/db/tables/AccountTypesTable.cpp
     src/db/tables/TransactionsTable.h
     src/db/tables/TransactionsTable.cpp
+    src/db/tables/AccountBalanceCheckpointsTable.h
+    src/db/tables/AccountBalanceCheckpointsTable.cpp
     src/db/Database.h
     src/db/Database.cpp
     src/utils/Formatter.h
@@ -49,8 +51,8 @@ qt_add_executable(FinanceDashboard
     src/import/ImportTemplate.h
     src/import/ImportTemplateRegistry.h
     src/import/ImportTemplateRegistry.cpp
-    src/import/CheckingCsvTemplateV1.h
-    src/import/CheckingCsvTemplateV1.cpp
+    src/import/SumeriaCcpCsvExtractionTemplate.h
+    src/import/SumeriaCcpCsvExtractionTemplate.cpp
 )
 
 # ── QML module — controllers (QML_ELEMENT) + QML UI ───────────────────────────
@@ -91,6 +93,7 @@ qt_add_qml_module(FinanceDashboard
         qml/components/PillButton.qml
         qml/components/GhostButton.qml
         qml/components/StatusBadge.qml
+        qml/components/ColumnHeaderCell.qml
         qml/components/FormRow.qml
         qml/components/ColorPickerRow.qml
         qml/components/FormDialog.qml
@@ -109,6 +112,7 @@ qt_add_qml_module(FinanceDashboard
         qml/pages/AccountsManagePage.qml
         qml/pages/AccountTypesCategoriesPage.qml
         qml/pages/AccountTransactionsPage.qml
+        qml/pages/AccountHistoryPage.qml
 )
 
 # NOTE — qml/pages/ImportSnapshotPage.qml (FileDialog) and
@@ -119,6 +123,13 @@ qt_add_qml_module(FinanceDashboard
 # step — same as other QML-only modules here. If the build fails to find the
 # QtQuick.Dialogs plugin, add "QuickDialogs2" to the find_package(Qt6 ...) line
 # above and Qt6::QuickDialogs2 to target_link_libraries() below.
+#
+# Same reasoning applies to qml/pages/ImportSnapshotPage.qml's `import QtCore`
+# (the Settings QML type, https://doc.qt.io/qt-6/qml-qtcore-settings.html,
+# used to persist the transaction table's column widths — see ARCHITECTURE.MD
+# § Statement Import). QtCore's QML plugin ("Qt Qml Core") ships as part of
+# qtdeclarative alongside QtQuick/QtQml, no separate find_package component
+# needed — same auto-resolution as QtQuick.Dialogs above.
 
 # Each active controller's subfolder must be on the include path so the
 # auto-generated qml type registration .cpp can find the headers by basename.

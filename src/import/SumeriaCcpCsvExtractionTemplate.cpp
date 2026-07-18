@@ -1,4 +1,4 @@
-#include "CheckingCsvTemplateV1.h"
+#include "SumeriaCcpCsvExtractionTemplate.h"
 #include "models/ImportLog.h"
 #include "models/ImportedStatement.h"
 
@@ -131,6 +131,68 @@ QString normalizeField(QString text)
     return text.simplified();
 }
 
+// A line that starts the reference block ("External ref.: …", "Internal
+// ref.: …") — matched on the "ref.:" (or "ref :" / "ref:") suffix alone
+// rather than hardcoding "External"/"Internal", since that's the part both
+// known examples share and a third ref label isn't unlikely.
+bool isReferenceLine(const QString& line)
+{
+    static const QRegularExpression kRefLineRe(
+        QStringLiteral("\\bref\\s*[.:]"), QRegularExpression::CaseInsensitiveOption);
+    return kRefLineRe.match(line).hasMatch();
+}
+
+// ── Transaction "name" extraction ────────────────────────────────────────
+// Per product decision: the description field is multi-line, and how much
+// of it is "the name" varies by transaction type — two real examples seen
+// so far:
+//
+//   Card payment 8310: ALTISSIMO
+//   External ref.: 486151321659183
+//   Internal ref.: 06c60f6b-0206-48f0-b0c4-2a51263dfe48
+//
+//   Payment received from Investissement
+//   "Dividende - Orange"
+//   Internal ref.: C8EE57C5015F268469FD7E2D0FAE4797
+//
+// ("External ref." isn't always present.) Both examples share the same
+// shape: one or more free-text lines, followed by a block of "…ref.: …"
+// lines that are never part of the name. So the rule is: take every line
+// from the start of the (raw, pre-normalizeField) description UP TO the
+// first line that looks like a reference line, and join them with a single
+// space — one line for the card-payment example, two for the dividend one,
+// with no per-transaction-type special-casing needed. If a future real
+// example needs different handling, verify against a real file first (see
+// ARCHITECTURE.MD § Statement Import / this file's header note) before
+// changing this rule. The full description (all lines, refs included) is
+// unaffected — still stored via normalizeField() as before.
+//
+// Defensively collapses any doubled CSV-escaped quote ("" -> ") that
+// might still be present in the extracted name — parseCsvRecords() already
+// unescapes "" -> " while a field is being tokenized, so this is normally a
+// no-op, but the dividend example above is exactly the kind of nested-quote
+// content this is here to guard against if a real file ever parses
+// differently than expected.
+QString extractTransactionName(const QString& rawDescription)
+{
+    const QStringList lines = rawDescription.split(QLatin1Char('\n'));
+    QStringList nameLines;
+    for (const QString& rawLine : lines) {
+        const QString line = rawLine.trimmed();
+        if (line.isEmpty()) {
+            continue;
+        }
+        if (isReferenceLine(line)) {
+            break; // this line and everything after it is the reference block, never the name
+        }
+        nameLines << line;
+    }
+
+    QString name = nameLines.join(QLatin1Char(' '));
+    name.replace(QStringLiteral("\"\""), QStringLiteral("\""));
+    return name.simplified();
+}
+
 // Single-line, truncated preview of a (possibly multi-line) raw record, for
 // the parse log — embedded newlines are shown as "↵" so multi-line
 // descriptions are still recognizable as such when debugging.
@@ -206,9 +268,9 @@ QDate parseStatementDateNoYear(const QString& raw, QDate refYear)
 // Import; splitting it up risks breaking one of the subtle cases described
 // there (embedded newlines, "" escaping, MM/dd/yyyy dates). Left as-is per
 // product decision rather than refactored blind.
-bool CheckingCsvTemplateV1::parse(const QString& filePath,
-                                   Data::ImportedStatement& outStatement,
-                                   QVector<ImportLogEntry>& outLog) const
+bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
+                                             Data::ImportedStatement& outStatement,
+                                             QVector<ImportLogEntry>& outLog) const
 {
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -381,6 +443,7 @@ bool CheckingCsvTemplateV1::parse(const QString& filePath,
         Data::ImportedTransaction transaction;
         transaction.confirmationDate = confirmationDate;
         transaction.operationDate    = operationDate.isValid() ? operationDate : confirmationDate;
+        transaction.name              = extractTransactionName(rec.fields.at(kColDescription)); // lines before the ref block, raw (pre-normalize)
         transaction.description       = normalizeField(rec.fields.at(kColDescription)); // may have had embedded newlines
         transaction.debit              = std::abs(debit);
         transaction.credit             = std::abs(credit);
@@ -388,6 +451,8 @@ bool CheckingCsvTemplateV1::parse(const QString& filePath,
         // No auto-suggestion — category/subcategory are left empty and picked
         // manually in the review table (see CategoryController, removed the
         // old CategoryKeywords keyword pass per product decision).
+        // confidence stays at its struct default (0.0) — no category-
+        // prediction model exists yet to set it to anything else.
         outStatement.transactions.append(transaction);
         ++parsedCount;
     }

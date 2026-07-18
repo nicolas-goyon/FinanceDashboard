@@ -60,6 +60,15 @@ public:
     // right away.
     Q_INVOKABLE void resetToMock();
 
+    // ── Per-account cleanup (see ARCHITECTURE.MD § Database Management) ────────
+    // Deletes every transaction for `accountId` but leaves the account, its
+    // hashes, and its balance checkpoints in place — narrower than
+    // AccountController::removeAccount() (called directly from QML for the
+    // "delete the whole account, cascade everything" case; no wrapper needed
+    // here since that path already exists and already cascades hashes +
+    // transactions + checkpoints, see Database::removeAccount()).
+    Q_INVOKABLE bool clearTransactionsForAccount(int accountId);
+
 signals:
     void statusChanged();
     // Emitted after either action completes successfully. QML listens for

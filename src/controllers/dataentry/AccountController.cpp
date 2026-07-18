@@ -5,6 +5,8 @@
 #include "models/Account.h"
 #include "models/Transaction.h"
 
+#include <QDate>
+#include <QDateTime>
 #include <QObject>
 #include <QString>
 #include <QTimer>
@@ -14,6 +16,7 @@
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
 
 #include <algorithm>
+#include <optional>
 
 namespace {
 constexpr int kStatusClearDelayMs = 3000; // how long a status message stays visible
@@ -483,14 +486,20 @@ QVariantList AccountController::transactionsForAccount(int accountIndex) const
     rows.reserve(txs.size());
     for (const Data::Transaction& transaction : txs) {
         rows.append(QVariantMap{
-            { "confirmationDate", Fmt::dateOrDash(transaction.confirmationDate) },
-            { "operationDate",    Fmt::dateOrDash(transaction.operationDate) },
-            { "description",      transaction.description },
-            { "debitText",        transaction.debit  > 0.0 ? Fmt::money(-transaction.debit) : QStringLiteral("—") },
-            { "creditText",       transaction.credit > 0.0 ? Fmt::money(transaction.credit, true) : QStringLiteral("—") },
-            { "balanceText",      Fmt::money(transaction.balanceAfter) },
-            { "category",         transaction.category },
-            { "subcategory",      transaction.subcategory },
+            { "id",                  transaction.id },
+            { "confirmationDate",    Fmt::dateOrDash(transaction.confirmationDate) },
+            { "confirmationDateIso", transaction.confirmationDate.isValid() ? transaction.confirmationDate.toString(Qt::ISODate) : QString() },
+            { "operationDate",       Fmt::dateOrDash(transaction.operationDate) },
+            { "operationDateIso",    transaction.operationDate.isValid() ? transaction.operationDate.toString(Qt::ISODate) : QString() },
+            { "name",                transaction.name },
+            { "description",        transaction.description },
+            { "debitText",          transaction.debit  > 0.0 ? Fmt::money(-transaction.debit) : QStringLiteral("—") },
+            { "debit",              transaction.debit },
+            { "creditText",         transaction.credit > 0.0 ? Fmt::money(transaction.credit, true) : QStringLiteral("—") },
+            { "credit",             transaction.credit },
+            { "balanceText",        Fmt::money(transaction.balanceAfter) },
+            { "category",           transaction.category },
+            { "subcategory",        transaction.subcategory },
         });
     }
     return rows;
@@ -502,6 +511,186 @@ int AccountController::transactionCountForAccount(int accountIndex) const
         return 0;
     }
     return Database::instance().transactionCountForAccount(m_accounts.at(accountIndex).id);
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
+// positionally from AccountTransactionsPage.qml's edit dialog.
+bool AccountController::updateTransaction(int transactionId, const QString& confirmationDateIso, const QString& operationDateIso,
+                                           const QString& name, const QString& description, double debit, double credit,
+                                           const QString& category, const QString& subcategory)
+{
+    if (transactionId < 0) {
+        return false;
+    }
+
+    Data::Transaction tx;
+    tx.id               = transactionId;
+    tx.confirmationDate = confirmationDateIso.isEmpty() ? QDate() : QDate::fromString(confirmationDateIso, Qt::ISODate);
+    tx.operationDate    = operationDateIso.isEmpty()    ? QDate() : QDate::fromString(operationDateIso, Qt::ISODate);
+    tx.name             = name;
+    tx.description      = description;
+    tx.debit            = debit;
+    tx.credit           = credit;
+    tx.category         = category;
+    tx.subcategory      = subcategory;
+
+    if (!Database::instance().updateTransaction(tx)) {
+        setStatus(QStringLiteral("⚠  Could not save the transaction"));
+        return false;
+    }
+    setStatus(QStringLiteral("✓  Transaction updated"));
+    return true;
+}
+
+QVariantList AccountController::balanceCheckpoints(int accountIndex) const
+{
+    QVariantList rows;
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
+        return rows;
+    }
+    const auto checkpoints = Database::instance().loadBalanceCheckpoints(m_accounts.at(accountIndex).id);
+    rows.reserve(checkpoints.size());
+    for (const Data::AccountBalanceCheckpoint& checkpoint : checkpoints) {
+        rows.append(QVariantMap{
+            { "id",           checkpoint.id },
+            { "date",         checkpoint.date.isValid() ? checkpoint.date.toString(Qt::ISODate) : QString() },
+            { "dateText",     Fmt::dateOrDash(checkpoint.date) },
+            { "balance",      checkpoint.balance },
+            { "balanceText",  Fmt::money(checkpoint.balance) },
+            { "note",         checkpoint.note },
+        });
+    }
+    return rows;
+}
+
+bool AccountController::addBalanceCheckpoint(int accountIndex, const QString& dateIso, double balance, const QString& note)
+{
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
+        return false;
+    }
+    const QDate date = QDate::fromString(dateIso, Qt::ISODate);
+    if (!date.isValid()) {
+        setStatus(QStringLiteral("⚠  Invalid date — use yyyy-MM-dd"));
+        return false;
+    }
+    const int checkpointId = Database::instance().addBalanceCheckpoint(m_accounts.at(accountIndex).id, date, balance, note);
+    if (checkpointId < 0) {
+        setStatus(QStringLiteral("⚠  Could not save the checkpoint"));
+        return false;
+    }
+    setStatus(QStringLiteral("✓  Balance checkpoint added"));
+    return true;
+}
+
+void AccountController::removeBalanceCheckpoint(int accountIndex, int checkpointIndex)
+{
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
+        return;
+    }
+    const auto checkpoints = Database::instance().loadBalanceCheckpoints(m_accounts.at(accountIndex).id);
+    if (checkpointIndex < 0 || checkpointIndex >= checkpoints.size()) {
+        return;
+    }
+    if (!Database::instance().removeBalanceCheckpoint(checkpoints.at(checkpointIndex).id)) {
+        return;
+    }
+    setStatus(QStringLiteral("✓  Balance checkpoint removed"));
+}
+
+QVariantList AccountController::accountBalanceHistory(int accountIndex) const
+{
+    QVariantList points;
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
+        return points;
+    }
+    const int accountId = m_accounts.at(accountIndex).id;
+
+    QVector<Data::Transaction> txs = Database::instance().transactionsForAccount(accountId);
+    QVector<Data::Transaction> dated;
+    dated.reserve(txs.size());
+    for (const Data::Transaction& tx : txs) {
+        if (tx.operationDate.isValid()) {
+            dated.append(tx);
+        }
+    }
+    if (dated.isEmpty()) {
+        return points;
+    }
+    // Database::transactionsForAccount()/TransactionsTable::allForAccount()
+    // orders most-recent-first (for the read-only tables); a running-balance
+    // walk needs chronological order instead.
+    std::sort(dated.begin(), dated.end(), [](const Data::Transaction& a, const Data::Transaction& b) {
+        return a.operationDate < b.operationDate;
+    });
+
+    double running = 0.0;
+    const std::optional<Data::AccountBalanceCheckpoint> checkpoint =
+        Database::instance().latestCheckpointOnOrBefore(accountId, dated.first().operationDate);
+    if (checkpoint.has_value()) {
+        running = checkpoint->balance;
+    } else {
+        // No checkpoint at or before the first transaction — infer the
+        // balance just before it from its own declared balanceAfter, rather
+        // than starting the line at a misleading 0 (product decision).
+        const Data::Transaction& first = dated.first();
+        running = first.balanceAfter - (first.credit - first.debit);
+    }
+
+    auto pushPoint = [&points](const QDate& date, double balance) {
+        points.append(QVariantMap{
+            { "dateIso",     date.toString(Qt::ISODate) },
+            { "dateText",    Fmt::dateOrDash(date) },
+            { "timeMs",      static_cast<double>(date.startOfDay().toMSecsSinceEpoch()) },
+            { "balance",     balance },
+            { "balanceText", Fmt::money(balance) },
+        });
+    };
+
+    QDate day = dated.first().operationDate;
+    for (const Data::Transaction& tx : dated) {
+        if (tx.operationDate != day) {
+            pushPoint(day, running);
+            day = tx.operationDate;
+        }
+        running += (tx.credit - tx.debit);
+    }
+    pushPoint(day, running); // last day's cumulative balance
+
+    return points;
+}
+
+QVariantMap AccountController::accountBalanceSummary(int accountIndex) const
+{
+    QVariantMap result;
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
+        return result;
+    }
+    const int accountId = m_accounts.at(accountIndex).id;
+    const QVariantList history = accountBalanceHistory(accountIndex);
+
+    double currentBalance = 0.0;
+    QString asOfText = QStringLiteral("—");
+    if (!history.isEmpty()) {
+        const QVariantMap last = history.last().toMap();
+        currentBalance = last.value(QStringLiteral("balance")).toDouble();
+        asOfText = last.value(QStringLiteral("dateText")).toString();
+    } else {
+        // No dated transactions at all — fall back to the latest checkpoint
+        // on or before today, if any.
+        const std::optional<Data::AccountBalanceCheckpoint> checkpoint =
+            Database::instance().latestCheckpointOnOrBefore(accountId, QDate::currentDate());
+        if (checkpoint.has_value()) {
+            currentBalance = checkpoint->balance;
+            asOfText = Fmt::dateOrDash(checkpoint->date);
+        }
+    }
+
+    result["currentBalanceText"] = Fmt::money(currentBalance);
+    result["currentBalanceRaw"]  = currentBalance;
+    result["asOfDateText"]       = asOfText;
+    result["transactionCount"]   = Database::instance().transactionCountForAccount(accountId);
+    result["hasHistory"]         = !history.isEmpty();
+    return result;
 }
 
 void AccountController::setStatus(const QString& msg)

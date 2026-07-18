@@ -5,7 +5,9 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import FinanceDashboard
 
-// ── Categories Management — Transactions Management → "Manage Categories" ────
+// ── Categories Management — Transactions → "Categories & Subcategories" ──────
+// (category renamed from "Transactions Management", action renamed from
+// "Manage Categories", both 2026-07-18)
 // Add/rename/recolor/remove categories and their subcategories. Backed by
 // CategoryController (QML_SINGLETON, src/controllers/dataentry/
 // CategoryController.h) — the same shared instance read by the import
@@ -42,7 +44,7 @@ Item {
 
             PageHeader {
                 showBack: true
-                title: "Manage Categories"
+                title: "Categories & Subcategories"
                 onBackClicked: page.closeRequested()
 
                 StatusBadge {

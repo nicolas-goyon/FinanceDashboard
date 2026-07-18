@@ -9,8 +9,8 @@ class ImportTemplate;
 // ── ImportTemplateRegistry ────────────────────────────────────────────────────
 //
 // Static list of available ImportTemplate instances. To add a new bank/PDF
-// template: implement ImportTemplate (see CheckingCsvTemplateV1 for the CSV
-// example), then add one line in the .cpp's all().
+// template: implement ImportTemplate (see SumeriaCcpCsvExtractionTemplate for
+// the CSV example), then add one line in the .cpp's all().
 //
 // Instances are process-lifetime statics — ImportTemplate implementations
 // must be stateless (parse() takes the file path and writes its result to

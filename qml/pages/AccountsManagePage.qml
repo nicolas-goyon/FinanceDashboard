@@ -38,6 +38,14 @@ Item {
     // for that account (see § Sidebar Navigation → Overlay pages).
     signal viewTransactionsRequested(int accountIndex)
 
+    // Bumped after every checkpoint add/remove so the "Balance checkpoints"
+    // row's model binding below re-evaluates — AccountController.
+    // balanceCheckpoints() is a Q_INVOKABLE (reads straight from Database
+    // every call, see its doc comment), not a NOTIFYable property, so QML
+    // won't know to re-run that binding on its own (same reasoning as
+    // AccountTransactionsPage.qml's manual "rows" refresh).
+    property int checkpointsTick: 0
+
     ScrollView {
         anchors.fill: parent
         contentWidth: availableWidth
@@ -233,6 +241,68 @@ Item {
                                 }
                             }
 
+                            // Balance checkpoints row — the "magic number" anchor points
+                            // (see ARCHITECTURE.MD § Balance Checkpoints): "the balance of
+                            // this account was X on this date", used by statement-import
+                            // reconciliation when full transaction history since account
+                            // opening can't be imported.
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.leftMargin: 4
+                                spacing: 8
+
+                                Text { text: "Balance checkpoints:"; font.pixelSize: 12; color: "#6c7086" }
+
+                                Flow {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+
+                                    Repeater {
+                                        model: (page.checkpointsTick, AccountController.balanceCheckpoints(accRow.index))
+                                        delegate: Rectangle {
+                                            id: checkpointChip
+                                            required property var modelData
+                                            required property int index
+                                            width: checkpointChipRow.implicitWidth + 16
+                                            height: 22
+                                            radius: 11
+                                            color: "#181825"
+                                            border.color: "#313244"
+
+                                            RowLayout {
+                                                id: checkpointChipRow
+                                                anchors.centerIn: parent
+                                                spacing: 6
+                                                Text {
+                                                    text: checkpointChip.modelData.dateText + " · " + checkpointChip.modelData.balanceText
+                                                        + (checkpointChip.modelData.note.length > 0 ? " (" + checkpointChip.modelData.note + ")" : "")
+                                                    font.pixelSize: 11
+                                                    color: "#a6adc8"
+                                                }
+                                                Text {
+                                                    text: "×"
+                                                    font.pixelSize: 13
+                                                    font.bold: true
+                                                    color: "#f38ba8"
+                                                    TapHandler {
+                                                        onTapped: {
+                                                            AccountController.removeBalanceCheckpoint(accRow.index, checkpointChip.index)
+                                                            page.checkpointsTick++
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                GhostButton {
+                                    text: "＋ Add checkpoint"
+                                    textColor: "#f9e2af"
+                                    onClicked: addCheckpointDialog.openFor(accRow.index)
+                                }
+                            }
+
                             Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.preferredHeight: 1; color: "#313244" }
                         }
                     }
@@ -402,6 +472,55 @@ Item {
                 return
             AccountController.addHash(addHashDialog.accountIndex, trimmed)
             close()
+        }
+    }
+
+    // ── Add balance checkpoint dialog ─────────────────────────────────────────
+    // The "magic number" anchor point — see ARCHITECTURE.MD § Balance
+    // Checkpoints. No date-picker widget in this app yet (see Qt Graphs
+    // examples/doc.qt.io — nothing to copy a pattern from), so the date is
+    // plain "yyyy-MM-dd" text, parsed/validated in
+    // AccountController::addBalanceCheckpoint().
+    FormDialog {
+        id: addCheckpointDialog
+        dialogTitle: "Add a balance checkpoint"
+        saveText: "Add"
+        width: 420
+
+        property int accountIndex: -1
+
+        function openFor(idx) {
+            accountIndex = idx
+            checkpointDateRow.text = ""
+            checkpointBalanceRow.text = ""
+            checkpointNoteRow.text = ""
+            open()
+        }
+
+        Text {
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            text: "Record a known balance for this account on a given date — used to validate a "
+                + "statement import's declared opening balance when full transaction history since "
+                + "account opening hasn't been imported (see the import review screen's "
+                + "reconciliation check)."
+            font.pixelSize: 13
+            color: "#6c7086"
+        }
+        FormRow { id: checkpointDateRow; label: "Date"; labelWidth: 70; placeholderText: "yyyy-MM-dd" }
+        FormRow { id: checkpointBalanceRow; label: "Balance"; labelWidth: 70; placeholderText: "e.g. 1250.00" }
+        FormRow { id: checkpointNoteRow; label: "Note"; labelWidth: 70; placeholderText: "optional" }
+
+        onSaveClicked: {
+            var dateText = checkpointDateRow.text.trim()
+            var balance = parseFloat(checkpointBalanceRow.text.trim().replace(",", "."))
+            if (dateText.length === 0 || isNaN(balance))
+                return
+            var ok = AccountController.addBalanceCheckpoint(addCheckpointDialog.accountIndex, dateText, balance, checkpointNoteRow.text.trim())
+            if (ok) {
+                page.checkpointsTick++
+                close()
+            }
         }
     }
 }

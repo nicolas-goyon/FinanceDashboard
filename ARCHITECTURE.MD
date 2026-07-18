@@ -20,6 +20,37 @@
 
 ---
 
+## Feature pass — import pie chart, auto-checkpoints, Account History page (2026-07-18, same day)
+
+Three more additions on top of the feature pass just below:
+
+1. **Import report shows a pie chart, not just a list.** The report step's "By category" card
+   now leads with a `PieSeries` (slice size = each category's net-amount magnitude, colored via
+   `CategoryController.categoryColor()`) above the existing colored legend rows — see § Statement
+   Import — Import Report.
+2. **The statement's own declared start/end balances are now remembered automatically.** Every
+   successful `save()` also writes two `AccountBalanceCheckpoint`s (one for
+   `balanceStart`/`balanceStartDate`, one for `balanceEnd`/`balanceEndDate`) unless the account
+   already has a checkpoint on that exact date — see § Balance Checkpoints.
+3. **New "Account History" page** — a read-only, per-account view (current balance, a
+   balance-over-time line chart computed from every transaction, and the transaction list),
+   deliberately separate from the management pages. Reached from its own new sidebar action
+   under Account Management. See § Account History.
+
+---
+
+## Feature pass — reconciliation, checkpoints, per-account edit/cleanup (2026-07-18)
+
+Five product-requested additions on top of the milestone cleanup pass, all wired to the real DB (no new MOCK surfaces):
+
+1. **Import save is gated + reports back.** `ImportSnapshotPage.qml`'s Save button now briefly disables itself (double-click guard) and, once the write succeeds, switches to a third in-page step showing an **import report** (income/expense/net + category/subcategory breakdown of exactly what was saved, plus the reconciliation results below) — see § Statement Import — Import Report.
+2. **Persisted transactions show subcategory (with real colors) and are editable.** `AccountTransactionsPage.qml`'s table gained a colored SUBCATEGORY column (alongside a now-colored CATEGORY column) and a "✎ Edit" action per row opening a modal — see § Account Management.
+3. **Database Management can target one account.** A new "Per-account cleanup" section offers "Clear transactions" (keep the account) or "Delete account" (full existing cascade) instead of only whole-database resets — see § Database Management.
+4. **Balance checkpoints — the "magic number".** A new `account_balance_checkpoints` table lets the user record "the balance of this account was X on this date", for accounts whose full transaction history can't be imported — see § Balance Checkpoints.
+5. **Reconciliation checks on import.** Every parsed statement already carries the bank's own declared opening/closing balance (`Data::ImportedStatement::balanceStart/balanceEnd`) and each row's own running `balanceAfter` — `SnapshotImportController::checkReconciliation()` cross-checks those against balance checkpoints/prior transactions (check 1, informational) and against the currently-kept rows (check 2, blocks Save on mismatch and offers a fix) — see § Statement Import — Import Report.
+
+---
+
 ## App Status — PROJECT.md pages (UI pass)
 
 **Design rule: UI in QML, algorithms/analytics/data in C++.**
@@ -34,11 +65,12 @@ The app was restructured around the 6 pages from **PROJECT.md**. Current state: 
 | Savings | `SavingsController` | KPI cards · balance `LineSeries` per account · ceiling/goal progress bars (pure QML) · yearly interest grouped bars | MOCK |
 | Investments | `InvestmentsController` | KPI cards · portfolio vs cumulative-deposits lines (gap = real P&L) · allocation donut · monthly perf % bars | MOCK |
 | Projects | `ProjectsController` | project `ComboBox` · KPI cards · projection-vs-target lines · **loan simulator (REAL annuity math in C++)** · save-vs-borrow comparison | MOCK projects, real loan math |
-| Transactions Management | *(none — minimal placeholder)* | header text pointing at this category's two sidebar actions | Placeholder only — see § Transactions Management |
+| Transactions *(renamed from "Transactions Management", 2026-07-18)* | *(none — minimal placeholder)* | header text pointing at this category's three sidebar actions | Placeholder only — see § Transactions |
 | ↳ Import Transactions | `SnapshotImportController` | template + file picker · statement header info · editable/categorizable transaction table · account auto-match (against stored hashes) · "not linked" badge + inline link action · parse log popup — see § Statement Import | **REAL parsing, REAL save** (`transactions` table) |
-| ↳ Manage Categories | `CategoryController` (`QML_SINGLETON`) | add/rename/recolor/remove categories and subcategories — see § Category Management | **REAL** (SQLite-backed, `categories`/`subcategories` tables) |
+| ↳ Categories & Subcategories *(renamed from "Manage Categories", 2026-07-18)* | `CategoryController` (`QML_SINGLETON`) | add/rename/recolor/remove categories and subcategories — see § Category Management | **REAL** (SQLite-backed, `categories`/`subcategories` tables) |
+| ↳ View & Edit Transactions *(moved here from Account Management, 2026-07-18)* | `AccountController` (`QML_SINGLETON`) | account picker · full transaction table with colored category/subcategory badges · "✎ Edit" modal — same page also reachable from Manage Accounts' per-row "Transactions" button, see § Account Management | **REAL** (SQLite-backed, `transactions` table) |
 | Account Management | *(none — minimal placeholder)* | header text pointing at this category's two sidebar actions | Placeholder only — see § Account Management |
-| ↳ Manage Accounts | `AccountController` (`QML_SINGLETON`) | add/edit/remove accounts · currency selector (EUR/USD) · manage per-account hash links · "Transactions" button routes to a full page — see § Account Management | **REAL** (SQLite-backed, `accounts`/`account_hashes`/`transactions` tables) |
+| ↳ Manage Accounts | `AccountController` (`QML_SINGLETON`) | add/edit/remove accounts · currency selector (EUR/USD) · manage per-account hash links · "Transactions" button routes to the Transactions category's "View & Edit Transactions" page — see § Account Management | **REAL** (SQLite-backed, `accounts`/`account_hashes`/`transactions` tables) |
 | ↳ Account types & categories | `AccountController` (`QML_SINGLETON`) | add/rename/remove account types · add/rename/recolor/remove account categories — see § Account Management | **REAL** (SQLite-backed, `account_types`/`account_categories` tables) |
 | Database Management | `DatabaseManagementController` | "Reset Database" (wipe to empty) / "Reset to Mock Data" (wipe + reseed + sample transactions), both behind a confirmation dialog — see § Database Management | **REAL** (operates directly on the SQLite file via `Database::resetAll()`) |
 
@@ -100,6 +132,10 @@ FinanceDashboard/
 │   │   ├── PillButton.qml  — The big colored action button (primary/neutral/danger).
 │   │   ├── GhostButton.qml — Small bordered inline-row action (Edit/Remove/etc).
 │   │   ├── StatusBadge.qml — Colored pill for status/state indicators.
+│   │   ├── ColumnHeaderCell.qml — Table header label with a drag-to-resize
+│   │   │                     handle overlaid on its right edge. Used by
+│   │   │                     ImportSnapshotPage.qml's transaction table (see
+│   │   │                     § Statement Import).
 │   │   ├── FormRow.qml     — Label + TextField row for dialogs.
 │   │   ├── ColorPickerRow.qml — Swatch + "Choose color…" + hex text + owns its ColorDialog.
 │   │   ├── FormDialog.qml  — Shared add/edit Popup shell (title + form rows + Cancel/Save).
@@ -110,15 +146,19 @@ FinanceDashboard/
 │   │   │                     (none of these three are a PROJECT.md page on their own).
 │   │   ├── OverviewPage.qml, CashFlowPage.qml, SavingsPage.qml,
 │   │   ├── InvestmentsPage.qml, ProjectsPage.qml
-│   │   ├── TransactionsManagementPage.qml — "Transactions Management" category's own
-│   │   │                         landing page. Minimal placeholder (header + text
-│   │   │                         pointing at its two sidebar actions below) — see
-│   │   │                         § Transactions Management.
-│   │   ├── ImportSnapshotPage.qml — Transactions Management → "Import Transactions"
-│   │   │                         statement import wizard (see § Statement Import).
-│   │   ├── CategoriesManagePage.qml — Transactions Management → "Manage Categories":
-│   │   │                         add/rename/recolor/remove categories + subcategories
-│   │   │                         (see § Category Management).
+│   │   ├── TransactionsManagementPage.qml — "Transactions" category's own landing
+│   │   │                         page (category renamed from "Transactions
+│   │   │                         Management" 2026-07-18 — file/type name
+│   │   │                         unchanged, same "label ≠ file name" precedent as
+│   │   │                         SnapshotImportController). Minimal placeholder
+│   │   │                         (header + text pointing at its three sidebar
+│   │   │                         actions below) — see § Transactions.
+│   │   ├── ImportSnapshotPage.qml — Transactions → "Import Transactions" statement
+│   │   │                         import wizard (see § Statement Import).
+│   │   ├── CategoriesManagePage.qml — Transactions → "Categories & Subcategories"
+│   │   │                         (renamed from "Manage Categories" 2026-07-18):
+│   │   │                         add/rename/recolor/remove categories +
+│   │   │                         subcategories (see § Category Management).
 │   │   ├── AccountManagementLandingPage.qml — "Account Management" category's own
 │   │   │                         landing page. Minimal placeholder, same convention
 │   │   │                         as TransactionsManagementPage.qml — see § Account
@@ -130,14 +170,29 @@ FinanceDashboard/
 │   │   │                         a "Transactions" button that routes to
 │   │   │                         AccountTransactionsPage.qml (a real page, not a
 │   │   │                         modal).
-│   │   ├── AccountTransactionsPage.qml — Routed page (reached from
-│   │   │                         AccountsManagePage.qml's "Transactions" button, not
-│   │   │                         a sidebar action) showing one account's persisted
-│   │   │                         transactions read-only — see § Account Management.
+│   │   ├── AccountTransactionsPage.qml — Transactions → "View & Edit Transactions"
+│   │   │                         (moved here from Account Management 2026-07-18 —
+│   │   │                         file/type name unchanged, only the sidebar
+│   │   │                         label/id moved). Two entry points: its own
+│   │   │                         sidebar action (no preset account — shows an
+│   │   │                         account picker, defaults to the first account)
+│   │   │                         and AccountsManagePage.qml's per-row
+│   │   │                         "Transactions" button (preset account, no
+│   │   │                         picker needed but still shown). Full transaction
+│   │   │                         table with colored category/subcategory badges
+│   │   │                         and a "✎ Edit" modal — see § Account Management.
 │   │   ├── AccountTypesCategoriesPage.qml — Account Management → "Account types &
 │   │   │                         categories": add/rename/remove account types,
 │   │   │                         add/rename/recolor/remove account categories — see
 │   │   │                         § Account Management.
+│   │   ├── AccountHistoryPage.qml — Overview → "Account Details" (moved here from
+│   │   │                         Account Management on product feedback — a
+│   │   │                         day-to-day analysis view, not admin/CRUD;
+│   │   │                         file/type name unchanged, only the sidebar
+│   │   │                         label/id moved/renamed): read-only per-account
+│   │   │                         view (current balance, balance-over-time line
+│   │   │                         chart, transaction list), own sidebar action, not
+│   │   │                         drilled into from Manage Accounts — see § Account History.
 │   │   └── DatabaseManagementPage.qml — "Database Management" category's own landing
 │   │                             page (no sidebar actions — the real "Reset
 │   │                             Database"/"Reset to Mock Data" buttons live
@@ -198,7 +253,7 @@ FinanceDashboard/
 │   │   │                     no QML_ELEMENT). See § Statement Import.
 │   │   ├── ImportTemplate.h         — Abstract interface every template implements.
 │   │   ├── ImportTemplateRegistry.h/.cpp — Static list of available templates.
-│   │   └── CheckingCsvTemplateV1.h/.cpp  — First template (checking-account CSV export).
+│   │   └── SumeriaCcpCsvExtractionTemplate.h/.cpp  — First template (Sumeria CCP checking-account CSV export).
 │   │
 │   ├── models/
 │   │   ├── AssetEntry.h/.cpp       — AssetEntry + FinancialSnapshot structs (still compiled,
@@ -239,7 +294,11 @@ FinanceDashboard/
 │   │       ├── AccountCategoriesTable.h/.cpp — All SQL for the `account_categories` table.
 │   │       ├── AccountTypesTable.h/.cpp     — All SQL for the `account_types` table (mirrors
 │   │       │                                  AccountCategoriesTable, no color column).
-│   │       └── TransactionsTable.h/.cpp     — All SQL for the `transactions` table.
+│   │       ├── TransactionsTable.h/.cpp     — All SQL for the `transactions` table.
+│       └── AccountBalanceCheckpointsTable.h/.cpp — All SQL for the
+│                                           `account_balance_checkpoints` table (the
+│                                           "magic number" anchor points — see §
+│                                           Balance Checkpoints).
 │   │
 │   ├── utils/
 │   │   ├── Formatter.h        — Header-only display utilities (namespace Fmt):
@@ -263,7 +322,9 @@ FinanceDashboard/
 
 ## Sidebar Navigation
 
-`Main.qml` replaced the old top `TabBar` with a left sidebar (`qml/components/SidebarCategory.qml`, repeated via a `Repeater` over `Main.qml`'s `categories` array). The 8 entries mirror the first 5 PROJECT.md pages 1:1, plus **Transactions Management**, **Account Management**, **Database Management** — the former 6th PROJECT.md page ("Data Entry") split into three lighter categories once the product asked for account management, hash management, and a schema-reset tool to be reachable independently rather than bundled under one page (see § Transactions Management / § Account Management / § Database Management).
+`Main.qml` replaced the old top `TabBar` with a left sidebar (`qml/components/SidebarCategory.qml`, repeated via a `Repeater` over `Main.qml`'s `categories` array). The 8 entries mirror the first 5 PROJECT.md pages 1:1, plus **Transactions** (renamed from "Transactions Management", 2026-07-18), **Account Management**, **Database Management** — the former 6th PROJECT.md page ("Data Entry") split into three lighter categories once the product asked for account management, hash management, and a schema-reset tool to be reachable independently rather than bundled under one page (see § Transactions / § Account Management / § Database Management).
+
+**"ADMIN" section divider (2026-07-18):** the sidebar Repeater's delegate now optionally renders a thin divider + small "ADMIN" label above any category that declares `sectionLabel` in `Main.qml`'s `categories` array — currently just **Account Management** (Database Management inherits the visual grouping by sitting right after it, without needing its own `sectionLabel`). This distinguishes destructive/CRUD admin operations on the app's own data model (accounts, the database file) from the day-to-day analysis and data-entry categories above it (Overview, Cash Flow, Savings, Investments, Projects, Transactions) — product feedback: "database management, account (admin) management ... is more related to other categories ... more related to data analysis and 'usual' usage." Add `sectionLabel: "..."` to any future category object to start a new visual section.
 
 ### Single source of truth: `currentViewId`
 
@@ -273,11 +334,13 @@ This is now `root.currentViewId: string` — the **one** property that says what
 
 - **Category header** (label) — click sets `root.currentViewId = category.id`. Highlighted with a left accent bar (`#89b4fa`) + bold text whenever `currentViewId` is the category's own id, one of its `actions[].id`, or one of its `relatedViewIds` (see below) — computed once by `Main.qml`'s `isCategoryActive(category)` and handed down as `SidebarCategory.current`, rather than each entry point maintaining its own "am I selected" logic.
 - **Arrow toggle** — a separate `MouseArea` (28px, right side of the header row) expands/collapses the category's action list *without* changing `currentViewId`. `SidebarCategory.expanded` auto-flips true the moment the category becomes active (`onCurrentChanged`), so navigating in from elsewhere (e.g. the "Transactions" button inside Manage Accounts) always reveals which action put you there — the user can still collapse/expand freely afterward.
-- **Action list** — `{ id, label }` objects (`categories[i].actions` in `Main.qml`; every category's actions are this shape now, including the still-unwired placeholders on the first 5 PROJECT.md categories, for one consistent shape app-wide). Clicking an action emits `SidebarCategory.actionTriggered(actionId)`; the row for the *currently active* action is highlighted the same way the category header is (accent bar + bold + blue text via `SidebarCategory.currentActionId`), not just the category. **Four actions are wired up so far**: Transactions Management → `"importTransactions"` (see § Statement Import) and `"manageCategories"` (see § Category Management); Account Management → `"manageAccounts"` and `"accountTypes"` (see § Account Management). Database Management has no actions at all — its landing page holds the real controls directly (see § Database Management). Every other action on the first 5 categories is still a no-op placeholder — `Main.qml`'s `onActionTriggered` only sets `currentViewId` when the id is in `root.overlayViewIds`.
+- **Action list** — `{ id, label }` objects (`categories[i].actions` in `Main.qml`; every category's actions are this shape now, including the still-unwired placeholders on the first 5 PROJECT.md categories, for one consistent shape app-wide). Clicking an action emits `SidebarCategory.actionTriggered(actionId)`; the row for the *currently active* action is highlighted the same way the category header is (accent bar + bold + blue text via `SidebarCategory.currentActionId`), not just the category. **Six actions are wired up so far**: Overview → `"accountDetails"` (see § Account History — moved here from Account Management on product feedback, since it's a day-to-day analysis view, not an admin/CRUD action); Transactions → `"importTransactions"` (see § Statement Import), `"manageCategories"` (see § Category Management, label renamed to "Categories & Subcategories" 2026-07-18), and `"accountTransactions"` (see § Account Management — moved here from Account Management 2026-07-18, label "View & Edit Transactions"); Account Management → `"manageAccounts"` and `"accountTypes"` (see § Account Management). Database Management has no actions at all — its landing page holds the real controls directly (see § Database Management). Every other action on the first 5 categories is still a no-op placeholder — `Main.qml`'s `onActionTriggered` only sets `currentViewId` when the id is in `root.overlayViewIds`.
+
+**`accountTransactions` has two entry points (2026-07-18)** — the Transactions category's own sidebar action (no preset account) *and* AccountsManagePage.qml's per-row "Transactions" button (preset account) — so a single `closeRequested()` target isn't enough; `root.accountTransactionsReturnViewId` (`"transactionsManagement"` or `"manageAccounts"`) is set right alongside `root.accountTransactionsIndex` at each entry point and read back by the overlay's `onCloseRequested`.
 
 To add a new sidebar category: append `{ id, label, actions }` to `Main.qml`'s `categories` array, and add the matching page as the next child of the `StackLayout` (order must still match array order — `stackIndex` looks a category up by id, but positionally, same "array order = child order" contract as before, just keyed by id instead of a bare int so callers never juggle magic numbers).
 
-**Overlay pages** (full-content pages reached from an action, not a category — e.g. ImportSnapshotPage, CategoriesManagePage, AccountsManagePage, AccountTypesCategoriesPage, AccountTransactionsPage): `Main.qml` uses one `Loader` per overlay, anchored over the same content area as the `StackLayout`, each gated by `active: root.currentViewId === "someId"`. `root.overlayViewIds` lists every id that means "show an overlay, not the StackLayout" (`importTransactions`, `manageCategories`, `manageAccounts`, `accountTypes`, `accountTransactions`); `StackLayout.visible: !root.isOverlayView` reads that one list instead of checking five booleans by hand. Each overlay page emits a `closeRequested()` signal that sets `root.currentViewId` back to wherever "close" should land — this is the pattern to copy for the next wired-up action.
+**Overlay pages** (full-content pages reached from an action, not a category — e.g. ImportSnapshotPage, CategoriesManagePage, AccountsManagePage, AccountTypesCategoriesPage, AccountTransactionsPage, AccountHistoryPage): `Main.qml` uses one `Loader` per overlay, anchored over the same content area as the `StackLayout`, each gated by `active: root.currentViewId === "someId"`. `root.overlayViewIds` lists every id that means "show an overlay, not the StackLayout" (`importTransactions`, `manageCategories`, `manageAccounts`, `accountTypes`, `accountTransactions`, `accountDetails`); `StackLayout.visible: !root.isOverlayView` reads that one list instead of checking booleans by hand. Each overlay page emits a `closeRequested()` signal that sets `root.currentViewId` back to wherever "close" should land — this is the pattern to copy for the next wired-up action.
 
   `AccountTransactionsPage` is reached from *inside* `AccountsManagePage` (its "Transactions" button, not a sidebar action) via `AccountsManagePage.viewTransactionsRequested(accountIndex)` — `Main.qml` stores the index in `root.accountTransactionsIndex` and sets `root.currentViewId = "accountTransactions"`. Its own `closeRequested()` sets `currentViewId` back to `"manageAccounts"`, not to the sidebar-driven `StackLayout` — it was reached from that page, not from the sidebar, so the back arrow should go back to where the user came from. Because `"accountTransactions"` is never one of any category's `actions[].id` (it's not a sidebar action), the **Account Management** category declares it in a `relatedViewIds: ["accountTransactions"]` array instead — `isCategoryActive()` checks that too, so the sidebar still highlights "Account Management" while this page is open.
 
@@ -360,6 +423,15 @@ reference the type name directly, same convention `Main.qml` already used for pa
   should actually match, rather than hard-coding red everywhere.
 - **`EmptyState.qml`** — "No … yet" placeholder text shown under a list's header when its
   model is empty. Style was already 100% consistent across every instance.
+- **`ColumnHeaderCell.qml`** — a table header label plus a drag-to-resize handle, used by
+  `ImportSnapshotPage.qml`'s transaction table header (see § Statement Import). The handle
+  (a 2px grip inside a 6px hit target) is overlaid on the cell's right edge via a negative
+  `anchors.rightMargin`, not inserted as a real `RowLayout` sibling — that way the header
+  row's total preferred width never changes because of it, keeping it aligned with the data
+  rows below (which read the same shared width values but have no handles of their own). The
+  component only *proposes* a new width via `widthChangeRequested(real)`; the caller (the
+  page's `columnWidths` object, see § Statement Import) is the single source of truth that
+  both the header and every data-row cell read from.
 
 **Not extracted, and why:** the account/category badge (arbitrary per-category color, not
 one of the 4 `StatusBadge` variants), the hash chips on `AccountsManagePage.qml`, and the
@@ -369,15 +441,20 @@ each has different columns/widths, so a generic `DataTable` would need more conf
 surface than it would save in code. `ProjectsPage.qml`'s hoverable project-card list (list
 view) also stays bespoke — it reimplements `ChartCard`'s look but needs click/hover
 affordance `ChartCard` doesn't have; a `hoverable` option on `ChartCard` itself would be the
-next step if a second page needs the same pattern.
+next step if a second page needs the same pattern. The `descriptionPopup` (🔍 icon +
+selectable-text `Popup`, see § Statement Import) is duplicated verbatim between
+`ImportSnapshotPage.qml` and `AccountTransactionsPage.qml` rather than extracted — same two-
+usages-only reasoning as everything else in this list; worth promoting to
+`qml/components/` if a third transaction table ever needs it.
 
 ---
 
 ## Statement Import ("Import Transactions")
 
-Reached from the sidebar (Transactions Management → "Import Transactions", renamed from
+Reached from the sidebar (Transactions → "Import Transactions", renamed from
 "New Monthly Snapshot" once Data Entry was split into Transactions/Account/Database
-Management — see § Transactions Management). Lets the user pick a
+Management, category itself renamed from "Transactions Management" 2026-07-18 — see §
+Transactions). Lets the user pick a
 bank/extract file, parse it into editable+categorizable transactions, and review parse
 issues before a real save. Design decisions made when this was built:
 
@@ -389,7 +466,24 @@ issues before a real save. Design decisions made when this was built:
   account doesn't have it on file yet. This changed once accounts became a real, DB-backed
   concept (`AccountController` — see § Account Management); before that there was nothing
   real to save a transaction *against*. The parsing itself was always real (no mock data):
-  `CheckingCsvTemplateV1` actually reads and parses the CSV format.
+  `SumeriaCcpCsvExtractionTemplate` actually reads and parses the CSV format.
+- **Category-prediction confidence: review-screen-only, never persisted.** The intended
+  design (no model built yet — this is groundwork, see the Known Limitations/TODOs entry):
+  once a category-prediction model exists, it will read each row's `name`/`description` and
+  pre-fill `ImportedTransaction::category`/`subcategory` before the user ever looks at the
+  review table, and set `ImportedTransaction::confidence` (`0.0`-`1.0`) alongside it — the
+  point being to let the UI flag the rows the model is *least* sure about so the user can
+  focus their review there instead of re-checking every row by hand. Today, with no model,
+  every row's `confidence` simply stays at its struct default (`0.0`) and category/
+  subcategory stay empty, same as before this field existed. **Deliberately kept out of the
+  `transactions` table / `Data::Transaction`** (an earlier version of this schema briefly had
+  a `confidence` column — corrected per product decision): once the user has reviewed a row
+  (accepting or fixing the model's guess) and hits Save, only the resulting
+  `category`/`subcategory` are meaningful to keep — the confidence score that helped the user
+  get there is a review-time aid, not a fact worth persisting about the transaction. See
+  `SnapshotImportController::save()`'s comment at the `Data::Transaction` construction site
+  for where this is enforced (confidence is read from `ImportedTransaction` but never copied
+  onto the `Data::Transaction` row).
 - **Template design: one hardcoded C++ class per format, not a declarative/config-driven
   reader.** Decided against a generic column-mapping descriptor because formats aren't
   simple tables (multi-line headers, PDF layouts planned) — each format gets real parsing
@@ -423,13 +517,143 @@ issues before a real save. Design decisions made when this was built:
   yet; it calls `AccountController.linkAccountHash(accountIndex, hash)` directly (source
   `"auto"`) so the account is usable for auto-match on the *next* import without waiting for
   a save. `AccountController.accountHasHash()` is the guard that hides the button once
-  already linked.
+  already linked. **Fixed bug:** the "Linked (N hash(es))" badge's `text` binding used to read
+  `page.selectedAccount.hashCount` unconditionally, which QML still evaluates even while the
+  badge's own `visible` is `false` (a `visible: false` item's other bindings aren't skipped —
+  it's not a guard) — whenever `page.selectedAccount` was `null` (e.g. right after
+  `AccountController.reload()` if `selectedAccountIndex` briefly pointed past the end of the
+  refreshed list) this threw `TypeError: Cannot read property 'hashCount' of null` in the
+  QML console. The `text` binding itself now ternary-guards on `page.selectedAccount !==
+  null` instead of relying on the sibling `visible` binding to prevent evaluation.
 - **No C++-to-C++ singleton coupling between the two controllers.** `SnapshotImportController::
   save()` writes straight to `Database` (transactions + hash) rather than reaching into the
   `AccountController` QML_SINGLETON from C++. The QML side is responsible for calling
   `AccountController.reload()` right after `controller.save(...)` so the singleton's cached
   `accounts`/`hashes` picks up the write — see `AccountController::reload()`'s doc comment
   for why this was chosen over a static self-pointer trick.
+- **Transaction table columns: resizable + persisted, QML-only (no C++/DB involved).**
+  `ImportSnapshotPage.qml` holds a page-local `columnWidths` `QtObject` (one `property real`
+  per column: `opDate`/`name`/`desc`/`debit`/`credit`/`balance`/`category`/`subcategory`/
+  `confidence`/`keep`) that both the header row and every data-row cell bind their
+  `Layout.preferredWidth` to, so they always stay aligned. Each header cell is a
+  `ColumnHeaderCell.qml` (see § Shared Components) with a drag handle that proposes a new
+  width via `widthChangeRequested(real)`, applied by the page as `columnWidths.<col> = w`.
+  Persisted across restarts through `QtCore`'s `Settings` QML type (`import QtCore`,
+  https://doc.qt.io/qt-6/qml-qtcore-settings.html), one `property alias` per column under
+  category `"ImportTransactionsColumns"` — the type's own docs recommend exactly this
+  alias-per-property pattern for "remember this across sessions" cases like window geometry,
+  which is the same shape as column widths here. Deliberately not the older
+  `Qt.labs.settings` (deprecated since Qt 6.5, superseded by this `QtCore` module) and not a
+  bespoke JSON file — no existing settings/config infrastructure existed in this codebase to
+  match, and Qt's own built-in `Settings` type covers "persist a handful of scalar values"
+  with zero new C++. Default widths match the table's original hand-picked ones except: NAME
+  was 400 (a leftover from when it held full descriptions, before NAME/DESC. were split — see
+  the DESC. column's own comment in `ImportSnapshotPage.qml`), now 100 since it only ever
+  holds a short label today; CATEGORY/SUBCATEGORY were 115, widened to 160 since names were
+  cropping to 2-3 characters (same underlying issue `ColorComboBox.qml`'s own truncation note
+  describes).
+
+## Statement Import — Import Report / Reconciliation
+
+Added in the feature pass above. Two related pieces, both driven from the currently-parsed
+`m_statement` and — for reconciliation — the target account chosen on the review screen:
+
+- **Save button: brief disable + gated by reconciliation, then a report step.**
+  `ImportSnapshotPage.qml`'s `requestSave()` runs `SnapshotImportController::
+  checkReconciliation(accountId)` first. If check 2 (below) fails, a dialog opens
+  ("Balance doesn't add up") instead of saving — see below. Otherwise `doSave()` sets
+  `page.saveBusy = true` (disables the Save button, double-click guard — a `Timer` resets it
+  after 2s, mostly a formality since the page moves to step 2 immediately), calls
+  `controller.save()`, reloads `AccountController`/`CategoryController` (same "no C++-to-C++
+  singleton coupling" pattern as everywhere else — a reconciliation-adjustment row may have
+  created a new category), and sets `page.step = 2`.
+- **Step 2 ("import report") is a third step inside the same `Item`/controller, not a new
+  overlay page.** Deliberate: `Main.qml`'s overlay `Loader`s are gated by `active:`, which
+  destroys the page (and its `SnapshotImportController { id: controller }`, since it's
+  instantiated inline, not a singleton) the moment `currentViewId` changes away from
+  `"importTransactions"`. A separate `"importReport"` overlay would lose the controller's
+  freshly-built report the instant it navigated there. Keeping it as `step: 2` inside
+  `ImportSnapshotPage.qml` sidesteps this entirely — same "single Item, no separate QML files
+  per step" convention the page already used for steps 0/1.
+- **`SnapshotImportController::checkReconciliation(accountId)`** — read-only, callable
+  repeatedly (e.g. every time a KEEP checkbox changes) before Save is even clicked. Two checks
+  against the *currently parsed* statement:
+  - **Check 1 ("start balance"), informational only, never blocks Save.** Compares the
+    statement's own declared `balanceStart` (at `balanceStartDate`) against the best "what did
+    we last know" reference for this account on or before that date: the latest
+    `AccountBalanceCheckpoint` (see § Balance Checkpoints) or, failing that, the latest saved
+    transaction's `balanceAfter` — whichever is dated closer to `balanceStartDate`. If neither
+    exists (e.g. the very first import for this account and no checkpoint set), the check is
+    skipped entirely (`"hasStartReference": false`) rather than compared against something
+    unrelated like today's balance — this was an explicit product requirement ("if the import
+    is before all record, don't take today's money").
+  - **Check 2 ("end balance"), blocks Save on mismatch.** `balanceStart + sum(credit - debit)`
+    over every currently-*included* ("kept") row, compared against the statement's own declared
+    `balanceEnd`. Un-keeping a row the bank itself counted breaks this equation — this is the
+    check the product request's worked example ("I import transactions that remove 20€, but
+    the report says end of month it was 90€, 10€ missing") maps to. A `kReconciliationEpsilon`
+    (0.01) tolerance absorbs float rounding, not genuine discrepancies.
+  - Returns `{"available": false}` (nothing else meaningful) if nothing's been parsed or
+    `accountId` is invalid — QML checks this before reading any other key.
+- **Mismatch dialog ("Balance doesn't add up", `ImportSnapshotPage.qml`'s
+  `reconciliationDialog`)** — opened by `requestSave()` when check 2 fails, instead of saving.
+  Two explicit choices, matching the product request's "ask what he wants to do" ("review the
+  kept transaction... or add factice value... attached"), neither of which auto-saves:
+  - **"Review kept transactions"** — just closes the dialog; the user toggles KEEP checkboxes
+    in the table and clicks Save again (re-running the check).
+  - **"Add adjustment transaction"** — calls `addReconciliationAdjustment(accountId)`, which
+    appends one synthetic `ImportedTransaction` for the exact gap (credit if the declared end is
+    higher than computed, debit if lower), dated at `balanceEndDate` (falls back to `periodTo`),
+    tagged with a category named **"Reconciliation Adjustment"** — the "special category
+    attached" from the product request. `ensureCategoryExists()` creates that category (neutral
+    grey `#6c7086`) via `Database::addCategory()` the first time it's needed, writing straight to
+    the DB (same no-cross-singleton-coupling reasoning as the account-hash auto-link in
+    `save()`) — QML must call `CategoryController.reload()` afterward, which the dialog's
+    handler does. The new row appears in the review table like any other; the user still reviews
+    it and clicks Save themselves.
+- **The report itself (`SnapshotImportController::lastImportReport`, a `Q_PROPERTY` with
+  `NOTIFY reportChanged()`)** is built by `buildImportReport()` inside `save()`, right after a
+  successful `insertTransactions()` — from the rows *actually written* (`toSave`), not
+  `m_statement` (which the user could still be editing by the time the report is viewed), plus
+  a `checkReconciliation()` snapshot taken *before* the write (so the report reflects what was
+  checked at save time). Shape:
+  ```
+  { accountLabel, transactionCount, totalIncomeText, totalExpenseText, netChangeText,
+    byCategory: [{ category, totalText, totalRaw,
+                   subcategories: [{ subcategory, totalText, totalRaw }, ...] }, ...],
+    reconciliation: <checkReconciliation() result> }
+  ```
+  Category/subcategory grouping and sums are computed in C++ (`QMap<QString, double>` keyed by
+  name, per the "QML never computes sums" rule) — color lookups for the report's badges are
+  resolved in QML via `CategoryController.categoryColor()`/`subcategoryColor()`, same
+  convenience-lookup pattern used everywhere else a stored category name needs a color (not a
+  "computation" in the sense that rule is about).
+- **"By category" is a pie chart, not just a list** (feature pass, same day). `ImportSnapshotPage.qml`'s
+  report step builds a `PieSeries` (`GraphsView`/`GraphsTheme.ColorScheme.Dark`, `pieSize: 0.75`,
+  `holeSize: 0.42`) from `reportStep.byCategory`, same recipe as `CashFlowPage.qml`'s "Spending by
+  category" donut (copied from that verified usage, not invented). Slice size is each category's
+  **magnitude** (`Math.abs(totalRaw)`), not the signed net total — a pie of signed amounts (income
+  positive, expenses negative) isn't a meaningful "share of the whole" the way a normal pie chart
+  is read, so this answers "how much of the money that moved went through each category"
+  regardless of direction; the exact signed totals are still shown in the colored legend rows
+  below the chart (that list wasn't removed, just demoted to a legend). Rebuilt via a
+  `Connections { target: reportStep; function onByCategoryChanged() { categoryPie.rebuild() } }`
+  (QML auto-generates `byCategoryChanged()` for the `readonly property var byCategory` binding),
+  same "rebuild on change" pattern as the CashFlow donut's `onMonthChanged`. Clicking a slice
+  shows its label/value/percentage below the chart, same interaction as the CashFlow donut.
+- **The statement's declared start/end balances are remembered automatically** (feature pass,
+  same day — "remember the start and end amount from the CSV" from the product request).
+  `SnapshotImportController::save()` calls a private `rememberStatementBalance(accountId, date,
+  balance, note)` twice — once for `balanceStart`/`balanceStartDate`, once for `balanceEnd`/
+  `balanceEndDate` — right after the transactions write succeeds. Each call is a no-op if the
+  account already has an `AccountBalanceCheckpoint` dated exactly `date` (never silently
+  overwrites an existing checkpoint, including one this same helper added on a prior import);
+  otherwise it calls `Database::addBalanceCheckpoint()` with a note like `"Auto — statement start
+  (filename.csv)"` so it reads as machine-added if the user ever inspects the checkpoint list on
+  `AccountsManagePage.qml`. This is the same `account_balance_checkpoints` mechanism as
+  manually-added checkpoints (see § Balance Checkpoints) — no new schema/table for it — and gives
+  both future imports' check 1 and the new Account History line chart (see § Account History) a
+  real anchor point even before the user ever opens Manage Accounts to add one by hand.
 
 ### `ImportTemplate` (src/import/ImportTemplate.h)
 Abstract interface: `id()`, `displayName()`, `fileFilter()` (QtQuick.Dialogs `nameFilters`
@@ -437,7 +661,7 @@ entry), and `parse(filePath, outStatement, outLog) -> bool`. Row-level failures 
 appended to `outLog` (`Data::ImportLogEntry`, Info/Warning/Error) and the row is skipped —
 `parse()` only returns `false` for fatal failures (file unreadable, header not found).
 
-### `CheckingCsvTemplateV1` (src/import/CheckingCsvTemplateV1.cpp)
+### `SumeriaCcpCsvExtractionTemplate` (src/import/SumeriaCcpCsvExtractionTemplate.cpp)
 First (and currently only) template. Format is documented verbatim in the header comment.
 Key implementation notes:
 - **Parses the whole file in one pass, NOT line-by-line.** `Description and identifier` is
@@ -473,22 +697,47 @@ Key implementation notes:
   up "already filled" with no real signal behind them).
 - **Known limitation:** assumes UTF-8 file encoding. French bank CSV exports are sometimes
   Latin-1/Windows-1252 — if real files come through garbled, add encoding detection/fallback.
+- **`extractTransactionName()`** derives `ImportedTransaction::name` from the raw (pre-
+  `normalizeField`) description field: every line from the start, up to (but not including)
+  the first line that looks like a reference line (`isReferenceLine()` — matches on a `ref`
+  word boundary followed by `.`/`:`, so it catches `"External ref.: …"`, `"Internal ref.: …"`,
+  and any future `"… ref.: …"` label without hardcoding the prefix), joined with a single
+  space. Two verified real shapes so far:
+  - `"Card payment 8310: ALTISSIMO\nExternal ref.: …\nInternal ref.: …"` → name =
+    `"Card payment 8310: ALTISSIMO"` (one line before the ref block).
+  - `"Payment received from Investissement\n\"Dividende - Orange\"\nInternal ref.: …"` → name
+    = `"Payment received from Investissement \"Dividende - Orange\""` (two lines before the
+    ref block).
+  **Deliberately one rule for every transaction type** (no special-casing "Card payment",
+  stripping the card number, or splitting on the first `":"` to isolate just the merchant) —
+  per product decision, since other real description shapes (direct debits, transfers, fees,
+  …) haven't been seen/verified yet; if a shape needs different handling later, verify against
+  a real file first (see this file's header note on not inventing properties/values). Also
+  defensively collapses any doubled CSV-escaped quote (`""` → `"`) that might still be present
+  in the joined name — `parseCsvRecords()` already unescapes `""` → `"` while tokenizing a
+  quoted field, so this is normally a no-op, but it's cheap insurance for the dividend-style
+  nested-quote content above if a real file ever tokenizes differently than expected.
+  `description` itself (the full, multi-line text via `normalizeField()`) is completely
+  unaffected by any of this — `name` is a separate, additional field, not a replacement.
 
 ### `SnapshotImportController` (src/controllers/dataentry/SnapshotImportController.h/.cpp)
 QML_ELEMENT backend for `ImportSnapshotPage.qml`. Holds one `Data::ImportedStatement` +
 its `QVector<Data::ImportLogEntry>` log after `parseFile(fileUrl, templateId)`.
 `transactionRows()`/`statementInfo()` format everything with `Fmt::money`/date strings for
 QML — the QML page does no formatting itself, following the existing controller pattern.
-Row edits (`setRowCategory`, `setRowSubcategory`, `setRowIncluded`) mutate the controller's
-own statement and re-emit `statementChanged()`; there is no separate `QAbstractListModel`,
-just a recomputed `QVariantList` each time (`transactionRows()`), consistent with the mock
-history/annual tables in `DataEntryController`. `setRowCategory`/`setRowIncluded` skip the
-emit when the value isn't actually changing — needed because `transactionRows` also backs
-the `Repeater`'s `model` directly: `CheckBox.checked` defaults to `false` while
-`ImportedTransaction::included` defaults to `true`, so the delegate's initial binding
-assignment used to fire `onCheckedChanged` → `setRowIncluded(true)` → `statementChanged()`
-re-entrantly while the model was still being built, which QML reported as "Binding loop
-detected for property model". The no-op guard breaks that loop at the source.
+Row edits (`setRowCategory`, `setRowSubcategory`, `setRowIncluded`, `setRowName`) mutate the
+controller's own statement and re-emit `statementChanged()`; there is no separate
+`QAbstractListModel`, just a recomputed `QVariantList` each time (`transactionRows()`),
+consistent with the mock history/annual tables in `DataEntryController`.
+`setRowCategory`/`setRowIncluded`/`setRowName` skip the emit when the value isn't actually
+changing — needed because `transactionRows` also backs the `Repeater`'s `model` directly:
+`CheckBox.checked` defaults to `false` while `ImportedTransaction::included` defaults to
+`true`, so the delegate's initial binding assignment used to fire `onCheckedChanged` →
+`setRowIncluded(true)` → `statementChanged()` re-entrantly while the model was still being
+built, which QML reported as "Binding loop detected for property model". The no-op guard
+breaks that loop at the source. `setRowName` lets the user correct
+`extractTransactionName()`'s guess (see above) before saving — `save()` copies whatever
+`ImportedTransaction::name` currently holds (edited or not) onto `Data::Transaction::name`.
 
 ### `ImportSnapshotPage.qml`
 Two-step page (`step: 0` pick template+file, `step: 1` review/edit) inside a single `Item`,
@@ -496,7 +745,23 @@ no separate QML files per step. Accounts come from `AccountController` (QML_SING
 this page used to instantiate `DataEntryController` just to read its mock accounts list;
 that's gone now that accounts are a real, shared, DB-backed concept. Uses
 `QtQuick.Dialogs.FileDialog` (nameFilters driven by the selected template's `fileFilter()`).
-Each transaction row has two
+Each transaction row has an editable "NAME" `TextField` (400px — wide enough for the whole
+extracted label, not just a truncated fragment; auto-filled from `ImportedTransaction::name`,
+same background/border recipe as `FormRow.qml`'s field — `onEditingFinished` calls
+`controller.setRowName()`) — see `SumeriaCcpCsvExtractionTemplate`'s `extractTransactionName()`
+note above for how the initial value is derived. **The full description is no longer shown
+inline as a text column** (it used to be the row's `Layout.fillWidth: true` column, but a
+long/multi-line bank description dominated the row and fought with NAME for space) — instead
+a small 🔍 `GhostButton` opens `descriptionPopup` (one shared `Popup` instance per page, its
+`descriptionText` property set right before `open()`), which shows the full text in a
+read-only `TextEdit` (`selectByMouse: true`, `persistentSelection: true`) so it can still be
+selected and copy-pasted, just not left permanently visible in the table. A trailing
+`Item { Layout.fillWidth: true }` after the icon column takes over the space the old
+fillWidth DESCRIPTION column used to occupy, keeping DEBIT/CREDIT/BALANCE/CATEGORY/
+SUBCATEGORY/KEEP pinned to the right edge like before. `AccountTransactionsPage.qml`'s
+read-only transactions table uses the identical NAME-width/description-popup pattern (see
+that page's own section below) — kept in sync deliberately since both tables show the same
+row shape. Each transaction row also has two
 `qml/components/ColorComboBox.qml`s — category then subcategory, sourced from
 `CategoryController.categories` (the subcategory list is filtered live to the row's
 currently-picked category). `ColorComboBox` fills its own background (field and each
@@ -515,11 +780,27 @@ rawLine), reachable both from a badge in the statement-info card and a "View log
 button. `closeRequested()` returns to the sidebar view (see § Sidebar Navigation →
 Overlay pages).
 
+**CONFIDENCE column** (90px, right after SUBCATEGORY, before KEEP) surfaces
+`ImportedTransaction::confidence` as a `StatusBadge`, via two page-level JS helpers:
+`confidenceVariant(confidence)` maps the `0.0`-`1.0` value to a variant (`"danger"` below
+`0.5`, `"warning"` below `0.8`, `"success"` at or above `0.8`) and `confidenceText(confidence)`
+formats it (`Math.round(confidence * 100) + "%"`). **Both special-case `confidence <= 0` as
+`"neutral"` / `"—"` rather than `"danger"` / `"0%"`** — per the field's documented convention
+(ARCHITECTURE.MD § Statement Import), `0.0` means "not scored yet," not "the model is 0%
+confident," and since no prediction model exists yet every row's value is always `0.0` today,
+so every badge always renders as the neutral "—" placeholder. A `Text` line above the table
+header spells this out ("always '—' for now, since no such model exists yet") so the all-"—"
+column doesn't read as broken. This column is intentionally review-screen-only, matching
+`transactionRows()`'s shape — it has no equivalent on `AccountTransactionsPage.qml`'s
+persisted-transactions table, since `confidence` is never saved (see § Account Management's
+transaction-DB-schema section for why).
+
 ---
 
-## Category Management ("Manage Categories")
+## Category Management ("Categories & Subcategories")
 
-Reached from the sidebar (Transactions Management → "Manage Categories"). Lets the user add,
+Reached from the sidebar (Transactions → "Categories & Subcategories", renamed from "Manage
+Categories" 2026-07-18). Lets the user add,
 rename, recolor, and remove categories and their subcategories — the same list read
 everywhere a transaction gets classified (the statement-import review table on
 `ImportSnapshotPage.qml`).
@@ -646,15 +927,25 @@ CREATE INDEX idx_subcategories_category ON subcategories(category_id);
 ## Account Management ("Manage Accounts" / "Account types & categories")
 
 Own sidebar category (split out of the former "Data Entry" page — see §
-Transactions Management). Two sidebar actions: "Manage Accounts"
-(`AccountsManagePage.qml`) lets the user add, edit, and remove accounts, manage each
-account's stored hash fingerprints, and open a full page of an account's persisted
-transactions; "Account types & categories" (`AccountTypesCategoriesPage.qml`) manages the
-two classification lists accounts are built from. Replaces the MOCK accounts list that
-used to live on `DataEntryController` (name/type/iban/bic/number, nothing persisted) —
-accounts became a real, cross-cutting, DB-backed concept once statement-import save needed
-a real account to save transactions against, and once the product asked for hash
-management and a per-account transactions view.
+Transactions), grouped under the sidebar's "ADMIN" divider (see § Sidebar Navigation) since
+it's account/type/category CRUD, not day-to-day analysis. Two sidebar actions: "Manage
+Accounts" (`AccountsManagePage.qml`) lets the user add, edit, and remove accounts, manage
+each account's stored hash fingerprints, and open a full page of an account's persisted
+transactions (routes to `AccountTransactionsPage.qml`, which now lives in the Transactions
+category — see below); "Account types & categories" (`AccountTypesCategoriesPage.qml`)
+manages the two classification lists accounts are built from. Replaces the MOCK accounts
+list that used to live on `DataEntryController` (name/type/iban/bic/number, nothing
+persisted) — accounts became a real, cross-cutting, DB-backed concept once statement-import
+save needed a real account to save transactions against, and once the product asked for
+hash management and a per-account transactions view.
+
+**`AccountTransactionsPage.qml` moved to the Transactions category (2026-07-18, product
+feedback):** it's still reachable from here — Manage Accounts' per-row "Transactions"
+button still opens it, preset to that row's account — but it's no longer *only* reachable
+this way. It's now also the Transactions category's own "View & Edit Transactions" sidebar
+action (no preset account; the page shows an account picker and defaults to the first
+account). See § Transactions and § Sidebar Navigation for the dual-entry-point / dual
+return-view mechanics (`root.accountTransactionsIndex` / `root.accountTransactionsReturnViewId`).
 
 - **No iban/bic/number stored on an account — removed for security.** `Data::Account` used
   to carry `iban`/`bic`/`number` alongside name/type/category/currency/notes; the product
@@ -743,12 +1034,37 @@ management and a per-account transactions view.
   removeForAccount()` → `AccountsTable::remove()`) — `AccountsManagePage.qml` shows an
   explicit confirmation dialog before calling it, same pattern as
   `CategoriesManagePage.qml`'s delete-category confirmation.
+- **`accountBalanceHistory(accountIndex)`/`accountBalanceSummary(accountIndex)`** — the balance-
+  over-time line chart + current-balance KPI data for the new `AccountHistoryPage.qml` — see §
+  Account History for the full computation.
 - **`transactionsForAccount(accountIndex)`** — `Q_INVOKABLE`, formats every persisted
   `Data::Transaction` for that account (`Database::transactionsForAccount()`) with
   `Fmt::money`/date strings for `AccountTransactionsPage.qml` — the "table with all
-  transactions registered at that account" from the product request. Read-only for this
-  pass; editing/deleting a single persisted transaction is a future addition once there's a
-  UI need for it (see Known Limitations/TODOs).
+  transactions registered at that account" from the product request. Also includes the row's
+  real `id` and raw ISO dates/amounts (`confirmationDateIso`/`operationDateIso`/`debit`/
+  `credit`) alongside the display-formatted text, so the edit dialog below can pre-fill without
+  re-parsing `Fmt`-formatted strings.
+- **Editing a persisted transaction (feature pass, 2026-07-18).**
+  `AccountController::updateTransaction(transactionId, confirmationDateIso, operationDateIso,
+  name, description, debit, credit, category, subcategory)` writes through
+  `Database::updateTransaction()` → `TransactionsTable::updateById()` (matched by the row's real
+  `id`, not a list index). Deliberately does **not** touch `account_id`, `balance_after`, or
+  `source_template` — moving a transaction to a different account isn't supported by this UI,
+  and **`balance_after` is not recomputed for this or any later row when debit/credit changes**
+  (a known limitation — the bank's own declared running-balance chain silently goes stale after
+  an edit; see Known Limitations/TODOs). This method doesn't touch any `NOTIFY`-able property
+  (same as `transactionsForAccount()` itself), so `AccountTransactionsPage.qml` re-invokes
+  `transactionsForAccount()` explicitly after a successful edit (`reloadRows()`) rather than
+  relying on a declarative binding to refresh — `rows` there is a plain (not `readonly`)
+  property for exactly this reason.
+- **`AccountTransactionsPage.qml`'s "✎ Edit" dialog uses plain `ComboBox`es for category/
+  subcategory, not `ColorComboBox`** — same reasoning as `AccountsManagePage.qml`'s account
+  edit dialog (see below): the dialog's `Popup.contentItem` is one shared instance reused
+  across every row's edit click, and `ColorComboBox.currentIndex`'s declarative binding to
+  `currentName` breaks permanently the first time the user picks an item (see
+  `ColorComboBox.qml`'s own doc comment) — fine inside a `Repeater` delegate that gets
+  recreated on every model change, not fine in a dialog that persists across opens. `currentIndex`
+  is instead set imperatively in `openFor()`, read back in `onSaveClicked`.
 - **Seeding**: on an empty DB, `seedDefaults()` writes the 8 default account types (CCP,
   Livret A, LDDS, PEL, Assurance Vie, PEA, CTO, Other), the 4 default account categories
   (Day-to-day, Savings, Investments, Urgent savings), and the same 6 demo accounts the old
@@ -795,9 +1111,10 @@ CREATE TABLE transactions (
   account_id        INTEGER NOT NULL,
   confirmation_date TEXT    NOT NULL DEFAULT '',  -- ISO-8601 or ''
   operation_date    TEXT    NOT NULL DEFAULT '',  -- ISO-8601 or ''
+  name              TEXT    NOT NULL DEFAULT '',  -- short label, see below
   description       TEXT    NOT NULL DEFAULT '',
   debit             REAL    NOT NULL DEFAULT 0,
-  credit             REAL    NOT NULL DEFAULT 0,
+  credit            REAL    NOT NULL DEFAULT 0,
   balance_after     REAL    NOT NULL DEFAULT 0,
   category          TEXT    NOT NULL DEFAULT '',
   subcategory       TEXT    NOT NULL DEFAULT '',
@@ -811,13 +1128,41 @@ CREATE INDEX idx_transactions_account ON transactions(account_id);
   before this change would need a manual migration/reset; there is no migration script
   because the DB is still in active development (see § Database Management's "Reset
   Database" for the intended way to pick up a schema change during this phase).
+- **`transactions.name`** — a short, per-row label distinct from `description`, added so the
+  review table and the persisted transactions view have something more scannable than the
+  full (sometimes multi-line) bank description. Auto-extracted at parse time — see
+  `extractTransactionName()` in `SumeriaCcpCsvExtractionTemplate.cpp` — and user-editable
+  afterward in the import review table (`SnapshotImportController::setRowName()`,
+  `ImportSnapshotPage.qml`'s "NAME" column); `description` itself is never touched by this,
+  it's always the full parsed text. **This column was added after the table already
+  shipped**, unlike the `iban`/`bic`/`number` removal above which just told users to reset
+  the DB — because this is an additive, non-destructive change (existing rows just get
+  `name = ''`), `TransactionsTable::createTable()` runs a guarded `ALTER TABLE ... ADD
+  COLUMN` (`ensureColumn()`, checked via `PRAGMA table_info` so it's a no-op on a DB that
+  already has the column) instead of requiring a reset. Any future additive column should
+  follow this same pattern rather than the reset-only precedent.
+- **No `confidence` column here — that's deliberate, not an oversight.** A short-lived
+  earlier version of this schema did add one (`REAL`, `0.0`-`1.0`), on the assumption a
+  future category-prediction model's per-row confidence should be persisted alongside
+  `category`/`subcategory`. Corrected per product decision: confidence is a **review-screen-
+  only** concept, not a database concern — see `Data::ImportedTransaction::confidence`
+  (`models/ImportedStatement.h`) and the design note under § Statement Import below. Once the
+  user reviews a row (fixing it if the model was wrong) and saves, only the resulting
+  `category`/`subcategory` land here; the confidence value that helped them get there is
+  discarded, not carried forward. If persisted confidence is ever wanted later (e.g. to audit
+  how the model performed over time), that's a new, deliberate decision — not a re-add of
+  this column.
 - **No DB-level cascade** (no foreign keys declared anywhere in this schema, consistent
   with the rest of the app) — `Database::removeAccount()` does the accounts/hashes/
   transactions cascade manually in one transaction (see above).
-- **`transactions` has no update/remove-by-id surface yet** — `TransactionsTable::
-  insertBatch()` only appends (accumulates across multiple statement imports for the same
-  account, does not replace/clear), and `allForAccount()` is read-only. Editing or deleting
-  a single persisted transaction needs a UI first; not built this pass.
+- **`transactions` now has an update-by-id surface** (`TransactionsTable::updateById()`, feature
+  pass 2026-07-18) — see § Account Management's `AccountController::updateTransaction()` bullet
+  above for what's editable and what deliberately isn't (`balance_after` is never recomputed).
+  `insertBatch()` still only appends (accumulates across multiple statement imports for the
+  same account, does not replace/clear); there is still no delete-by-id (not requested).
+  `TransactionsTable::latestOnOrBefore(accountId, date)` was also added — the fallback
+  "what did we last record" reference `SnapshotImportController::checkReconciliation()` uses
+  when there's no closer `AccountBalanceCheckpoint` (see § Balance Checkpoints).
 - **`account_categories`/`account_types`/`account_hashes` removal has no "in use" guard**,
   same known limitation as `CategoryController::removeCategory()`: deleting a category,
   type, or hash that an account/transaction still references by string leaves that string
@@ -856,8 +1201,12 @@ Routed page (not a `Popup`) reached from `AccountsManagePage.qml`'s "Transaction
 see the bullet above. Takes `property int accountIndex` (set by `Main.qml` before showing),
 computes the account and its formatted rows from `AccountController.accounts`/
 `transactionsForAccount(accountIndex)`, and renders the same read-only transaction table
-(date/description/debit/credit/balance/category) the old `transactionsPopup` used to show,
-plus a back arrow (`closeRequested()`).
+(date/name/description/debit/credit/balance/category — `name` added alongside `description`,
+see § Statement Import) the old `transactionsPopup` used to show, plus a back arrow
+(`closeRequested()`). Uses the same wide-NAME/description-popup layout as
+`ImportSnapshotPage.qml`'s transaction table (400px NAME column, 🔍 icon + shared
+`descriptionPopup` instead of an inline description column) — `name` is plain `Text` here,
+not editable, since this page is read-only end to end.
 
 ### `AccountTypesCategoriesPage.qml`
 Reached from the sidebar (Account Management → "Account types & categories"). Manages both
@@ -870,19 +1219,167 @@ rather than bundling it into the accounts list page.
 
 ---
 
-## Transactions Management
+## Balance Checkpoints
+
+Added in the feature pass above ("at this time the amount of money in the bank was that" — the
+"magic number" from the product request). Full transaction history since an account was opened
+usually can't be imported (old paper statements, discontinued export formats, etc.), so the user
+can instead record known-good anchor points: "the balance of account X was Y on date Z". An
+account can carry several checkpoints over time.
+
+- **Managed on `AccountsManagePage.qml`**, a new "Balance checkpoints" row per account (chip
+  list — date/balance/note — plus "＋ Add checkpoint"), directly below the existing "Hashes" row,
+  same visual/interaction pattern (`FormDialog` for add, inline "×" `TapHandler` for remove). No
+  date-picker widget exists in this app yet and there's no Qt Graphs example to pattern-match
+  against for one, so the date field is plain `"yyyy-MM-dd"` text, parsed/validated in
+  `AccountController::addBalanceCheckpoint()` (rejects and shows a status message on anything
+  `QDate::fromString(..., Qt::ISODate)` can't parse).
+- **`AccountController.balanceCheckpoints(accountIndex)`** is a `Q_INVOKABLE` (reads straight
+  from `Database` every call, same as `transactionsForAccount()`), not a `NOTIFY`-able property
+  — `AccountsManagePage.qml` re-evaluates it via a page-level `checkpointsTick` counter bumped
+  after every add/remove (same manual-refresh reasoning as `AccountTransactionsPage.qml`'s
+  `rows`).
+- **Two consumers now: reconciliation and Account History.** `SnapshotImportController::
+  checkReconciliation()`'s check 1 reads `Database::latestCheckpointOnOrBefore(accountId, date)`
+  as its preferred "what did we last know" reference (falling back to the latest saved
+  transaction's `balance_after` if no checkpoint qualifies) — see § Statement Import — Import
+  Report. `AccountController::accountBalanceHistory()`'s balance-over-time line chart uses the
+  same lookup to seed the running balance before the account's first transaction — see § Account
+  History.
+- **Not just manually added anymore.** `SnapshotImportController::save()` auto-adds one for the
+  statement's declared `balanceStart` and one for `balanceEnd` on every successful import (note
+  text prefixed `"Auto — statement start/end (…)"`, never overwriting an existing checkpoint on
+  that date) — see § Statement Import — Import Report's "statement balances are remembered
+  automatically" bullet. The chip list on `AccountsManagePage.qml` shows both kinds identically
+  (the `note` field is the only visible distinction).
+- **No DB-level cascade** (consistent with every other table in this schema) —
+  `Database::removeAccount()` calls `AccountBalanceCheckpointsTable::removeForAccount()`
+  manually, alongside the existing hashes/transactions cascade.
+
+### Balance checkpoint DB schema
+
+```sql
+CREATE TABLE account_balance_checkpoints (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  account_id INTEGER NOT NULL,
+  date       TEXT    NOT NULL,             -- ISO-8601
+  balance    REAL    NOT NULL DEFAULT 0,
+  note       TEXT    NOT NULL DEFAULT ''
+);
+CREATE INDEX idx_balance_checkpoints_account ON account_balance_checkpoints(account_id);
+```
+
+- **`AccountBalanceCheckpointsTable`** (`src/db/tables/AccountBalanceCheckpointsTable.h/.cpp`)
+  owns all SQL for this table — same shape as `AccountHashesTable`: `createTable()`,
+  `insert()`/`remove()`/`removeForAccount()` (cascade helper), `allForAccount()` (oldest date
+  first), and `latestOnOrBefore(accountId, date)` (most recent checkpoint on or before `date`, or
+  `nullopt` — a checkpoint dated *after* `date` is never used to validate an earlier statement).
+- **`Database`** exposes `loadBalanceCheckpoints()`/`addBalanceCheckpoint()`/
+  `removeBalanceCheckpoint()`/`latestCheckpointOnOrBefore()`, and `resetAll()`/`removeAccount()`
+  both include this table (drop+recreate / cascade respectively).
+- **`Data::AccountBalanceCheckpoint`** (`models/Account.h`) — `{ id, accountId, date, balance,
+  note }`, header-only POD, same convention as the rest of that file.
+
+---
+
+## Account History
+
+New page (feature pass, 2026-07-18) — "not to manage, but to see history of transactions,
+amounts, a line graph of the balance over time, and the current balance" from the product
+request. Deliberately separate from `AccountsManagePage.qml`/`AccountTransactionsPage.qml`: no
+add/edit/delete/hash/checkpoint actions anywhere on this page.
+
+- **Sidebar label "Account Details", lives under Overview — moved there from Account
+  Management on product feedback.** Shipped initially as an `"accountHistory"` action under
+  Account Management; moved the same day once the product feedback was "Account Management is
+  related to admin operations, this is more related to data analysis and 'usual' usage of the
+  app... more related to other categories in the sidebar" (Overview specifically). Now
+  `"accountDetails"` (label "Account Details") under the **Overview** category in `Main.qml`'s
+  `categories` array, alongside the still-placeholder `"netWorthTrend"`/`"allocationBreakdown"`/
+  `"monthlyNetChange"`/`"kpiSummary"` actions — it's the one genuinely wired/real action there
+  today. **The backing QML file/type is still `AccountHistoryPage.qml`/`AccountHistoryPage`** —
+  only the sidebar label and action id changed, same "rename the label, leave the class name
+  alone" precedent `SnapshotImportController` already set for "Import Transactions" (renamed
+  from "New Monthly Snapshot"). Reachable straight from the sidebar rather than via a button on
+  an account row, since it's a standalone view over *any* account (has its own account-picker
+  `ComboBox` in the page header), not tied to a specific row the way "Transactions"/"✎ Edit" are.
+  Same overlay `Loader` pattern as every other sidebar action (see § Sidebar Navigation) —
+  `"accountDetails"` is in `root.overlayViewIds`, its `Loader`/`Component` pair (still named
+  `accountHistoryPageComponent`) follows the `accountTypesPageComponent` one,
+  `onCloseRequested: root.currentViewId = "overview"`.
+- **No dedicated controller.** `AccountHistoryPage.qml` reads `AccountController` (the
+  `QML_SINGLETON`) directly, same as `AccountTransactionsPage.qml` — it only needs account-domain
+  data that already belongs there (`accountBalanceHistory()`/`accountBalanceSummary()`, both new
+  `Q_INVOKABLE`s on `AccountController`, plus the existing `transactionsForAccount()`). A new
+  page doesn't automatically need a new controller class when it's a read-only view entirely
+  within one existing domain.
+- **`AccountController::accountBalanceHistory(accountIndex)`** — the "using each transaction to
+  compute the balance each day" line chart data. Reads every persisted transaction for the
+  account, drops any with no valid `operation_date` (nothing to plot them against), sorts
+  chronologically (`Database::transactionsForAccount()` returns most-recent-first, for the
+  read-only tables — this is the one call site that needs the opposite order), then walks them
+  emitting one point per **calendar day that has at least one transaction** (cumulative balance
+  through that day's last transaction; days with no activity have no point, so the chart connects
+  straight across gaps rather than plotting a flat point for every single day — fine for a
+  `LineSeries`, which draws straight segments between whatever points it's given).
+  - **Starting balance (product decision):** the latest `AccountBalanceCheckpoint` on or before
+    the first transaction's date, if one exists (see § Balance Checkpoints — this is also where
+    auto-remembered statement-import checkpoints pay off: a freshly-imported account often
+    already has one from its very first import). If there's no checkpoint at all, the balance
+    *just before* the first transaction is **inferred** from that transaction's own
+    `balance_after` minus its own `(credit - debit)`, rather than starting the line at a
+    misleading 0 — explicit product decision (the alternative, starting at 0, was considered and
+    rejected).
+  - Returns `[]` if the account has no dated transactions at all (chart shows an `EmptyState`
+    instead in that case).
+  - Shape: `[{ dateIso, dateText, timeMs, balance, balanceText }, ...]` ascending by date. `timeMs`
+    (`QDate::startOfDay().toMSecsSinceEpoch()`, same convention as `SavingsController::
+    m_timestamps`) is what the `LineSeries`/`DateTimeAxis` actually plot against.
+- **`AccountController::accountBalanceSummary(accountIndex)`** — the page-header KPIs. Current
+  balance = the last point of `accountBalanceHistory()`; if that's empty (no dated transactions
+  at all), falls back to the latest balance checkpoint on or before today, or `0`/`"—"` if the
+  account has neither. `{ currentBalanceText, currentBalanceRaw, asOfDateText,
+  transactionCount, hasHistory }`.
+- **Chart: same `GraphsView`/`DateTimeAxis`/`ValueAxis`/`LineSeries` recipe as `SavingsPage.qml`'s
+  "Balance over time"** (verified against that already-working page, not invented — see this
+  file's header note on checking QtGraphsExamples/doc.qt.io first), with one difference: the
+  `LineSeries` here is populated **imperatively** (`balanceSeries.clear()` then `append()` in a
+  page-level `rebuildChart()`) instead of once in `Component.onCompleted`, because the account
+  picker can switch which account's history is plotted without the page itself being recreated —
+  `Component.onCompleted` only runs once at construction, which would leave the chart showing
+  the first account forever. `reload()` (called on `Component.onCompleted` and whenever
+  `selectedAccountIndex` changes) re-fetches `summary`/`history`/`rows` from `AccountController`
+  and then calls `rebuildChart()`.
+- **Transaction list is read-only** — same colored category/subcategory badge treatment as
+  `AccountTransactionsPage.qml` (via `CategoryController.categoryColor()`/`subcategoryColor()`),
+  but no "✎ Edit" column and no description popup — kept intentionally minimal since this page's
+  whole point is "look, don't touch."
+
+---
+
+## Transactions
 
 Own sidebar category — the renamed, narrowed successor to the old "Data Entry" category
-(also renamed from "Data Entry" per product decision, since accounts and database resets
+(itself renamed from "Data Entry" per product decision, since accounts and database resets
 moved to their own categories, leaving just the transaction-import + category-management
-actions here). `qml/pages/TransactionsManagementPage.qml` is this category's own landing
-page: a minimal placeholder (header + text pointing at the two sidebar actions below) — no
-controller, no mock content, since both actions already have their own real pages. Actions:
+actions here). Renamed again from "Transactions Management" to "Transactions" (2026-07-18,
+product feedback) — the old name implied it manages saved transactions, which it didn't;
+that's now fixed by giving it a third action, "View & Edit Transactions" (moved in from
+Account Management the same day). `qml/pages/TransactionsManagementPage.qml` is this
+category's own landing page: a minimal placeholder (header + text pointing at the three
+sidebar actions below) — no controller, no mock content, since all three actions already
+have their own real pages. File/type name kept as `TransactionsManagementPage` — only the
+sidebar label/id changed, same "label ≠ file name" precedent as `SnapshotImportController`.
+Actions:
 
 - **"Import Transactions"** (renamed from "New Monthly Snapshot") — `ImportSnapshotPage.qml`
   / `SnapshotImportController`, see § Statement Import.
-- **"Manage Categories"** — `CategoriesManagePage.qml` / `CategoryController`, see §
-  Category Management.
+- **"Categories & Subcategories"** (renamed from "Manage Categories" 2026-07-18) —
+  `CategoriesManagePage.qml` / `CategoryController`, see § Category Management.
+- **"View & Edit Transactions"** (moved here from Account Management 2026-07-18) —
+  `AccountTransactionsPage.qml` / `AccountController`, see § Account Management. Also still
+  reachable from Manage Accounts' per-row "Transactions" button — see that section for the
+  dual-entry-point mechanics.
 
 `src/controllers/dataentry/DataEntryController.h/.cpp` and `qml/pages/DataEntryPage.qml`
 (the old landing page, with its MOCK snapshot form and transaction-entry form) were
@@ -894,17 +1391,34 @@ App Status.
 ## Database Management
 
 Own sidebar category, no sub-actions — `qml/pages/DatabaseManagementPage.qml` holds the
-real controls directly (no landing-page/action split like Transactions Management or
-Account Management, since there's only one small set of actions and no reason to hide them
-behind a click). Added per product request: useful for picking up structural DB changes
+real controls directly (no landing-page/action split like Transactions or Account
+Management, since there's only one small set of actions and no reason to hide them
+behind a click). Grouped under the sidebar's "ADMIN" divider (see § Sidebar Navigation).
+Added per product request: useful for picking up structural DB changes
 during development without a migration script (see the `accounts` schema note above for a
 concrete example — dropping iban/bic/number needs exactly this).
 
-- **Two actions, both behind a confirmation dialog** (irreversible): "Reset Database" wipes
-  every table to genuinely empty; "Reset to Mock Data" wipes everything then reseeds the
-  same default categories/account-categories/account-types/demo-accounts used on first
-  launch, plus a handful of fabricated sample transactions (so the transactions view has
+- **Two whole-database actions, both behind a confirmation dialog** (irreversible): "Reset
+  Database" wipes every table to genuinely empty; "Reset to Mock Data" wipes everything then
+  reseeds the same default categories/account-categories/account-types/demo-accounts used on
+  first launch, plus a handful of fabricated sample transactions (so the transactions view has
   something to show immediately, per product decision when this was scoped).
+- **Per-account cleanup (feature pass, 2026-07-18)** — narrower than a full reset, for "remove
+  specific data, e.g. clear all transactions related to a bank" from the product request. A new
+  "Per-account cleanup" `ChartCard` on `DatabaseManagementPage.qml` offers, for a picked
+  account:
+  - **"Clear transactions"** — `DatabaseManagementController::clearTransactionsForAccount(accountId)`
+    → `Database::clearTransactionsForAccount()` → `TransactionsTable::removeForAccount()`.
+    Deletes every transaction for that account only; the account itself, its hashes, and its
+    balance checkpoints are untouched.
+  - **"Delete account"** — calls `AccountController.removeAccount(accountIndex)` directly from
+    QML (no new controller method needed — reuses the existing cascade,
+    `Database::removeAccount()`, which now also removes balance checkpoints, see § Balance
+    Checkpoints). Same action as the "×" button on `AccountsManagePage.qml`, offered here too
+    for convenience since Database Management is where the product request specifically asked
+    for it.
+  Both actions are behind their own `ConfirmDialog` (irreversible), separate from the two
+  whole-database dialogs above.
 - **`DatabaseManagementController` (src/controllers/database/DatabaseManagementController.h/.cpp)
   is a plain `QML_ELEMENT`, not a `QML_SINGLETON`** — unlike `CategoryController`/
   `AccountController`, it has no state of its own worth keeping alive across navigation; it
@@ -975,7 +1489,8 @@ When a TableView/Repeater delegate declares ANY `required property`, model roles
   `CategoriesTable m_categoriesTable`, `SubcategoriesTable m_subcategoriesTable`,
   `AccountsTable m_accountsTable`, `AccountHashesTable m_accountHashesTable`,
   `AccountCategoriesTable m_accountCategoriesTable`, `AccountTypesTable m_accountTypesTable`,
-  `TransactionsTable m_transactionsTable`.
+  `TransactionsTable m_transactionsTable`, `AccountBalanceCheckpointsTable
+  m_balanceCheckpointsTable` (see § Balance Checkpoints).
 - `open()` enables WAL mode then delegates `createTable()` to each table object.
 - `saveSnapshot()`, `removeCategory()`, and `removeAccount()` are the only methods that
   touch transactions (cross-table writes).
@@ -987,7 +1502,10 @@ When a TableView/Repeater delegate declares ANY `required property`, model roles
   `addAccountCategory()`/`renameAccountCategory()`/`setAccountCategoryColor()`/
   `removeAccountCategory()`, `loadAccountTypes()`/`addAccountType()`/`renameAccountType()`/
   `removeAccountType()`, `insertTransactions()`/`transactionsForAccount()`/
-  `transactionCountForAccount()` — see § Account Management.
+  `transactionCountForAccount()`/`updateTransaction()`/`clearTransactionsForAccount()`/
+  `latestTransactionOnOrBefore()` — see § Account Management / § Database Management.
+  `loadBalanceCheckpoints()`/`addBalanceCheckpoint()`/`removeBalanceCheckpoint()`/
+  `latestCheckpointOnOrBefore()` — see § Balance Checkpoints.
 - `resetAll()` — drops and recreates every table this app owns, in one transaction. Used
   exclusively by `DatabaseManagementController` — see § Database Management. Deliberately
   does **not** reseed anything itself (that's `DatabaseManagementController::resetToMock()`'s
@@ -1021,7 +1539,7 @@ When a TableView/Repeater delegate declares ANY `required property`, model roles
 
 ### `models/Account.h` / `models/Transaction.h`
 - `Data::AccountHash` — `{id, hash, source}`; `Data::Account` — `{id, name, type, category, currency, notes, hashes[]}` (no iban/bic/number — removed for security, see § Account Management); `Data::AccountCategory` — `{id, name, color}`; `Data::AccountType` — `{id, name}`. Same header-only POD convention as `Category.h` — see § Account Management for the `type` vs `category` split.
-- `Data::Transaction` — `{id, accountId, confirmationDate, operationDate, description, debit, credit, balanceAfter, category, subcategory, sourceTemplate}`. Distinct from `Data::ImportedTransaction` (`models/ImportedStatement.h`), which is the pre-save staging row on the import review screen — this is the persisted shape once `SnapshotImportController::save()` writes it.
+- `Data::Transaction` — `{id, accountId, confirmationDate, operationDate, name, description, debit, credit, balanceAfter, category, subcategory, sourceTemplate}`. Distinct from `Data::ImportedTransaction` (`models/ImportedStatement.h`), which is the pre-save staging row on the import review screen — this is the persisted shape once `SnapshotImportController::save()` writes it. `name` is a short auto-extracted/user-edited label, separate from the full `description`. **No `confidence` field** — `Data::ImportedTransaction::confidence` (review-screen-only, see § Statement Import) is deliberately not carried over here; see § Account Management's transaction-DB-schema section for why.
 
 ### `db/tables/AccountsTable.h/.cpp` / `AccountHashesTable.h/.cpp` / `AccountCategoriesTable.h/.cpp` / `AccountTypesTable.h/.cpp` / `TransactionsTable.h/.cpp`
 - See § Account Management for the full schema and CRUD surface — same shape/conventions as `CategoriesTable`/`SubcategoriesTable`. `AccountTypesTable` mirrors `AccountCategoriesTable` minus the color column.
@@ -1122,6 +1640,20 @@ from the app's existing patterns instead of a blank file:
 - **Sankey**: no Qt Graphs series type — `qml/components/MoneyFlow.qml` is a pure-QML Canvas port of QtGraphsExamples → flowchart.
 - **Inline `component` declarations** must sit at the document root, not nested in a Popup.
 - Donuts use `pieSize: 0.75` / `holeSize: 0.42` (0.85 clipped the labels).
+- **`DateTimeAxis` with `min === max` reproducibly crashed the app (native crash, no QML
+  console error at all)** — hit on `AccountHistoryPage.qml`'s balance-over-time chart for any
+  account whose transactions all fall on a single calendar day (a very ordinary case — one
+  transaction, or several all dated the same day). Qt Graphs' own docs don't forbid an equal
+  min/max, but automatic tick-layout ("if `tickInterval` is 0 or lower, axis will automatically
+  calculate an appropriate amount of ticks") almost certainly divides by the axis range
+  internally, so a zero-width range blows up in native code — bypassing QML's warning/error
+  console entirely, which is why this class of bug shows no error message at all, unlike a JS
+  exception. **Fix: always pad a degenerate axis range** (see `AccountHistoryPage.qml`'s
+  `maxTimeMs` — pads by one day whenever the raw max wouldn't exceed the raw min). Applies to
+  any future `DateTimeAxis`/`ValueAxis` whose min/max are computed from real (not hand-picked
+  MOCK) data — `SavingsPage.qml`/`CashFlowPage.qml`'s existing charts never hit this because
+  their MOCK data always spans many distinct months by construction, not because the pattern
+  itself was safe.
 
 ---
 
@@ -1212,6 +1744,7 @@ NO_LINT option is given.")
 ## Known Limitations / TODOs
 
 - [ ] **Wire pages to real data** — replace the MOCK generators in the 5 mock page controllers (Overview/Cash Flow/Savings/Investments/Projects) with DB aggregation. The schema needs to grow: per-account monthly snapshots + categorized transactions (see PROJECT.md).
+- [ ] **`ImportedTransaction::confidence` has a UI column but no model yet** — see § Statement Import's design-decision bullet and `ImportSnapshotPage.qml`'s CONFIDENCE-column note above. The field (`0.0`-`1.0`, review-screen-only — never persisted to `Data::Transaction`/`transactions`) and its `StatusBadge` column both exist, but nothing computes a real value yet, so every row shows the neutral "—" placeholder (`confidence <= 0`) regardless of its actual category/subcategory pick. Once a category-prediction model exists: (1) have it populate `ImportedTransaction::confidence` and pre-fill `category`/`subcategory` at parse or review time (likely from `name`/`description`), (2) the `confidenceVariant()`/`confidenceText()` color-coding (danger below 50%, warning below 80%, success at/above) already kicks in automatically once real values start arriving — no QML change needed there, though a sort/filter for "show me the low-confidence rows first" would still be a useful follow-up, (3) `SnapshotImportController::save()` already only ever writes `category`/`subcategory` to `Data::Transaction` — no change needed there when the model lands.
 - [ ] **The `snapshots`/`asset_entries` DB tables (`SnapshotsTable`, `AssetEntriesTable`, `models/AssetEntry.h`) are still compiled and wired into `Database`, but have had no controller reading or writing them since the legacy `AnalyticsController`/`EntryController` were deleted this pass** (see § App Status / § Component Responsibilities). Decide either to build the "wire pages to real data" item above on top of this existing snapshot schema, or to drop it in favor of the newer per-transaction model (`transactions` table) — right now the app carries a second, currently-dead persistence model alongside the live one. Flagged rather than acted on: dropping a DB table is a bigger call than deleting unused UI/model code, and wasn't part of this pass's scope.
 - [ ] Range selector (12–24 month window) on time charts — PROJECT.md calls for it on all pages.
 - [ ] Loan simulator: add optional insurance (assurance emprunteur) flat % input.
@@ -1219,14 +1752,33 @@ NO_LINT option is given.")
 - [ ] Centralize palette in a `Theme.qml` singleton.
 - [ ] No `.qrc` resource file — icons and fonts should be added under `resources/`.
 - [ ] No tests — add a `tests/` directory with Qt Test when data logic grows.
-- [ ] `CheckingCsvTemplateV1` assumes UTF-8 and `MM/dd/yyyy` dates, per the spec as given — neither was verified against a real exported file yet. Fix if a real file parses wrong.
+- [ ] `SumeriaCcpCsvExtractionTemplate` assumes UTF-8 and `MM/dd/yyyy` dates, per the spec as given — neither was verified against a real exported file yet. Fix if a real file parses wrong.
 - [ ] PDF statement templates are not implemented — `ImportTemplate` was designed to support them (interface doesn't assume CSV), but no PDF library is linked yet.
 - [ ] `qml/pages/ImportSnapshotPage.qml` (`FileDialog`) and `qml/pages/CategoriesManagePage.qml`/`qml/pages/AccountsManagePage.qml` (`ColorDialog`) import `QtQuick.Dialogs` with no explicit `find_package`/`target_link_libraries` for it in `CMakeLists.txt` (relying on `qt_add_qml_module`'s automatic import scanning). If the build can't find the plugin, add `QuickDialogs2` — see the NOTE in `CMakeLists.txt`.
-- [ ] Sidebar action list items are still mostly inert placeholders on the first 5 (PROJECT.md) categories — only Transactions Management → "Import Transactions"/"Manage Categories" and Account Management → "Manage Accounts"/"Account types & categories" are wired; Database Management has no actions (its landing page is the real page) — see § Sidebar Navigation.
-- [ ] `CheckingCsvTemplateV1::parseAmount()` currently has the "€" removal and the final space removal **commented out** (see the `//` lines in the .cpp). As written, an amount like `"1234.56 €"` will fail to convert (the trailing `€` breaks `toDouble()`), and any input relying on space-stripping (e.g. narrow-space-separated thousands not already covered by the two explicit space-char removals above it) won't be cleaned either. This was left as-is per an in-progress edit — revisit once real exported files are available to confirm what actually needs stripping.
+- [ ] Sidebar action list items are still mostly inert placeholders on the first 5 (PROJECT.md) categories — only Transactions → "Import Transactions"/"Categories & Subcategories"/"View & Edit Transactions" and Account Management → "Manage Accounts"/"Account types & categories" are wired; Database Management has no actions (its landing page is the real page) — see § Sidebar Navigation.
+- [ ] `SumeriaCcpCsvExtractionTemplate::parseAmount()` currently has the "€" removal and the final space removal **commented out** (see the `//` lines in the .cpp). As written, an amount like `"1234.56 €"` will fail to convert (the trailing `€` breaks `toDouble()`), and any input relying on space-stripping (e.g. narrow-space-separated thousands not already covered by the two explicit space-char removals above it) won't be cleaned either. This was left as-is per an in-progress edit — revisit once real exported files are available to confirm what actually needs stripping.
 - [ ] `CategoryController::removeCategory()`/`removeSubcategory()` and `AccountController::removeAccountCategory()` delete unconditionally — no foreign keys anywhere in this schema, so nothing breaks, but a transaction/account already using a deleted category/account-category just keeps the stale name as plain text. Needs either a guard (refuse/warn) or an explicit "reassign" step if this proves confusing in practice.
 - [ ] No reordering of categories/subcategories/account-categories — every `all()`/`allForXxx()` reader orders by row id (insertion order) only, no explicit sort-order column. Add one if drag-to-reorder is ever wanted.
-- [ ] **Persisted transactions have no edit/delete UI** — `TransactionsTable` only supports append (`insertBatch`) and read-all-for-account (`allForAccount`); the transactions popup on `AccountsManagePage.qml` is read-only. Add update/delete-by-id + a UI once there's a real need to fix a mis-categorized or duplicate saved transaction.
-- [ ] No migration path for existing SQLite files when the schema changes (e.g. the `accounts` table dropping `iban`/`bic`/`number` in round 2) — the intended workaround during active development is Database Management → "Reset Database"/"Reset to Mock Data" (see § Database Management), which wipes and recreates every table from scratch. Add real migrations before this app has real user data worth preserving across schema changes.
+- [x] ~~Persisted transactions have no edit/delete UI~~ — **edit** landed in the 2026-07-18
+  feature pass (`AccountTransactionsPage.qml`'s "✎ Edit" → `AccountController::
+  updateTransaction()` → `TransactionsTable::updateById()`, see § Account Management). Delete-
+  by-id (a single row, not the whole account's transactions) is still not built — only whole-
+  account clearing exists (`Database::clearTransactionsForAccount()`, see § Database
+  Management).
+- [ ] **Editing a transaction's debit/credit does not recompute `balance_after`** for that row or
+  any later one — the bank's own declared running-balance chain silently goes stale after an
+  edit (see § Account Management's `updateTransaction()` bullet). Acceptable for now since
+  `balance_after` is display-only (no other logic reads it besides reconciliation, which uses
+  the *statement's* declared balances, not persisted rows' `balance_after`) — revisit if that
+  changes.
+- [ ] **No date-picker widget anywhere in this app** — the "✎ Edit" transaction dialog and the
+  "＋ Add checkpoint" balance-checkpoint dialog (see § Balance Checkpoints) both use plain
+  `"yyyy-MM-dd"` text fields, parsed/validated in C++, rather than a calendar picker. No
+  existing pattern to copy from QtGraphsExamples for one; add `QtQuick.Controls`' `DayOfWeekRow`/
+  `MonthGrid`/`Calendar` (or a native `DatePicker` `Dialog` if Qt 6.11 ships one, verify against
+  doc.qt.io first per this file's header note) if manual date typing proves error-prone in
+  practice.
+- [ ] No general migration path for existing SQLite files when the schema changes (e.g. the `accounts` table dropping `iban`/`bic`/`number` in round 2) — the intended workaround during active development is Database Management → "Reset Database"/"Reset to Mock Data" (see § Database Management), which wipes and recreates every table from scratch. `transactions.name` (an additive column) is the one exception so far — `TransactionsTable::ensureNameColumn()` runs a guarded `ALTER TABLE ... ADD COLUMN` instead of requiring a reset, since additive columns are safe to backfill with a default and don't need the destructive path. Add real migrations more generally before this app has real user data worth preserving across schema changes.
+- [ ] `extractTransactionName()` (`SumeriaCcpCsvExtractionTemplate.cpp`) only has two verified real description shapes so far ("Card payment N: X" and "Payment received from X / "Y" — both followed by an "…ref.: …" block, see the function's doc comment) — the "every line up to the first ref line" rule was chosen to generalize across both rather than over-fitting to either one, but it's still unverified against other transaction types (direct debits, transfers, fees, …). Revisit once real examples of those are available — see this file's header note on verifying against real files before inventing a new rule.
 - [ ] `DatabaseManagementController::seedMockData()` duplicates the same seed values as `CategoryController::seedDefaults()`/`AccountController::seedDefaults()` rather than calling them (both are private) — see § Database Management. If either seed list changes, the other must be updated by hand or the two will drift.
 - [ ] **Not yet componentized (deliberately deferred, see § Shared Components):** a `hoverable`/`onClicked` option on `ChartCard` (would let `ProjectsPage.qml`'s bespoke clickable project cards use the shared component instead of reimplementing its look); a thin wrapper around the repeated `GraphsView { theme: GraphsTheme { colorScheme: GraphsTheme.ColorScheme.Dark [...] } }` boilerplate that appears 10+ times across the 5 analytics pages. Neither blocked this pass, but both are candidates if a second page needs the same shape.
