@@ -2,15 +2,19 @@
 #define FINANCEDASHBOARD_MODELS_ACCOUNT_H
 
 #include <QString>
+#include <QDate>
 #include <QVector>
 
-// ── Data::AccountHash / Data::Account / Data::AccountCategory / Data::AccountType ──
+// ── Data::AccountHash / Data::Account / Data::AccountCategory / Data::AccountType /
+//    Data::AccountBalanceCheckpoint ──────────────────────────────────────────
 //
 // Plain data holders mirroring the row shape of the `accounts` / `account_hashes`
-// / `account_categories` / `account_types` DB tables (see db/tables/AccountsTable.h,
-// db/tables/AccountHashesTable.h, db/tables/AccountCategoriesTable.h,
-// db/tables/AccountTypesTable.h) — same convention as models/Category.h. `id`
-// is the SQLite row id (-1 for a not-yet-persisted instance).
+// / `account_categories` / `account_types` / `account_balance_checkpoints` DB
+// tables (see db/tables/AccountsTable.h, db/tables/AccountHashesTable.h,
+// db/tables/AccountCategoriesTable.h, db/tables/AccountTypesTable.h,
+// db/tables/AccountBalanceCheckpointsTable.h) — same convention as
+// models/Category.h. `id` is the SQLite row id (-1 for a not-yet-persisted
+// instance).
 //
 // Two different classification fields on Account, per product decision (see
 // ARCHITECTURE.MD § Account Management), both DB-managed lists edited on the
@@ -58,6 +62,22 @@ struct AccountCategory {
 struct AccountType {
     int     id = -1;
     QString name;
+};
+
+// A user-entered "the balance of this account was X on this date" anchor
+// point (the "magic number" from the product request) — lets reconciliation
+// (see SnapshotImportController::checkReconciliation()) validate an
+// imported statement's declared opening balance against something real even
+// when full transaction history since account opening hasn't been imported.
+// Mirrors the `account_balance_checkpoints` table (see
+// db/tables/AccountBalanceCheckpointsTable.h). An account can carry several
+// checkpoints over time (e.g. one per year that can't be fully imported).
+struct AccountBalanceCheckpoint {
+    int     id = -1;
+    int     accountId = -1;
+    QDate   date;
+    double  balance = 0.0;
+    QString note;
 };
 
 } // namespace Data

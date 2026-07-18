@@ -3,7 +3,9 @@
 
 #include "models/ImportedStatement.h"
 #include "models/ImportLog.h"
+#include "models/Transaction.h"
 
+#include <QDate>
 #include <QObject>
 #include <QString>
 #include <QUrl>
@@ -17,7 +19,7 @@
 // Backend for qml/pages/ImportSnapshotPage.qml, reached from the sidebar's
 // Data Entry → "New Monthly Snapshot" action. Wraps the ImportTemplate
 // system (src/import/): pick a template + file, parse it for real (no mock
-// data — the CSV parsing in CheckingCsvTemplateV1 is real), review/edit the
+// data — the CSV parsing in SumeriaCcpCsvExtractionTemplate is real), review/edit the
 // resulting transactions and categories, inspect parse warnings/errors via
 // the log, then Save.
 //
@@ -51,8 +53,8 @@ class SnapshotImportController : public QObject
     // here so it's visible/auditable ("accountHashRaw" is the same value
     // un-prettified, for the "Link this account" action).
     Q_PROPERTY(QVariantMap statementInfo READ statementInfo NOTIFY statementChanged)
-    // [{ index, confirmationDate, operationDate, description, debitText,
-    //    creditText, balanceText, category, subcategory, included }]
+    // [{ index, confirmationDate, operationDate, name, description, debitText,
+    //    creditText, balanceText, category, subcategory, confidence, included }]
     Q_PROPERTY(QVariantList transactionRows READ transactionRows NOTIFY statementChanged)
 
     // [{ level, line, message, rawLine }]
@@ -61,6 +63,12 @@ class SnapshotImportController : public QObject
     Q_PROPERTY(int warningCount READ warningCount NOTIFY logChanged)
 
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged)
+
+    // Filled in by save() right after a successful write — see
+    // lastImportReport()'s doc comment and buildImportReport() for the exact
+    // shape. Backs the "step 2" report view on ImportSnapshotPage.qml (see
+    // ARCHITECTURE.MD § Statement Import — Import Report).
+    Q_PROPERTY(QVariantMap lastImportReport READ lastImportReport NOTIFY reportChanged)
 
 public:
     explicit SnapshotImportController(QObject* parent = nullptr);
@@ -80,6 +88,8 @@ public:
 
     [[nodiscard]] QString statusText() const { return m_statusText; }
 
+    [[nodiscard]] QVariantMap lastImportReport() const { return m_lastImportReport; }
+
     // Run the selected template's parser over the picked file.
     Q_INVOKABLE void parseFile(const QUrl& fileUrl, const QString& templateId);
 
@@ -87,6 +97,10 @@ public:
     Q_INVOKABLE void setRowCategory(int row, const QString& category);
     Q_INVOKABLE void setRowSubcategory(int row, const QString& subcategory);
     Q_INVOKABLE void setRowIncluded(int row, bool included);
+    // Lets the user correct the auto-extracted name (see
+    // extractTransactionName() in SumeriaCcpCsvExtractionTemplate.cpp) before
+    // saving — the full description is unaffected and always stays as parsed.
+    Q_INVOKABLE void setRowName(int row, const QString& name);
 
     // Given AccountController.accounts ([{id, name, type, category,
     // hashes: [{hash, ...}], ...}, ...]), returns the index of the account
@@ -118,13 +132,70 @@ public:
     // AccountController::reload() doc comment).
     Q_INVOKABLE void save(int accountId, const QString& accountLabel);
 
+    // ── Reconciliation (see ARCHITECTURE.MD § Statement Import — Import
+    //    Report / § Balance Checkpoints) ─────────────────────────────────────
+    // Two checks against the *currently parsed* statement (m_statement),
+    // both read-only — safe to call repeatedly (e.g. every time the "keep"
+    // checkboxes change) before the user actually hits Save:
+    //   Check 1 ("start balance") — the statement's own declared
+    //     balanceStart vs. the last balance we have on record for this
+    //     account on or before balanceStartDate (the latest
+    //     AccountBalanceCheckpoint, or failing that the latest saved
+    //     transaction's balanceAfter). Informational only — if there's no
+    //     prior record at all (e.g. the very first import for this account,
+    //     nothing checkpointed either), the check is skipped entirely
+    //     ("hasStartReference": false) rather than compared against
+    //     something unrelated like today's balance.
+    //   Check 2 ("end balance") — declared balanceStart + sum(credit-debit)
+    //     over every currently-*included* row vs. the statement's own
+    //     declared balanceEnd. This is the one the Save flow blocks on:
+    //     excluding ("un-keeping") a row the bank itself counted breaks this
+    //     equation. See addReconciliationAdjustment() for the fix path.
+    // Returns "available": false (nothing else meaningful) if nothing has
+    // been parsed yet or accountId is invalid.
+    Q_INVOKABLE [[nodiscard]] QVariantMap checkReconciliation(int accountId) const;
+
+    // Appends one synthetic ImportedTransaction to the current statement to
+    // close check 2's gap exactly — the "add a factice value... with a
+    // special category attached" remedy from the product request. Dated at
+    // the statement's balanceEndDate (falls back to periodTo), category
+    // "Reconciliation Adjustment" (created in the categories table first if
+    // it doesn't exist yet — QML must call CategoryController.reload()
+    // afterward so the singleton picks it up, same "no C++-to-C++ singleton
+    // coupling" pattern as save()'s account-hash auto-link). No-op if
+    // checkReconciliation() reports the check already passes (or nothing is
+    // parsed / accountId is invalid).
+    Q_INVOKABLE void addReconciliationAdjustment(int accountId);
+
 signals:
     void statementChanged();
     void logChanged();
     void statusChanged();
+    // Emitted after save() successfully builds a new lastImportReport().
+    void reportChanged();
 
 private:
     void setStatus(const QString& msg);
+    // Adds `name` as a new category (neutral color) if no existing category
+    // matches it case-insensitively — used by addReconciliationAdjustment()
+    // to make sure "Reconciliation Adjustment" exists before a row is
+    // tagged with it. Writes straight to Database, same "no C++-to-C++
+    // singleton coupling with CategoryController" reasoning as everywhere
+    // else in this class.
+    static void ensureCategoryExists(const QString& name);
+    // Auto-remembers a statement-declared balance ("remember the start and
+    // end amount from the CSV" — product request) as an
+    // AccountBalanceCheckpoint, unless the account already has one dated
+    // exactly `date` (never overwrites an existing checkpoint — including
+    // one this same helper added on a prior import). No-op if `date` is
+    // invalid. See ARCHITECTURE.MD § Statement Import — Import Report.
+    static void rememberStatementBalance(int accountId, const QDate& date, double balance, const QString& note);
+    // Builds m_lastImportReport from the rows actually written by save()
+    // (not from m_statement, which the user could still be editing by the
+    // time the report is viewed) plus the reconciliation snapshot taken
+    // right before the write.
+    void buildImportReport(const QString& accountLabel, const QVector<Data::Transaction>& saved,
+                            const QVariantMap& reconciliation);
 
     QVariantList m_templates;
 
@@ -136,6 +207,7 @@ private:
     QString m_templateId; // last parseFile()'s templateId — stored on saved transactions as source_template
 
     QString m_statusText;
+    QVariantMap m_lastImportReport;
 };
 
 #endif // FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_SNAPSHOTIMPORTCONTROLLER_H

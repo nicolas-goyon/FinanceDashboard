@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 import QtQuick.Layouts
 import FinanceDashboard
 
@@ -120,7 +121,116 @@ Item {
             }
         }
 
+        // ── Per-account cleanup — remove specific data instead of wiping
+        //    everything (see ARCHITECTURE.MD § Database Management). "Clear
+        //    transactions" leaves the account/hashes/checkpoints in place;
+        //    "Delete account" reuses AccountController.removeAccount()'s
+        //    existing cascade (hashes + transactions + balance checkpoints —
+        //    see Database::removeAccount()), same action as the "×" button
+        //    on Manage Accounts, offered here too for convenience.
+        ChartCard {
+            Layout.fillWidth: true
+            implicitHeight: cleanupCol.implicitHeight + 50
+            title: "Per-account cleanup"
+
+            ColumnLayout {
+                id: cleanupCol
+                anchors.fill: parent
+                spacing: 14
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: "Remove data for a single account instead of resetting the whole database. Both "
+                        + "actions below are irreversible."
+                    font.pixelSize: 13
+                    color: "#6c7086"
+                }
+
+                EmptyState {
+                    visible: AccountController.accounts.length === 0
+                    message: "No accounts yet."
+                }
+
+                RowLayout {
+                    visible: AccountController.accounts.length > 0
+                    Layout.fillWidth: true
+                    spacing: 16
+
+                    ComboBox {
+                        id: cleanupAccountBox
+                        Layout.preferredWidth: 260
+                        model: AccountController.accounts
+                        textRole: "name"
+                    }
+
+                    Item { Layout.fillWidth: true }
+
+                    PillButton {
+                        text: "Clear transactions"
+                        variant: "neutral"
+                        Layout.preferredHeight: 32
+                        enabled: cleanupAccountBox.currentIndex >= 0
+                        onClicked: clearTransactionsDialog.openFor(cleanupAccountBox.currentIndex)
+                    }
+                    PillButton {
+                        text: "Delete account"
+                        variant: "danger"
+                        Layout.preferredHeight: 32
+                        enabled: cleanupAccountBox.currentIndex >= 0
+                        onClicked: deleteAccountDialog.openFor(cleanupAccountBox.currentIndex)
+                    }
+                }
+            }
+        }
+
         Item { Layout.preferredHeight: 8 }
+    }
+
+    // ── Clear transactions confirmation ───────────────────────────────────────
+    ConfirmDialog {
+        id: clearTransactionsDialog
+        dialogTitle: "Clear transactions?"
+        confirmText: "Clear transactions"
+        width: 380
+
+        property int accountIndex: -1
+
+        function openFor(idx) {
+            accountIndex = idx
+            var acc = AccountController.accounts[idx]
+            message = "This permanently deletes every saved transaction for “" + acc.name
+                + "”. The account itself, its hashes, and its balance checkpoints are kept. "
+                + "This cannot be undone."
+            open()
+        }
+
+        onConfirmed: {
+            var acc = AccountController.accounts[clearTransactionsDialog.accountIndex]
+            if (acc) {
+                controller.clearTransactionsForAccount(acc.id)
+            }
+        }
+    }
+
+    // ── Delete account confirmation ───────────────────────────────────────────
+    ConfirmDialog {
+        id: deleteAccountDialog
+        dialogTitle: "Delete account?"
+        confirmText: "Delete"
+        width: 380
+
+        property int accountIndex: -1
+
+        function openFor(idx) {
+            accountIndex = idx
+            var acc = AccountController.accounts[idx]
+            message = "This permanently deletes “" + acc.name + "”, all of its stored hash links, "
+                + "balance checkpoints, and saved transactions. This cannot be undone."
+            open()
+        }
+
+        onConfirmed: AccountController.removeAccount(deleteAccountDialog.accountIndex)
     }
 
     // ── Confirmation dialog (shared by both actions) ──────────────────────────

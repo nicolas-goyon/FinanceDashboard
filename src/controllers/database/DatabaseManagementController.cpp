@@ -40,6 +40,19 @@ void DatabaseManagementController::resetToMock()
     emit databaseReset();
 }
 
+bool DatabaseManagementController::clearTransactionsForAccount(int accountId)
+{
+    if (accountId < 0) {
+        return false;
+    }
+    if (!Database::instance().clearTransactionsForAccount(accountId)) {
+        setStatus(QStringLiteral("⚠  Could not clear transactions for this account"));
+        return false;
+    }
+    setStatus(QStringLiteral("✓  Cleared transactions for this account"));
+    return true;
+}
+
 void DatabaseManagementController::seedMockData() // static, see header
 {
     Database& database = Database::instance();
@@ -145,6 +158,12 @@ void DatabaseManagementController::seedMockData() // static, see header
             transaction.accountId        = checkingBankAId;
             transaction.operationDate     = today.addDays(-seedTx.daysAgo);
             transaction.confirmationDate  = transaction.operationDate;
+            // These seed rows are already a short label, not a multi-line
+            // "Card payment ...: X / External ref. / Internal ref." style
+            // description — name mirrors description here rather than
+            // running the real extraction logic (that lives in
+            // SumeriaCcpCsvExtractionTemplate, not here).
+            transaction.name               = seedTx.description;
             transaction.description       = seedTx.description;
             transaction.debit             = seedTx.debit;
             transaction.credit            = seedTx.credit;
