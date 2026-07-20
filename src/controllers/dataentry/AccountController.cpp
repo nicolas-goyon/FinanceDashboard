@@ -7,6 +7,7 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QMap>
 #include <QObject>
 #include <QString>
 #include <QTimer>
@@ -690,6 +691,68 @@ QVariantMap AccountController::accountBalanceSummary(int accountIndex) const
     result["asOfDateText"]       = asOfText;
     result["transactionCount"]   = Database::instance().transactionCountForAccount(accountId);
     result["hasHistory"]         = !history.isEmpty();
+    return result;
+}
+
+QVariantMap AccountController::accountCategoryBreakdown(int accountIndex) const
+{
+    QVariantMap result;
+    QVariantList incomeList;
+    QVariantList expenseList;
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
+        result["income"]   = incomeList;
+        result["expenses"] = expenseList;
+        return result;
+    }
+    const int accountId = m_accounts.at(accountIndex).id;
+    const QVector<Data::Transaction> txs = Database::instance().transactionsForAccount(accountId);
+
+    // Category -> magnitude total; Category -> Subcategory -> magnitude total.
+    // Kept as two separate income/expense pairs (rather than one net-total
+    // map, like buildImportReport()'s) since a pie slice's value can't be
+    // negative — see the header doc comment.
+    QMap<QString, double> incomeCategoryTotals, expenseCategoryTotals;
+    QMap<QString, QMap<QString, double>> incomeSubTotals, expenseSubTotals;
+
+    for (const Data::Transaction& transaction : txs) {
+        const QString category    = transaction.category.isEmpty() ? QStringLiteral("Uncategorized") : transaction.category;
+        const QString subcategory = transaction.subcategory.isEmpty() ? QStringLiteral("—") : transaction.subcategory;
+
+        if (transaction.credit > 0.0) {
+            incomeCategoryTotals[category] += transaction.credit;
+            incomeSubTotals[category][subcategory] += transaction.credit;
+        }
+        if (transaction.debit > 0.0) {
+            expenseCategoryTotals[category] += transaction.debit;
+            expenseSubTotals[category][subcategory] += transaction.debit;
+        }
+    }
+
+    auto buildList = [](const QMap<QString, double>& categoryTotals,
+                         const QMap<QString, QMap<QString, double>>& subTotals) {
+        QVariantList list;
+        for (auto categoryIt = categoryTotals.constBegin(); categoryIt != categoryTotals.constEnd(); ++categoryIt) {
+            QVariantList subcategories;
+            const QMap<QString, double> subMap = subTotals.value(categoryIt.key());
+            for (auto subIt = subMap.constBegin(); subIt != subMap.constEnd(); ++subIt) {
+                subcategories.append(QVariantMap{
+                    { "subcategory", subIt.key() },
+                    { "totalRaw",    subIt.value() },
+                    { "totalText",   Fmt::money(subIt.value()) },
+                });
+            }
+            list.append(QVariantMap{
+                { "category",      categoryIt.key() },
+                { "totalRaw",      categoryIt.value() },
+                { "totalText",     Fmt::money(categoryIt.value()) },
+                { "subcategories", subcategories },
+            });
+        }
+        return list;
+    };
+
+    result["income"]   = buildList(incomeCategoryTotals, incomeSubTotals);
+    result["expenses"] = buildList(expenseCategoryTotals, expenseSubTotals);
     return result;
 }
 

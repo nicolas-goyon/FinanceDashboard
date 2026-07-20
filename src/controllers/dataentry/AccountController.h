@@ -179,6 +179,30 @@ public:
     // { currentBalanceText, currentBalanceRaw, asOfDateText, transactionCount, hasHistory }
     Q_INVOKABLE [[nodiscard]] QVariantMap accountBalanceSummary(int accountIndex) const;
 
+    // Category/subcategory breakdown for the account's two new "Income by
+    // category" / "Expenses by category" nested pie charts on
+    // AccountHistoryPage.qml. Income/expense is derived per-transaction from
+    // credit/debit — NOT a property on Category/CategoryController — a
+    // transaction with credit > 0 contributes its credit magnitude to the
+    // income side, one with debit > 0 contributes its debit magnitude to the
+    // expense side (both, additively, for the rare row that has both). This
+    // mirrors SnapshotImportController::buildImportReport()'s byCategory
+    // aggregation but split by direction and by magnitude rather than net,
+    // since a pie slice needs a positive magnitude, not a signed net that
+    // could cancel out. Uses every persisted transaction for the account
+    // (same source data as accountBalanceHistory()/transactionsForAccount()),
+    // not just dated ones.
+    // { income: [{ category, totalRaw, totalText,
+    //              subcategories: [{ subcategory, totalRaw, totalText }, ...] }, ...],
+    //   expenses: [ ...same shape... ] }
+    // Categories/subcategories are alphabetical (QMap's natural key order) —
+    // deliberately, so the flattened sub-slice order the QML builds from
+    // "subcategories" for a given category always matches the top-level
+    // slice order used to build the category ring, keeping the native
+    // PieSlice sub-slice rings aligned to their parent (see
+    // docs/charting-gotchas.md).
+    Q_INVOKABLE [[nodiscard]] QVariantMap accountCategoryBreakdown(int accountIndex) const;
+
     // Re-reads accounts/account-categories/account-types from Database — no
     // auto-reseed, even if the result comes back completely empty
     // (deliberately: "Reset Database" in Database Management uses this to

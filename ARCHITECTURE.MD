@@ -61,3 +61,11 @@ Check [QtGraphsExamples](https://github.com/nicolas-goyon/QtGraphsExamples) and
 https://doc.qt.io/qt-6/qtgraphs-index.html first. Never guess a property name or value — see
 `docs/charting-gotchas.md` for pitfalls already found the hard way. If you're not sure how
 something should work, stop and ask rather than guessing.
+
+## Charts should have hover (or click) feedback
+
+Every chart in this app should let the user get exact values back out of it, not just read the
+shape of the data — `LineSeries`/`BarSeries` via a hover tooltip (`pointDelegate`/`barDelegate`,
+see `docs/charting-gotchas.md`), `PieSeries` via `onClicked` (it has no hover signal at all —
+confirmed against Qt's own C++ class docs, not assumed). Treat a new chart with neither as the
+exception that needs a reason, not the default.
