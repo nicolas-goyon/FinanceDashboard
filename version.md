@@ -19,7 +19,8 @@ bug in the thing I just added two lines above."
 
 ## v0.2.1 (current)
 
-Documentation and project-hygiene pass — no behavior changes.
+Started as a documentation/project-hygiene pass; picked up an Account Details feature-and-fix
+pass in the same in-progress version.
 
 ### Added
 - `TODO.md` — standing backlog of known limitations, bugs, and cleanups found during a full
@@ -32,16 +33,54 @@ Documentation and project-hygiene pass — no behavior changes.
 - `tools/generate_docs.py` — generates `docs/generated/source-tree.md` (a file/module listing
   with descriptions pulled from `@brief`-style header comments) so that listing no longer has
   to be hand-maintained. See `docs/automated-docs.md`.
+- **Account Details — balance chart time-range + Y-axis controls.** Time range presets (`7D` /
+  `1M` / `6M` / `1Y` / `From start` / `Custom`, rolling from the account's own last transaction
+  date, `Custom` via plain `yyyy-MM-dd` fields) plus a Y-axis scale toggle: "Auto" (existing
+  tight-fit behavior) vs. "From 0" (pins the axis minimum to 0). See `docs/account-history.md`.
+- **Account Details — "Income by category" / "Expenses by category" pies.** Two new 2-level
+  nested pie charts — category ring (inner) + subcategory ring (outer), each ring its own
+  `PieSeries` in its own `GraphsView` stacked via `anchors.fill` (not Qt Graphs' native
+  `PieSlice` sub-slice feature — turned out to render the opposite ring order needed; and not
+  two `PieSeries` sharing one `GraphsView` either — that made `onClicked` stop firing on both
+  rings). Both rings' slices show labels and are independently clickable (shows "Category —"/
+  "Subcategory —" + amount + percentage). Income/expense is derived per-transaction from
+  credit/debit, not a tag on `Category`. Backed by the new
+  `AccountController::accountCategoryBreakdown(accountIndex)`. See `docs/account-history.md` and
+  `docs/charting-gotchas.md`.
 
 ### Changed
 - `README.md` rewritten to be a short, professional front door (what the app is, prerequisites,
   build/run steps) instead of an exhaustive page-by-page feature list — the exhaustive material
   moved into `docs/`.
 - `ARCHITECTURE.MD` trimmed to an index/overview page that links into `docs/*.md` instead of
-  holding every design-decision narrative inline.
+  holding every design-decision narrative inline. Added a "Charts should have hover (or click)
+  feedback" guideline.
+- **Account Details — transaction history table is now horizontally scrollable** instead of
+  overflowing past the card's border on a narrow window: the header/row `Rectangle`s use a fixed
+  `Layout.preferredWidth` and the table sits inside a `ScrollView`, which only shows a horizontal
+  scrollbar when the card is narrower than the table. See `docs/account-history.md`.
+- **Account Details — all five `GraphsView`s (balance chart + both pies' inner/outer rings) use
+  an explicit, higher-contrast `GraphsTheme`** instead of `ColorScheme.Dark` defaults, which read
+  as too washed-out against this app's near-black cards — same Catppuccin Mocha tokens already
+  documented in `docs/styling.md`. See `docs/account-history.md`.
+- **`HoverPoint.qml`'s hover hit-box enlarged (26×26 → 34×34), and its tooltip now flips
+  below/clamps horizontally instead of always centering above the point** — the small hit-box
+  made hovering hard to land, and always-above-centered positioning cropped the tooltip for any
+  point near the chart's top edge or a side. Both are shared-component fixes, so they apply to
+  every page's line-chart hover (Account Details, Savings, Cash Flow, Investments, Overview,
+  Projects). See `docs/charting-gotchas.md`.
+
+### Fixed
+- **Account Details — the 3 KPI cards (Current balance / Transactions / Type-Category) are now
+  exactly equal width and height.** Width: `Layout.fillWidth: true` alone left the middle card a
+  hair narrower than its neighbors (QtQuick Layouts' leftover-pixel remainder handling wasn't
+  symmetric); all three now bind an explicit, identical `Layout.preferredWidth`. Height: the
+  Transactions card's empty `sub` line made QtQuick Layouts exclude it from the card's
+  implicit-height calculation (a hair shorter than its two neighbors, which both have a real sub
+  line) — now shows "All time" instead of an empty string.
 
 ### Docs
-- See `Added`/`Changed` above — this entire version is a documentation pass.
+- See `Added`/`Changed`/`Fixed` above.
 
 ---
 
