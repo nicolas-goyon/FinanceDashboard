@@ -11,7 +11,9 @@
 #include "db/tables/AccountTypesTable.h"
 #include "db/tables/TransactionsTable.h"
 #include "db/tables/AccountBalanceCheckpointsTable.h"
+#include "db/tables/CategoryRulesTable.h"
 #include "models/Category.h"
+#include "models/CategoryRule.h"
 #include "models/Account.h"
 #include "models/Transaction.h"
 
@@ -51,6 +53,7 @@ public:
     AccountTypesTable&      accountTypesTable()     { return m_accountTypesTable; }
     TransactionsTable&      transactionsTable()     { return m_transactionsTable; }
     AccountBalanceCheckpointsTable& balanceCheckpointsTable() { return m_balanceCheckpointsTable; }
+    CategoryRulesTable&     categoryRulesTable()    { return m_categoryRulesTable; }
 
     // Raw Qt database handle — needed by QSqlTableModel.
     [[nodiscard]] QSqlDatabase sqlDatabase() const  { return m_db; }
@@ -147,6 +150,25 @@ public:
     // "previously recorded balance" reference when there's no closer
     // balance checkpoint.
     [[nodiscard]] std::optional<Data::Transaction> latestTransactionOnOrBefore(int accountId, const QDate& date) const;
+    // Every categorized transaction across every account, oldest first — the
+    // category predictor's training set (see TransactionsTable::
+    // allCategorized() for why it ignores account boundaries, and
+    // src/predict/CategoryPredictor.h for what it does with them).
+    [[nodiscard]] QVector<Data::Transaction> allCategorizedTransactions() const;
+
+    // ── Category rules (top rung of category prediction — see
+    //    docs/category-prediction.md) ─────────────────────────────────────────
+
+    [[nodiscard]] QVector<Data::CategoryRule> loadCategoryRules() const;
+    // "Teach or re-teach": if a rule already exists for this (already
+    // normalized — see Data::CategoryRule::pattern) merchant key, it is
+    // repointed at the new category/subcategory and its id returned;
+    // otherwise a new rule is inserted. Never creates a second rule for the
+    // same pattern, so correcting yourself replaces the old instruction
+    // instead of leaving two contradictory ones for the predictor to pick
+    // between. Returns -1 on failure or if pattern/category is empty.
+    int  addCategoryRule(const QString& pattern, const QString& category, const QString& subcategory);
+    bool removeCategoryRule(int ruleId);
 
     // ── Balance checkpoints (the "magic number" anchor points — see
     //    ARCHITECTURE.MD § Balance Checkpoints) ──────────────────────────────
@@ -185,6 +207,7 @@ private:
     AccountTypesTable       m_accountTypesTable;
     TransactionsTable       m_transactionsTable;
     AccountBalanceCheckpointsTable m_balanceCheckpointsTable;
+    CategoryRulesTable      m_categoryRulesTable;
 };
 
 #endif // FINANCEDASHBOARD_DB_DATABASE_H

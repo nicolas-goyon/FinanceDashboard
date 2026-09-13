@@ -6,9 +6,12 @@
 #include "db/Database.h"
 #include "models/Account.h"
 #include "models/Category.h"
+#include "models/CategoryRule.h"
 #include "models/ImportLog.h"
 #include "models/ImportedStatement.h"
 #include "models/Transaction.h"
+#include "predict/CategoryPredictor.h"
+#include "predict/LabelNormalizer.h"
 
 #include <cmath>
 #include <optional>
@@ -16,6 +19,7 @@
 #include <QFileInfo>
 #include <QMap>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QTimer>
 #include <QUrl>
@@ -31,6 +35,25 @@ constexpr int kStatusClearDelayMs = 4000; // how long a status message stays vis
 // — guards against float rounding noise, not a real tolerance for genuine
 // discrepancies (bank statements are exact to the cent).
 constexpr double kReconciliationEpsilon = 0.01;
+// Percent scale for the predictor's evaluation numbers (evaluatePredictor()).
+constexpr double kPercentScale = 100.0;
+
+// credit - debit, the signed amount the category predictor wants (see
+// Predict::CategoryPredictor::predict()). Both fields are magnitudes with the
+// other one zero, so this is exact rather than a convention.
+double signedAmountOf(const Data::ImportedTransaction& transaction)
+{
+    return transaction.credit - transaction.debit;
+}
+
+// The date a transaction actually happened, falling back to the bank's
+// booking date — same preference as Predict::CategoryPredictor::exampleFrom(),
+// and it must stay the same or recurrence detection compares mismatched dates.
+QDate effectiveDateOf(const Data::ImportedTransaction& transaction)
+{
+    return transaction.operationDate.isValid() ? transaction.operationDate
+                                                : transaction.confirmationDate;
+}
 } // namespace
 
 SnapshotImportController::SnapshotImportController(QObject* parent)
@@ -90,10 +113,71 @@ QVariantList SnapshotImportController::transactionRows() const
             { "category",          transaction.category },
             { "subcategory",       transaction.subcategory },
             { "confidence",        transaction.confidence },
+            // Pre-formatted here rather than bucketed in QML: the thresholds
+            // belong next to the predictor that produces the numbers, and
+            // every other value in this map already arrives display-ready.
+            { "confidenceText",    Fmt::confidenceText(transaction.confidence) },
+            { "confidenceVariant", Fmt::confidenceVariant(transaction.confidence) },
+            { "predictionReason",  transaction.predictionReason },
+            // The normalized merchant key this row matched on — shown in the
+            // "teach a rule" affordance so the user can see exactly what the
+            // rule they're about to create will apply to. Recomputed rather
+            // than cached, so editing NAME updates it immediately.
+            { "merchantKey",       Predict::LabelNormalizer::normalize(transaction.name,
+                                                                        transaction.description).key },
             { "included",          transaction.included },
         });
     }
     return rows;
+}
+
+QVariantMap SnapshotImportController::predictionInfo() const
+{
+    int filled = 0;
+    int needsReview = 0;
+    for (const Data::ImportedTransaction& transaction : m_statement.transactions) {
+        if (transaction.category.isEmpty()) {
+            continue;
+        }
+        ++filled;
+        // "Needs review" is deliberately the *same* threshold the badge turns
+        // green at (Fmt::confidenceVariant), so the count and the colors can
+        // never tell the user two different stories.
+        if (transaction.confidence > 0.0 && Fmt::confidenceVariant(transaction.confidence) != QStringLiteral("success")) {
+            ++needsReview;
+        }
+    }
+
+    const int rowCount = static_cast<int>(m_statement.transactions.size());
+    QString summary;
+    if (!m_predictor.isTrained()) {
+        summary = QStringLiteral("No categorized transactions to learn from yet — categorize this "
+                                  "statement by hand and the next import will start filling itself in.");
+    } else if (rowCount == 0) {
+        summary = QStringLiteral("Nothing to categorize.");
+    } else {
+        summary = QStringLiteral("Auto-filled %1 of %2 row(s) from %3 merchant(s) you've categorized before")
+                       .arg(filled)
+                       .arg(rowCount)
+                       .arg(m_predictor.distinctKeyCount());
+        if (m_predictor.ruleCount() > 0) {
+            summary += QStringLiteral(" plus %1 of your rules").arg(m_predictor.ruleCount());
+        }
+        summary += (needsReview > 0)
+            ? QStringLiteral(". %1 marked amber/red — worth a look before saving.").arg(needsReview)
+            : QStringLiteral(".");
+    }
+
+    return QVariantMap{
+        { "trained",      m_predictor.isTrained() },
+        { "exampleCount", m_predictor.exampleCount() },
+        { "keyCount",     m_predictor.distinctKeyCount() },
+        { "ruleCount",    m_predictor.ruleCount() },
+        { "filledCount",  filled },
+        { "reviewCount",  needsReview },
+        { "rowCount",     rowCount },
+        { "summary",      summary },
+    };
 }
 
 QVariantList SnapshotImportController::logEntries() const
@@ -137,6 +221,7 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
 {
     m_statement = Data::ImportedStatement{};
     m_log.clear();
+    m_userEditedRows.clear(); // fresh statement — nobody has decided anything yet
     m_templateId = templateId; // stashed for save()'s Data::Transaction::sourceTemplate
 
     const ImportTemplate* tpl = ImportTemplateRegistry::byId(templateId);
@@ -157,6 +242,15 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
         const bool success = tpl->parse(path, m_statement, m_log);
         m_hasParsed = success;
         m_lastParseFailed = !success;
+        if (success) {
+            // Pre-fill categories before the user ever sees the table. Rows
+            // the predictor isn't confident enough about are left blank on
+            // purpose — see Predict::kMinConfidenceToSuggest.
+            retrainPredictor();
+            for (int row = 0; row < static_cast<int>(m_statement.transactions.size()); ++row) {
+                applyPrediction(row);
+            }
+        }
     }
 
     emit statementChanged();
@@ -184,6 +278,12 @@ void SnapshotImportController::setRowCategory(int row, const QString& category)
     }
     transaction.category = category;
     transaction.subcategory.clear(); // parent changed — old subcategory no longer applies
+    // The user has now decided this row. Drop the predictor's score and
+    // explanation (both would describe a category that is no longer there)
+    // and remember the row so no later retrain overwrites the decision.
+    transaction.confidence = 0.0;
+    transaction.predictionReason.clear();
+    m_userEditedRows.insert(row);
     emit statementChanged();
 }
 
@@ -194,7 +294,12 @@ void SnapshotImportController::setRowSubcategory(int row, const QString& subcate
     }
     // row bounds-checked above; QList's at() is const-only, so mutating
     // through operator[] is genuinely required here.
-    m_statement.transactions[row].subcategory = subcategory; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    Data::ImportedTransaction& transaction = m_statement.transactions[row]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    transaction.subcategory = subcategory;
+    // Same reasoning as setRowCategory(): this row is the user's now.
+    transaction.confidence = 0.0;
+    transaction.predictionReason.clear();
+    m_userEditedRows.insert(row);
     emit statementChanged();
 }
 
@@ -210,6 +315,12 @@ void SnapshotImportController::setRowName(int row, const QString& name)
         return;
     }
     transaction.name = name;
+    // The label is what the predictor matches on, so correcting it is exactly
+    // the case where a re-score is worth doing: fixing a mangled name should
+    // immediately produce the suggestion the user was expecting. Rows the
+    // user has already categorized by hand are skipped inside
+    // applyPrediction(), so this can't undo a decision.
+    applyPrediction(row);
     emit statementChanged();
 }
 
@@ -270,8 +381,140 @@ void SnapshotImportController::reset()
     m_lastParseFailed = false;
     m_sourceFileName.clear();
     m_templateId.clear();
+    m_userEditedRows.clear();
+    m_predictor.clear(); // rebuilt by the next parseFile() — never stale
     emit statementChanged();
     emit logChanged();
+}
+
+// ── Category prediction (see docs/category-prediction.md) ─────────────────────
+
+void SnapshotImportController::retrainPredictor()
+{
+    // Straight from the database, not from any cached controller state: the
+    // user may have recategorized rows on AccountTransactionsPage since this
+    // page was opened, and those corrections are supposed to count. Same
+    // "write/read straight to Database, no C++-to-C++ singleton coupling"
+    // pattern as save().
+    const QVector<Data::Transaction> categorized = Database::instance().allCategorizedTransactions();
+    const QVector<Data::CategoryRule> rules = Database::instance().loadCategoryRules();
+    m_predictor.train(Predict::CategoryPredictor::examplesFromTransactions(categorized), rules);
+}
+
+void SnapshotImportController::applyPrediction(int row)
+{
+    if (row < 0 || row >= m_statement.transactions.size()) {
+        return;
+    }
+    if (m_userEditedRows.contains(row)) {
+        return; // the user has decided this row — never second-guess it
+    }
+
+    // row bounds-checked above; QList's at() is const-only, so mutating
+    // through operator[] is genuinely required here.
+    Data::ImportedTransaction& transaction = m_statement.transactions[row]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+
+    const Predict::Prediction prediction = m_predictor.predict(
+        transaction.name, transaction.description, signedAmountOf(transaction), effectiveDateOf(transaction));
+
+    // An empty prediction clears the row rather than leaving the previous
+    // suggestion in place: after a NAME edit the old suggestion was about a
+    // different merchant, and a stale suggestion is worse than a blank cell.
+    transaction.category = prediction.category;
+    transaction.subcategory = prediction.subcategory;
+    transaction.confidence = prediction.confidence;
+    transaction.predictionReason = prediction.reason;
+}
+
+void SnapshotImportController::refreshPredictions()
+{
+    retrainPredictor();
+    for (int row = 0; row < static_cast<int>(m_statement.transactions.size()); ++row) {
+        applyPrediction(row);
+    }
+    emit statementChanged();
+}
+
+bool SnapshotImportController::rememberRowAsRule(int row)
+{
+    if (row < 0 || row >= m_statement.transactions.size()) {
+        return false;
+    }
+    // Copied, not referenced: refreshPredictions() below writes into
+    // m_statement.transactions, and a reference into a QList that detaches
+    // mid-call would dangle. The status message needs these values afterwards.
+    const QString rowName = m_statement.transactions.at(row).name;
+    const QString rowDescription = m_statement.transactions.at(row).description;
+    const QString rowCategory = m_statement.transactions.at(row).category;
+    const QString rowSubcategory = m_statement.transactions.at(row).subcategory;
+
+    if (rowCategory.isEmpty()) {
+        setStatus(QStringLiteral("⚠  Pick a category for this row first, then teach it as a rule"));
+        return false;
+    }
+
+    // The rule's pattern must be the *normalized* key, never the raw label —
+    // the predictor only ever compares normalized keys, so an un-normalized
+    // pattern would be stored happily and then never match anything (see
+    // Data::CategoryRule::pattern).
+    const QString pattern = Predict::LabelNormalizer::normalize(rowName, rowDescription).key;
+    if (pattern.isEmpty()) {
+        setStatus(QStringLiteral("⚠  This row's label has nothing distinctive to build a rule from"));
+        return false;
+    }
+
+    if (Database::instance().addCategoryRule(pattern, rowCategory, rowSubcategory) < 0) {
+        setStatus(QStringLiteral("⚠  Failed to save the rule — see application log"));
+        return false;
+    }
+
+    // Re-score immediately so every *other* row matching this merchant in the
+    // same statement snaps to the new rule without the user re-importing.
+    // The row they taught it from is in m_userEditedRows and stays as-is.
+    refreshPredictions();
+    setStatus(QString("✓  From now on, \"%1\" is categorized as %2")
+                   .arg(pattern, rowSubcategory.isEmpty()
+                                      ? rowCategory
+                                      : rowCategory + QStringLiteral(" / ") + rowSubcategory));
+    return true;
+}
+
+QVariantMap SnapshotImportController::evaluatePredictor()
+{
+    // Retrain first so the numbers describe the database as it is right now,
+    // not whatever was loaded when a statement was last parsed — this is
+    // callable with nothing parsed at all.
+    retrainPredictor();
+    if (m_predictor.exampleCount() == 0) {
+        return QVariantMap{ { "available", false } };
+    }
+
+    const Predict::Evaluation evaluation = m_predictor.evaluate();
+    const auto percentOf = [](int part, int whole) {
+        return whole > 0 ? (static_cast<double>(part) * kPercentScale / static_cast<double>(whole)) : 0.0;
+    };
+
+    QVariantList byRung;
+    for (auto it = evaluation.attemptsByRung.constBegin(); it != evaluation.attemptsByRung.constEnd(); ++it) {
+        const int correct = evaluation.correctByRung.value(it.key(), 0);
+        byRung.append(QVariantMap{
+            { "rung",            it.key() },
+            { "attempts",        it.value() },
+            { "correct",         correct },
+            { "accuracyPercent", percentOf(correct, it.value()) },
+        });
+    }
+
+    return QVariantMap{
+        { "available",               true },
+        { "total",                   evaluation.total },
+        { "attempted",               evaluation.attempted },
+        { "coveragePercent",         percentOf(evaluation.attempted, evaluation.total) },
+        { "categoryAccuracyPercent", percentOf(evaluation.categoryCorrect, evaluation.attempted) },
+        { "pairAccuracyPercent",     percentOf(evaluation.pairCorrect, evaluation.attempted) },
+        { "meanConfidencePercent",   evaluation.meanConfidence * kPercentScale },
+        { "byRung",                  byRung },
+    };
 }
 
 void SnapshotImportController::save(int accountId, const QString& accountLabel)
@@ -439,6 +682,10 @@ void SnapshotImportController::addReconciliationAdjustment(int accountId)
     adjustment.included     = true;
 
     m_statement.transactions.append(adjustment);
+    // This row's category is set deliberately, not predicted — mark it so a
+    // later refreshPredictions() can't relabel a reconciliation adjustment as
+    // whatever merchant its synthetic description happens to look like.
+    m_userEditedRows.insert(static_cast<int>(m_statement.transactions.size()) - 1);
     emit statementChanged();
     setStatus(QString("✓  Added a %1 adjustment transaction to match the declared closing balance")
                    .arg(Fmt::money(diff, true)));

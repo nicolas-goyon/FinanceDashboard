@@ -99,23 +99,20 @@ Item {
         page.step = 2
     }
 
-    // ── Confidence display helpers ──────────────────────────────────────────
-    // `confidence` (0.0-1.0, ImportedTransaction::confidence) is a review-
-    // screen-only hint from a (future) category-prediction model — see
-    // ARCHITECTURE.MD § Statement Import. No model exists yet, so every row's
-    // value is always 0.0 today; per that field's documented convention,
-    // "0.0" means "not scored" (never persisted), not "the model is 0% sure
-    // this category is wrong" — so it's shown as "—" / a neutral badge rather
-    // than "0%" / a danger badge, to avoid implying a real, low score exists.
-    function confidenceVariant(confidence) {
-        if (confidence <= 0) return "neutral"
-        if (confidence < 0.5) return "danger"
-        if (confidence < 0.8) return "warning"
-        return "success"
-    }
-    function confidenceText(confidence) {
-        return confidence <= 0 ? "—" : Math.round(confidence * 100) + "%"
-    }
+    // ── Confidence display ──────────────────────────────────────────────────
+    // There are no confidenceVariant()/confidenceText() JS helpers here any
+    // more: the bucketing (danger/warning/success at 0.5/0.8) and the percent
+    // rounding moved to C++ as Fmt::confidenceVariant()/confidenceText()
+    // (src/utils/Formatter.h), and each row now arrives with ready-to-display
+    // `confidenceText`/`confidenceVariant` strings alongside the raw
+    // `confidence` — same "values arrive pre-formatted from the controller"
+    // convention as every other column. The thresholds belong next to the
+    // predictor that produces the numbers (see docs/category-prediction.md);
+    // duplicating them here is how the two drift apart.
+    //
+    // `confidence <= 0` still means "not scored" — either the predictor found
+    // nothing confident enough, or the user has set the category by hand —
+    // never "the model is 0% sure". Fmt renders that as a neutral "—" badge.
 
     // ── Transaction-table column widths — resizable + persisted ────────────
     // Defaults below match the table's original hand-picked widths, except:
@@ -141,6 +138,7 @@ Item {
         property real category: 160
         property real subcategory: 160
         property real confidence: 90
+        property real rule: 44
         property real keep: 50
     }
 
@@ -155,6 +153,7 @@ Item {
         property alias categoryWidth: columnWidths.category
         property alias subcategoryWidth: columnWidths.subcategory
         property alias confidenceWidth: columnWidths.confidence
+        property alias ruleWidth: columnWidths.rule
         property alias keepWidth: columnWidths.keep
     }
 
@@ -431,17 +430,17 @@ Item {
                         anchors.fill: parent
                         spacing: 0
 
-                        // CONFIDENCE (below) is always "—" today — see the
-                        // confidenceText()/confidenceVariant() comment above for why. Called
-                        // out here so it doesn't read as broken/unfinished before a
-                        // prediction model exists to actually fill it in.
+                        // What the category predictor managed to fill in for this
+                        // statement, in its own words — `summary` is assembled in C++
+                        // (SnapshotImportController::predictionInfo()) so the counts and
+                        // the badge colors can't tell two different stories. On a fresh
+                        // database it explains why everything is blank instead of looking
+                        // broken. See docs/category-prediction.md.
                         Text {
                             Layout.fillWidth: true
                             Layout.bottomMargin: 8
                             wrapMode: Text.WordWrap
-                            text: "CONFIDENCE shows how sure a (future) category-prediction model is about "
-                                + "the category/subcategory it picked — always “—” for now, since no "
-                                + "such model exists yet."
+                            text: controller.predictionInfo.summary
                             font.pixelSize: 13
                             color: "#6c7086"
                         }
@@ -517,6 +516,13 @@ Item {
                                     horizontalAlignment: Text.AlignHCenter
                                     minWidth: 60
                                     onWidthChangeRequested: (w) => columnWidths.confidence = w
+                                }
+                                ColumnHeaderCell {
+                                    Layout.preferredWidth: columnWidths.rule
+                                    text: "RULE"
+                                    horizontalAlignment: Text.AlignHCenter
+                                    minWidth: 40
+                                    onWidthChangeRequested: (w) => columnWidths.rule = w
                                 }
                                 ColumnHeaderCell {
                                     Layout.preferredWidth: columnWidths.keep
@@ -606,16 +612,56 @@ Item {
                                         onNameActivated: (name) => controller.setRowSubcategory(txRow.modelData.index, name)
                                     }
 
-                                    // See confidenceVariant()/confidenceText() at the top of
-                                    // this file — always the neutral "—" badge today (no
-                                    // prediction model yet); colors itself red/yellow/green
-                                    // once real per-row confidence values start arriving.
+                                    // Pre-formatted in C++ (Fmt::confidenceVariant()/
+                                    // confidenceText(), reached via the row map) — see the
+                                    // "Confidence display" comment at the top of this file.
+                                    // Hovering explains *why* the predictor picked this
+                                    // category, which is the difference between a number the
+                                    // user can act on and one they just have to trust.
                                     StatusBadge {
                                         Layout.preferredWidth: columnWidths.confidence
                                         Layout.alignment: Qt.AlignHCenter
                                         pillHeight: 24
-                                        variant: page.confidenceVariant(txRow.modelData.confidence)
-                                        text: page.confidenceText(txRow.modelData.confidence)
+                                        variant: txRow.modelData.confidenceVariant
+                                        text: txRow.modelData.confidenceText
+
+                                        HoverHandler { id: confidenceHover }
+                                        ToolTip.text: txRow.modelData.predictionReason
+                                        ToolTip.visible: confidenceHover.hovered
+                                                          && txRow.modelData.predictionReason !== ""
+                                        ToolTip.delay: 300
+                                    }
+
+                                    // "Always categorize labels like this one the same way."
+                                    // One click turns this row's normalized merchant key into
+                                    // a permanent Data::CategoryRule and re-scores every other
+                                    // row in the statement against it — the fastest-learning
+                                    // path in the system (see docs/category-prediction.md).
+                                    //
+                                    // Deliberately NOT `enabled: canTeach`: Item.enabled would
+                                    // also switch off the HoverHandler, so the "pick a category
+                                    // first" tooltip — the one explaining why it looks inert —
+                                    // would be the one thing the user couldn't see. It stays
+                                    // clickable and dimmed instead; rememberRowAsRule() already
+                                    // refuses and posts that same message to the status line.
+                                    GhostButton {
+                                        id: ruleButton
+                                        readonly property bool canTeach: txRow.modelData.category !== ""
+                                                                          && txRow.modelData.merchantKey !== ""
+                                        Layout.preferredWidth: columnWidths.rule
+                                        text: "＋"
+                                        opacity: ruleButton.canTeach ? 1.0 : 0.35
+                                        onClicked: controller.rememberRowAsRule(txRow.modelData.index)
+
+                                        HoverHandler { id: ruleHover }
+                                        ToolTip.text: ruleButton.canTeach
+                                            ? "Always categorize “" + txRow.modelData.merchantKey + "” as "
+                                              + txRow.modelData.category
+                                              + (txRow.modelData.subcategory !== ""
+                                                  ? " / " + txRow.modelData.subcategory : "")
+                                            : "Pick a category for this row first"
+                                        ToolTip.visible: ruleHover.hovered
+                                        ToolTip.delay: 300
                                     }
 
                                     CheckBox {

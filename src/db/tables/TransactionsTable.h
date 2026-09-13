@@ -80,6 +80,18 @@ public:
 
     [[nodiscard]] int countForAccount(int accountId) const;
 
+    // Every *categorized* transaction across every account, oldest first.
+    // Rows with an empty category are excluded in SQL rather than filtered by
+    // the caller — they carry no signal and there can be a lot of them.
+    //
+    // This is the category predictor's entire training set (see
+    // src/predict/CategoryPredictor.h): it deliberately ignores account
+    // boundaries, because "CARREFOUR MARKET is Groceries" is a fact about the
+    // user, not about which of their two checking accounts paid. Ordered
+    // oldest-first so the predictor's recurrence detection sees a natural
+    // timeline without re-sorting.
+    [[nodiscard]] QVector<Data::Transaction> allCategorized() const;
+
     // Updates confirmation_date/operation_date/name/description/debit/
     // credit/category/subcategory for the row matching `tx.id` — see the
     // class comment above for what's deliberately NOT editable.

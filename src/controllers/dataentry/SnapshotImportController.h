@@ -4,9 +4,11 @@
 #include "models/ImportedStatement.h"
 #include "models/ImportLog.h"
 #include "models/Transaction.h"
+#include "predict/CategoryPredictor.h"
 
 #include <QDate>
 #include <QObject>
+#include <QSet>
 #include <QString>
 #include <QUrl>
 #include <QVariantList>
@@ -54,8 +56,18 @@ class SnapshotImportController : public QObject
     // un-prettified, for the "Link this account" action).
     Q_PROPERTY(QVariantMap statementInfo READ statementInfo NOTIFY statementChanged)
     // [{ index, confirmationDate, operationDate, name, description, debitText,
-    //    creditText, balanceText, category, subcategory, confidence, included }]
+    //    creditText, balanceText, category, subcategory, confidence,
+    //    confidenceText, confidenceVariant, predictionReason, merchantKey,
+    //    included }]
     Q_PROPERTY(QVariantList transactionRows READ transactionRows NOTIFY statementChanged)
+
+    // { trained, exampleCount, keyCount, ruleCount, filledCount, reviewCount,
+    //   rowCount, summary } — how much the category predictor knew when this
+    // statement was scored, plus how many rows it managed to fill. Backs the
+    // "auto-filled N of M" line on the review screen; `summary` is the
+    // ready-to-display sentence so QML doesn't assemble one. See
+    // docs/category-prediction.md.
+    Q_PROPERTY(QVariantMap predictionInfo READ predictionInfo NOTIFY statementChanged)
 
     // [{ level, line, message, rawLine }]
     Q_PROPERTY(QVariantList logEntries READ logEntries NOTIFY logChanged)
@@ -81,6 +93,7 @@ public:
 
     [[nodiscard]] QVariantMap  statementInfo() const;
     [[nodiscard]] QVariantList transactionRows() const;
+    [[nodiscard]] QVariantMap  predictionInfo() const;
 
     [[nodiscard]] QVariantList logEntries() const;
     [[nodiscard]] int errorCount() const;
@@ -115,6 +128,40 @@ public:
     // unmatched until linked (see the "not linked" badge / "Link this
     // account" action on ImportSnapshotPage.qml).
     Q_INVOKABLE [[nodiscard]] int matchAccountIndex(const QVariantList& accounts) const;
+
+    // ── Category prediction (see docs/category-prediction.md) ────────────────
+
+    // Retrains the predictor from the database and re-scores every row that
+    // the user has NOT touched by hand — rows they set themselves are never
+    // overwritten, no matter what the predictor now thinks. parseFile() calls
+    // this automatically; QML should call it again after anything that
+    // changes the training data mid-review (adding a rule, editing
+    // categories) so the remaining rows benefit immediately.
+    Q_INVOKABLE void refreshPredictions();
+
+    // "Always categorize labels like this one as <its current category>."
+    // Creates (or repoints) a Data::CategoryRule from `row`'s normalized
+    // merchant key and its currently-set category/subcategory, then re-runs
+    // refreshPredictions() so every other row in this statement picks the
+    // rule up straight away. Returns false — and writes nothing — if the row
+    // has no category set yet or its label normalizes to nothing.
+    //
+    // This is the fastest-learning path in the whole system: one click makes
+    // a merchant permanently and unambiguously categorized, instead of
+    // waiting for the two confirmations the statistical rungs need.
+    Q_INVOKABLE bool rememberRowAsRule(int row);
+
+    // Leave-one-out accuracy of the predictor over the user's own
+    // already-categorized transactions — see
+    // Predict::CategoryPredictor::evaluate(). Retrains first, so it describes
+    // the database as it is right now and is callable with nothing parsed;
+    // writes nothing. Shape:
+    //   { available, total, attempted, coveragePercent, categoryAccuracyPercent,
+    //     pairAccuracyPercent, meanConfidencePercent,
+    //     byRung: [{ rung, attempts, correct, accuracyPercent }, ...] }
+    // Intended for a diagnostics view; the numbers are what the tuning
+    // constants in CategoryPredictor.h should be argued about against.
+    Q_INVOKABLE [[nodiscard]] QVariantMap evaluatePredictor();
 
     // Clears the parsed statement and returns to the file/template picker.
     Q_INVOKABLE void reset();
@@ -197,6 +244,16 @@ private:
     void buildImportReport(const QString& accountLabel, const QVector<Data::Transaction>& saved,
                             const QVariantMap& reconciliation);
 
+    // Rebuilds m_predictor from every categorized transaction in the database
+    // plus every stored rule. Cheap enough to just redo (a few thousand rows
+    // is single-digit milliseconds — see CategoryPredictor's class comment),
+    // so there is deliberately no incremental-update path to keep in sync.
+    void retrainPredictor();
+    // Scores one row and writes category/subcategory/confidence/
+    // predictionReason into it. Never touches a row the user has already
+    // categorized — see m_userEditedRows.
+    void applyPrediction(int row);
+
     QVariantList m_templates;
 
     Data::ImportedStatement       m_statement;
@@ -208,6 +265,18 @@ private:
 
     QString m_statusText;
     QVariantMap m_lastImportReport;
+
+    // ── Category prediction state ───────────────────────────────────────────
+    // Rebuilt on every parseFile()/refreshPredictions() from the database —
+    // never persisted, never serialized (see docs/category-prediction.md).
+    Predict::CategoryPredictor m_predictor;
+    // Row indices the user has categorized by hand. refreshPredictions()
+    // skips these: once someone has made a decision about a row, a later
+    // retrain must not quietly overwrite it. Indices are into
+    // m_statement.transactions and are cleared with the statement; rows
+    // appended afterwards (addReconciliationAdjustment()) only ever get
+    // *higher* indices, so no remapping is needed.
+    QSet<int> m_userEditedRows;
 };
 
 #endif // FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_SNAPSHOTIMPORTCONTROLLER_H

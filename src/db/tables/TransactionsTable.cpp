@@ -23,7 +23,9 @@ QDate dateFromDb(const QString& dateStr)
     return dateStr.isEmpty() ? QDate() : QDate::fromString(dateStr, Qt::ISODate);
 }
 
-// Column indices for the SELECT in allForAccount() (must match its column list order).
+// Column indices for the row-reading SELECTs (allForAccount(),
+// allCategorized(), latestOnOrBefore()) — all three share one column list, so
+// these must match its order.
 constexpr int kColId = 0;
 constexpr int kColAccountId = 1;
 constexpr int kColConfirmationDate = 2;
@@ -179,6 +181,38 @@ QVector<Data::Transaction> TransactionsTable::allForAccount(int accountId) const
     while (query.next()) {
         Data::Transaction transaction;
         transaction.id               = query.value(kColId).toInt();
+        transaction.accountId         = query.value(kColAccountId).toInt();
+        transaction.confirmationDate  = dateFromDb(query.value(kColConfirmationDate).toString());
+        transaction.operationDate     = dateFromDb(query.value(kColOperationDate).toString());
+        transaction.name              = query.value(kColName).toString();
+        transaction.description       = query.value(kColDescription).toString();
+        transaction.debit             = query.value(kColDebit).toDouble();
+        transaction.credit            = query.value(kColCredit).toDouble();
+        transaction.balanceAfter      = query.value(kColBalanceAfter).toDouble();
+        transaction.category          = query.value(kColCategory).toString();
+        transaction.subcategory       = query.value(kColSubcategory).toString();
+        transaction.sourceTemplate    = query.value(kColSourceTemplate).toString();
+        result.append(transaction);
+    }
+    return result;
+}
+
+QVector<Data::Transaction> TransactionsTable::allCategorized() const
+{
+    QVector<Data::Transaction> result;
+    QSqlQuery query(db());
+    if (!query.exec(QStringLiteral(
+            "SELECT id, account_id, confirmation_date, operation_date, name, description,"
+            " debit, credit, balance_after, category, subcategory, source_template"
+            " FROM transactions WHERE category != ''"
+            " ORDER BY operation_date ASC, id ASC;"))) {
+        qWarning() << "[TransactionsTable] allCategorized error:" << query.lastError().text();
+        return result;
+    }
+
+    while (query.next()) {
+        Data::Transaction transaction;
+        transaction.id                = query.value(kColId).toInt();
         transaction.accountId         = query.value(kColAccountId).toInt();
         transaction.confirmationDate  = dateFromDb(query.value(kColConfirmationDate).toString());
         transaction.operationDate     = dateFromDb(query.value(kColOperationDate).toString());
