@@ -1,0 +1,74 @@
+# ── setup-qt ──────────────────────────────────────────────────────────────────
+# Everything a job needs before it can configure the project: the OS-level build
+# and X11/OpenGL packages on Linux, then Qt itself.
+#
+# This is a composite action rather than a job the other jobs depend on, on
+# purpose. The pipeline's rule is that jobs are independent so any one of them
+# can be re-run on its own (see CI-CD.md); sharing setup through an action
+# gives one place to change the Qt version without reintroducing a `needs:`
+# edge between jobs.
+#
+# Qt comes from aqtinstall via jurplel/install-qt-action, which downloads the
+# official Qt binaries — no Qt account, no online installer, no manual step.
+# https://github.com/jurplel/install-qt-action
+name: Set up Qt and build tools
+description: Installs the Linux build/runtime packages (Linux only) and the pinned Qt build.
+
+inputs:
+  qt-version:
+    description: Qt version to install, e.g. 6.11.2. Must be an exact version, not a wildcard.
+    required: true
+  modules:
+    description: Space-separated extra Qt modules (this project needs Qt Graphs).
+    required: false
+    default: qtgraphs
+  cache:
+    description: Cache the Qt installation between runs.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    # Qt 6 on Linux links against X11/xcb, OpenGL and fontconfig, and none of
+    # that is in the runner image by default. Missing any of them shows up much
+    # later as a confusing CMake or link error, so install them up front.
+    # xvfb is here for the smoke test — it runs the real xcb platform plugin
+    # rather than the offscreen one, which is what a user actually gets.
+    - name: Install Linux build and runtime packages
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends \
+          build-essential ninja-build \
+          libgl1-mesa-dev libglu1-mesa-dev libegl1-mesa-dev \
+          libfontconfig1-dev libfreetype-dev \
+          libx11-dev libx11-xcb-dev libxext-dev libxfixes-dev libxi-dev \
+          libxrender-dev libxkbcommon-dev libxkbcommon-x11-dev \
+          libxcb1-dev libxcb-cursor0 libxcb-glx0-dev libxcb-icccm4-dev \
+          libxcb-image0-dev libxcb-keysyms1-dev libxcb-randr0-dev \
+          libxcb-render-util0-dev libxcb-shape0-dev libxcb-shm0-dev \
+          libxcb-sync-dev libxcb-util-dev libxcb-xfixes0-dev \
+          libxcb-xinerama0-dev libxcb-xkb-dev \
+          libdbus-1-dev libssl-dev \
+          xvfb
+
+    - name: Install Qt ${{ inputs.qt-version }}
+      uses: jurplel/install-qt-action@v4
+      with:
+        version: ${{ inputs.qt-version }}
+        modules: ${{ inputs.modules }}
+        cache: ${{ inputs.cache }}
+        # Explicit rather than implied: the app is a plain desktop build, and
+        # naming the arch keeps the cache key stable when the action's default
+        # for a new Qt version changes.
+        target: desktop
+        arch: ${{ runner.os == 'Windows' && 'win64_msvc2022_64' || 'linux_gcc_64' }}
+
+    - name: Report toolchain
+      shell: bash
+      run: |
+        echo "Qt      : ${{ inputs.qt-version }} (QT_ROOT_DIR=$QT_ROOT_DIR)"
+        cmake --version | head -1
+        echo "Python  : $(python3 --version 2>&1 || python --version 2>&1)"

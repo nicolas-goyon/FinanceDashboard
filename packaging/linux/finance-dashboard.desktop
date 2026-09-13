@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Finance Dashboard
+GenericName=Personal Finance Analytics
+Comment=Import bank statements, categorize transactions and track net worth — all data stays on this machine
+Exec=FinanceDashboard %f
+Icon=finance-dashboard
+Terminal=false
+Categories=Office;Finance;
+Keywords=finance;budget;bank;statement;transactions;accounting;net worth;
+StartupNotify=true
+StartupWMClass=FinanceDashboard

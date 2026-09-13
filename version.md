@@ -1,19 +1,28 @@
 # Version History — Finance Dashboard
 
+<!-- GENERATED FILE — do not edit by hand.
+     Source of truth: version.json. Regenerate with `python tools/version.py render`.
+     Add an entry with `python tools/version.py add <Section> "<text>"`.
+     CI (`version.py check`) fails if this file is out of sync with version.json. -->
+
 This file is the single top-level changelog for the app. It tracks the current version and
 every previous one, in the same style as a standard `CHANGELOG.md` (newest first). It is meant
 to answer "what changed and when," at a glance — for *why* something is built the way it is,
-see `ARCHITECTURE.MD` and `docs/`.
+see `ARCHITECTURE.MD`; for how it is built, tested and released, see `CI-CD.md`.
 
 **Format:** each version gets a heading, a one-line summary, and `Added` / `Changed` / `Fixed`
-/ `Docs` subsections (omit any that don't apply). Version numbers follow the same value as
-`CMakeLists.txt`'s `project(FinanceDashboard VERSION x.y.z ...)`.
+/ `Docs` subsections (omit any that don't apply). The version number lives in `version.json`
+and is read from there by `CMakeLists.txt` — it is never typed twice.
 
 **Maintenance rule** (see the project instructions): every reasonable change gets logged here
 under the current in-progress version, at the time it's made — not reconstructed after the
 fact. Small fixes to a feature that's still unreleased/in-progress in the *same* version don't
 need their own extra line; fold them into the feature's own entry instead of listing "fixed a
 bug in the thing I just added two lines above."
+
+**Releases** are cut automatically: every push to `main` publishes the in-progress version as a
+GitHub release (installers + portable builds + source archives), stamps its date here, and
+opens the next patch version as the new in-progress one. See `CI-CD.md`.
 
 ---
 
@@ -26,8 +35,8 @@ pass in the same in-progress version.
 - `TODO.md` — standing backlog of known limitations, bugs, and cleanups found during a full
   file-by-file review, split out of what used to be `ARCHITECTURE.MD`'s "Known Limitations /
   TODOs" section.
-- `version.md` (this file) — top-level changelog, replacing the ad-hoc "Feature pass —
-  ..." narrative headers that used to accumulate at the top of `ARCHITECTURE.MD`.
+- `version.md` (this file) — top-level changelog, replacing the ad-hoc "Feature pass — ..."
+  narrative headers that used to accumulate at the top of `ARCHITECTURE.MD`.
 - `docs/` folder — `ARCHITECTURE.MD` split into focused per-topic files (see `ARCHITECTURE.MD`
   for the index). Includes a new `docs/automated-docs.md` describing the doc-generation script.
 - `tools/generate_docs.py` — generates `docs/generated/source-tree.md` (a file/module listing
@@ -45,56 +54,122 @@ pass in the same in-progress version.
   rings). Both rings' slices show labels and are independently clickable (shows "Category —"/
   "Subcategory —" + amount + percentage). Income/expense is derived per-transaction from
   credit/debit, not a tag on `Category`. Backed by the new
-  `AccountController::accountCategoryBreakdown(accountIndex)`. See `docs/account-history.md` and
-  `docs/charting-gotchas.md`.
+  `AccountController::accountCategoryBreakdown(accountIndex)`. See `docs/account-history.md`
+  and `docs/charting-gotchas.md`.
+- **Category prediction on statement import** — imported rows now arrive with a suggested
+  category/subcategory and a real confidence score, learned from the user's own already-
+  categorized transactions. No trained model and nothing persisted but the user's rules: a
+  four-rung cascade (user rule → exact merchant key → fuzzy key → TF-IDF k-NN over word tokens
+  and character trigrams), plus sign gating and a monthly-recurrence boost. Confidence is
+  calibrated to the review screen's existing badge thresholds — a merchant seen once scores
+  0.67 (amber), twice 0.80 (green) — and drops back automatically when the user recategorizes.
+  New `src/predict/LabelNormalizer.{h,cpp}` (merchant-key normalization — the step most of the
+  accuracy actually comes from) and `src/predict/CategoryPredictor.{h,cpp}`. Fulfils
+  `PROJECT.md` § Category System — Prediction. See `docs/category-prediction.md`.
+- **`category_rules` table + `Data::CategoryRule`** — user-authored "always categorize labels
+  like X as Y" rules, the top rung of the cascade and the fastest-learning path in the system
+  (one click, permanent). `src/db/tables/CategoryRulesTable.{h,cpp}` plus
+  `Database::loadCategoryRules()` / `addCategoryRule()` (upsert, so re-teaching replaces rather
+  than stacks) / `removeCategoryRule()`.
+- **Import review screen — RULE column and confidence tooltips.** A `＋` per row teaches a rule
+  from that row's merchant key and current category, then re-scores the whole statement so
+  every other row for the same merchant snaps to it immediately. Hovering the CONFIDENCE badge
+  explains *why* the predictor picked that category ("Categorized "EDF" as Utilities in 3 of 3
+  previous transactions"). The line above the table is now a live "auto-filled N of M rows"
+  summary (`SnapshotImportController::predictionInfo`) instead of the "no model exists yet"
+  placeholder.
+- **`SnapshotImportController::evaluatePredictor()`** — leave-one-out accuracy of the predictor
+  over the user's own categorized transactions (coverage, category/pair accuracy, mean
+  confidence, per-rung breakdown), so the tuning constants can be checked against real data
+  instead of argued about. Backed by `Predict::CategoryPredictor::evaluate()`.
+- **`TransactionsTable::allCategorized()` / `Database::allCategorizedTransactions()`** — every
+  categorized transaction across every account, oldest first; the predictor's training set.
+  Deliberately ignores account boundaries.
+- **`tools/predictor_selftest.cpp`** — standalone sanity harness for `src/predict/` (build
+  command in its header comment), covering normalization, each cascade rung, sign gating,
+  recurrence, subcategory ambiguity and the evaluator. Not part of the CMake build — it has its
+  own `main()`; see `TODO.md`'s "no tests" item for the Qt Test suite it stands in for.
+- Full CI/CD pipeline on GitHub Actions (`.github/workflows/ci.yml`, documented in `CI-CD.md`).
+  Every push builds and packages the app on Windows and Linux and runs the tests and linters as
+  independent, individually re-runnable jobs; every push to `main` publishes a GitHub release.
+  Ships a Windows `.msi` installer and portable `.zip`, a Linux `.AppImage`, `.deb` and
+  portable `.tar.gz`, source archives and `SHA256SUMS.txt` — none of which need Qt installed on
+  the target machine.
+- `version.json` + `tools/version.py` — the version and the changelog are now one
+  machine-readable file. `CMakeLists.txt` reads `current` straight into `project(... VERSION
+  ...)`, so the build, the installer file names, the release tag and the app's own
+  `setApplicationVersion()` can no longer disagree. `version.md` is generated from it
+  (`version.py render`); log a change with `version.py add <Section> "<text>"`.
+- Self-contained deployment via `qt_generate_deploy_qml_app_script()` — `cmake --install` now
+  produces a directory that runs on a machine with no Qt, and every package is cut from that
+  one tree. Plus `packaging/` (generated app icon, `.desktop` entry, AppStream metadata,
+  AppImage and `.deb` build scripts) and `LICENSE` (MIT), which doubles as the MSI's licence
+  page.
+- `tests/CMakeLists.txt` — `tools/predictor_selftest.cpp` is now a CTest target (`cmake
+  -DFD_BUILD_TESTS=ON`, then `ctest`) instead of a hand-run binary, and CI runs it on every
+  push. Partially clears `TODO.md`'s "no tests" item.
 
 ### Changed
+- **Removed** all `docs` for pruning and reduce overhead.
 - `README.md` rewritten to be a short, professional front door (what the app is, prerequisites,
-  build/run steps) instead of an exhaustive page-by-page feature list — the exhaustive material
-  moved into `docs/`.
-- `ARCHITECTURE.MD` trimmed to an index/overview page that links into `docs/*.md` instead of
-  holding every design-decision narrative inline. Added a "Charts should have hover (or click)
-  feedback" guideline.
+  build/run steps).
 - **Account Details — transaction history table is now horizontally scrollable** instead of
-  overflowing past the card's border on a narrow window: the header/row `Rectangle`s use a fixed
-  `Layout.preferredWidth` and the table sits inside a `ScrollView`, which only shows a horizontal
-  scrollbar when the card is narrower than the table. See `docs/account-history.md`.
+  overflowing past the card's border on a narrow window: the header/row `Rectangle`s use a
+  fixed `Layout.preferredWidth` and the table sits inside a `ScrollView`, which only shows a
+  horizontal scrollbar when the card is narrower than the table.
 - **Account Details — all five `GraphsView`s (balance chart + both pies' inner/outer rings) use
-  an explicit, higher-contrast `GraphsTheme`** instead of `ColorScheme.Dark` defaults, which read
-  as too washed-out against this app's near-black cards — same Catppuccin Mocha tokens already
-  documented in `docs/styling.md`. See `docs/account-history.md`.
+  an explicit, higher-contrast `GraphsTheme`** instead of `ColorScheme.Dark` defaults, which
+  read as too washed-out against this app's near-black cards — same Catppuccin Mocha tokens
+  already documented in `docs/styling.md`.
 - **`HoverPoint.qml`'s hover hit-box enlarged (26×26 → 34×34), and its tooltip now flips
   below/clamps horizontally instead of always centering above the point** — the small hit-box
   made hovering hard to land, and always-above-centered positioning cropped the tooltip for any
   point near the chart's top edge or a side. Both are shared-component fixes, so they apply to
   every page's line-chart hover (Account Details, Savings, Cash Flow, Investments, Overview,
   Projects). See `docs/charting-gotchas.md`.
+- **Confidence badge bucketing/formatting moved from QML to C++** — `Fmt::confidenceVariant()`
+  / `Fmt::confidenceText()` (`src/utils/Formatter.h`) replace `ImportSnapshotPage.qml`'s
+  page-level `confidenceVariant()`/`confidenceText()` JS helpers; rows now carry
+  ready-to-display `confidenceText`/`confidenceVariant` alongside the raw `confidence`,
+  matching the app's "values arrive pre-formatted from the controller" convention. Clears the
+  corresponding `TODO.md` § Convention drift item, and keeps the 0.5/0.8 thresholds next to the
+  predictor that produces the numbers.
+- **`Data::ImportedTransaction` gained `predictionReason`** — one line of plain English
+  explaining where the suggested category came from, shown as a tooltip on the confidence
+  badge. Review-screen-only and never persisted, same status as `confidence`.
+- Both packaging jobs smoke-test the app before publishing: the Windows build is launched from
+  its install tree on the `offscreen` platform, the Linux `.AppImage` under Xvfb with the real
+  `xcb` plugin, each with the builder's own Qt removed from the environment so a package that
+  only works on the build machine fails the job.
+- `cmake_minimum_required` 3.20 → 3.21 (Qt's CMake deployment API), and `main.cpp` takes its
+  version from the `FD_VERSION_STRING` compile definition instead of a hard-coded `"0.2.0"`.
 
 ### Fixed
 - **Account Details — the 3 KPI cards (Current balance / Transactions / Type-Category) are now
-  exactly equal width and height.** Width: `Layout.fillWidth: true` alone left the middle card a
-  hair narrower than its neighbors (QtQuick Layouts' leftover-pixel remainder handling wasn't
+  exactly equal width and height.** Width: `Layout.fillWidth: true` alone left the middle card
+  a hair narrower than its neighbors (QtQuick Layouts' leftover-pixel remainder handling wasn't
   symmetric); all three now bind an explicit, identical `Layout.preferredWidth`. Height: the
   Transactions card's empty `sub` line made QtQuick Layouts exclude it from the card's
-  implicit-height calculation (a hair shorter than its two neighbors, which both have a real sub
-  line) — now shows "All time" instead of an empty string.
+  implicit-height calculation (a hair shorter than its two neighbors, which both have a real
+  sub line) — now shows "All time" instead of an empty string.
 
 ### Docs
 - See `Added`/`Changed`/`Fixed` above.
 
 ---
 
-## v0.2.0 — Baseline
+## v0.2.0 — 2026-07-18 — Baseline
 
 Starting point for this changelog. Everything below was already built before `version.md`
-existed; recorded here as one baseline entry rather than reconstructed commit-by-commit. Matches
-`CMakeLists.txt`'s `project(... VERSION 0.2.0 ...)` at the time this file was introduced.
+existed; recorded here as one baseline entry rather than reconstructed commit-by-commit.
+Matches `CMakeLists.txt`'s `project(... VERSION 0.2.0 ...)` at the time this file was
+introduced.
 
 ### Added
 **Navigation & shell**
-- `Main.qml` app shell: collapsible left sidebar (`SidebarCategory.qml`) + `StackLayout`, driven
-  by a single `currentViewId` source of truth. "ADMIN" section divider above Account Management
-  / Database Management.
+- `Main.qml` app shell: collapsible left sidebar (`SidebarCategory.qml`) + `StackLayout`,
+  driven by a single `currentViewId` source of truth. "ADMIN" section divider above Account
+  Management / Database Management.
 - Shared QML component library: `PageHeader`, `PillButton`, `GhostButton`, `StatusBadge`,
   `FormRow`, `ColorPickerRow`, `FormDialog`, `ConfirmDialog`, `EmptyState`, `ColumnHeaderCell`,
   `KpiCard`, `ChartCard`, `SidebarCategory`, `ColorComboBox`.
@@ -138,8 +213,8 @@ existed; recorded here as one baseline entry rather than reconstructed commit-by
 
 **Tooling**
 - clang-tidy (build-time opt-in + on-demand script) and qmllint (auto-wired via
-  `qt_add_qml_module`) static analysis, plus `tools/run-static-analysis.ps1` to run both and log
-  to `logs/`.
+  `qt_add_qml_module`) static analysis, plus `tools/run-static-analysis.ps1` to run both and
+  log to `logs/`.
 
 ### Removed
 - The original Qt Widgets app and the intermediate ported-but-unwired QML generation
@@ -149,5 +224,5 @@ existed; recorded here as one baseline entry rather than reconstructed commit-by
   baseline if ever needed again.
 - Keyword-based category auto-suggestion (`CategoryKeywords.h`) — replaced by the user-managed
   category list.
-- `iban`/`bic`/`number` columns on the `accounts` table — dropped for security; accounts are now
-  matched only via stored hash fingerprints.
+- `iban`/`bic`/`number` columns on the `accounts` table — dropped for security; accounts are
+  now matched only via stored hash fingerprints.

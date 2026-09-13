@@ -1,0 +1,542 @@
+# ══════════════════════════════════════════════════════════════════════════════
+#  Finance Dashboard — CI/CD
+#
+#  Full documentation: CI-CD.md. The short version:
+#
+#  * Every job is self-contained. None of them `needs:` another (the single
+#    exception is `release`, which by definition cannot run before the things it
+#    publishes exist). A job that fails can be re-run on its own from the GitHub
+#    UI without dragging five other jobs along, and a broken linter never blocks
+#    a build. Each job checks out, sets up Qt and reads the version itself.
+#
+#  * Every push to `main` publishes a release. The version comes from
+#    version.json — no tag to remember to push. After the release is out, CI
+#    stamps that version's date in the changelog and opens the next patch
+#    version, then commits both files back to `main`.
+#
+#  * The end products are meant to be plug and play. A user downloads one file:
+#      Windows  FinanceDashboard-<v>-windows-x64.msi   installer, shortcuts,
+#                                                      uninstaller, Qt included
+#      Linux    FinanceDashboard-<v>-linux-x86_64.AppImage   chmod +x, run
+#      plus portable archives, a .deb, and the source, all with SHA-256 sums.
+#    Nobody has to install Qt, download a DLL or read a build instruction.
+# ══════════════════════════════════════════════════════════════════════════════
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+# Read-only by default; the release job asks for `contents: write` for itself.
+permissions:
+  contents: read
+
+concurrency:
+  # One run per branch. On main, never cancel — a cancelled run could kill a
+  # release halfway between publishing the assets and bumping the version.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref_name != 'main' }}
+
+env:
+  # The one place the Qt version is written. Bump it here and every job follows.
+  QT_VERSION: 6.11.2
+  QT_MODULES: qtgraphs
+
+jobs:
+
+  # ────────────────────────────────────────────────────────────────────────────
+  #  Quality gates — no packaging, fast feedback, all four run in parallel
+  # ────────────────────────────────────────────────────────────────────────────
+
+  # Cheapest job in the pipeline and the one that protects the release flow: if
+  # version.md and version.json disagree, or the version that just shipped was
+  # never bumped, the changelog and the release notes would ship wrong — and
+  # since the version number is what names every artifact and every tag, wrong
+  # here means wrong everywhere.
+  #
+  # tools/generate_docs.py --check is deliberately NOT run: it regenerates
+  # docs/generated/source-tree.md, and docs/ was removed from this project (see
+  # version.md v0.2.1 § Changed). Add it back here the day docs/ comes back.
+  changelog:
+    name: Changelog & version
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: version.json ↔ version.md are in sync
+        run: python tools/version.py check
+
+      - name: Preview the release notes this version would publish
+        run: |
+          {
+            echo "### Next release: v$(python tools/version.py current)"
+            echo ""
+            python tools/version.py notes
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  tests:
+    name: Tests (ctest)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-qt
+        with:
+          qt-version: ${{ env.QT_VERSION }}
+          modules: ${{ env.QT_MODULES }}
+
+      - name: Configure
+        run: >
+          cmake -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DFD_BUILD_TESTS=ON
+
+      - name: Build test targets
+        run: cmake --build build --target predictor_selftest --parallel
+
+      - name: Run ctest
+        working-directory: build
+        run: ctest --output-on-failure --no-tests=error
+
+  qmllint:
+    name: qmllint
+    runs-on: ubuntu-24.04
+    # Not blocking (yet). qmllint has never run over this codebase in CI, so the
+    # first runs are a report, not a gate — a warning in a QML file must not stop
+    # a release going out. Flip this to `false` once the QML tree is clean; see
+    # CI-CD.md § Turning the linters into gates.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-qt
+        with:
+          qt-version: ${{ env.QT_VERSION }}
+          modules: ${{ env.QT_MODULES }}
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Debug
+
+      # qt_add_qml_module() generates this target for us — same one
+      # tools/run-static-analysis.ps1 invokes locally, so CI and the dev
+      # machine are checking exactly the same thing.
+      - name: Run qmllint
+        run: cmake --build build --target FinanceDashboard_qmllint 2>&1 | tee qmllint.log
+
+      - name: Upload qmllint log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qmllint-log
+          path: qmllint.log
+          if-no-files-found: ignore
+
+  clang-tidy:
+    name: clang-tidy
+    runs-on: ubuntu-24.04
+    # Same reasoning as qmllint: the project's .clang-tidy is deliberately
+    # aggressive and has never been enforced, so this reports rather than gates.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-qt
+        with:
+          qt-version: ${{ env.QT_VERSION }}
+          modules: ${{ env.QT_MODULES }}
+
+      - name: Install clang-tidy
+        run: sudo apt-get install -y --no-install-recommends clang-tidy clang-tools
+
+      - name: Configure
+        run: >
+          cmake -B build -G Ninja
+          -DCMAKE_BUILD_TYPE=Debug
+          -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+      # AUTOMOC output and the generated QML type-registration sources have to
+      # exist before clang-tidy can parse anything that includes them.
+      - name: Build (generates moc / qml registration sources)
+        run: cmake --build build --parallel
+
+      # Only this project's own translation units — the file-name regex keeps
+      # everything CMake and Qt generated inside build/ out of the report, which
+      # is what the build-dir .clang-tidy trick in CMakeLists.txt does for the
+      # in-build variant of this check.
+      - name: Run clang-tidy over src/
+        run: |
+          # Ubuntu ships the driver as run-clang-tidy or run-clang-tidy-<major>
+          # depending on the release; resolve it instead of guessing.
+          runner=$(command -v run-clang-tidy || ls /usr/bin/run-clang-tidy-* 2>/dev/null | head -1)
+          test -n "$runner" || { echo "::error::run-clang-tidy not found"; exit 1; }
+          "$runner" -p build -quiet "$(pwd)/src/.*\.cpp" 2>&1 | tee clang-tidy.log || true
+          warnings=$(grep -c "warning:" clang-tidy.log || echo 0)
+          errors=$(grep -c "error:" clang-tidy.log || echo 0)
+          {
+            echo "### clang-tidy"
+            echo ""
+            echo "| | count |"
+            echo "|---|---|"
+            echo "| warnings | ${warnings} |"
+            echo "| errors | ${errors} |"
+            echo ""
+            echo "Full log: the \`clang-tidy-log\` artifact on this run."
+          } >> "$GITHUB_STEP_SUMMARY"
+          # Errors mean clang-tidy could not parse the code — that is a real
+          # break, unlike a style warning, so fail the (non-blocking) job on it.
+          test "$errors" -eq 0
+
+      - name: Upload clang-tidy log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: clang-tidy-log
+          path: clang-tidy.log
+          if-no-files-found: ignore
+
+  # ────────────────────────────────────────────────────────────────────────────
+  #  Packaging — one job per platform, each producing finished, signed-off files
+  # ────────────────────────────────────────────────────────────────────────────
+
+  package-windows:
+    name: Package — Windows (MSI + portable)
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: echo "version=$(python tools/version.py current)" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-qt
+        with:
+          qt-version: ${{ env.QT_VERSION }}
+          modules: ${{ env.QT_MODULES }}
+
+      # WiX 5 (the .NET tool), not the unmaintained WiX 3 candle/light pair —
+      # see CPACK_WIX_VERSION in CMakeLists.txt. The UI extension supplies the
+      # installer's licence/install-directory dialogs; CPack passes it to
+      # `wix build` automatically, but it has to be in the extension cache first.
+      - name: Install WiX toolset
+        run: |
+          dotnet tool install --global wix || dotnet tool update --global wix
+          wix extension add -g WixToolset.UI.wixext
+          wix --version
+
+      # No -G: let CMake pick the runner's Visual Studio generator rather than
+      # naming a version that changes with the runner image.
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      # The self-contained tree everything else is cut from: the .exe, every Qt
+      # DLL it actually uses, the plugins, the QML modules and a qt.conf.
+      - name: Install (self-contained tree)
+        run: cmake --install build --config Release --prefix "${{ github.workspace }}/stage"
+
+      # Does the thing actually start? A missing QML module or platform plugin
+      # only shows up at runtime, and shipping an installer that opens to a
+      # blank screen is exactly the failure this pipeline exists to prevent.
+      # main.cpp exits -1 on objectCreationFailed, so "still alive after 15s"
+      # means the whole QML tree loaded.
+      - name: Smoke test the deployed app
+        shell: pwsh
+        run: |
+          # Hide the CI machine's own Qt from the test. install-qt-action puts
+          # Qt on PATH and sets QT_PLUGIN_PATH/QML2_IMPORT_PATH; leaving those in
+          # place would let the app borrow a DLL or a QML module the installer
+          # forgot to ship, and the test would pass on a broken package.
+          $env:QT_PLUGIN_PATH = ""
+          $env:QML2_IMPORT_PATH = ""
+          $env:QML_IMPORT_PATH = ""
+          $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -notmatch '(?i)\\Qt\\' }) -join ';'
+          $env:QT_QPA_PLATFORM = "offscreen"
+          $exe = "${{ github.workspace }}\stage\FinanceDashboard.exe"
+          if (-not (Test-Path $exe)) { throw "not found: $exe" }
+          $p = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) {
+            throw "FinanceDashboard.exe exited early with code $($p.ExitCode) — the deployed tree is incomplete"
+          }
+          Stop-Process -Id $p.Id -Force
+          Write-Host "OK — app stayed up for 15s on the offscreen platform"
+
+      - name: Package (MSI + portable ZIP)
+        working-directory: build
+        run: cpack -C Release -B "${{ github.workspace }}/dist"
+
+      - name: List artifacts
+        shell: bash
+        run: ls -la dist/*.msi dist/*.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-windows
+          path: |
+            dist/*.msi
+            dist/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  package-linux:
+    name: Package — Linux (AppImage + .deb + portable)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: echo "version=$(python3 tools/version.py current)" >> "$GITHUB_OUTPUT"
+
+      - uses: ./.github/actions/setup-qt
+        with:
+          qt-version: ${{ env.QT_VERSION }}
+          modules: ${{ env.QT_MODULES }}
+
+      - name: Configure
+        run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --parallel
+
+      - name: Install (self-contained tree)
+        run: cmake --install build --prefix "${{ github.workspace }}/stage"
+
+      - name: Package (portable tar.gz)
+        working-directory: build
+        run: cpack -B "${{ github.workspace }}/dist"
+
+      - name: Package (AppImage)
+        run: bash packaging/linux/make-appimage.sh stage "${{ steps.version.outputs.version }}" dist
+
+      - name: Package (.deb)
+        run: bash packaging/linux/make-deb.sh stage "${{ steps.version.outputs.version }}" dist
+
+      # Runs the real xcb platform plugin under Xvfb — the same path a user on a
+      # desktop gets, not the offscreen shortcut — and runs the AppImage rather
+      # than the build tree, so a library the bundler forgot is caught here.
+      - name: Smoke test the AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"   # GitHub runners have no FUSE
+          # Same reasoning as the Windows smoke test: blank out the builder's own
+          # Qt so the AppImage can only use what it carries.
+          QT_PLUGIN_PATH: ""
+          QML2_IMPORT_PATH: ""
+          QML_IMPORT_PATH: ""
+          LD_LIBRARY_PATH: ""
+        run: |
+          appimage=$(ls dist/*.AppImage)
+          echo "Running $appimage"
+          set +e
+          xvfb-run -a --server-args="-screen 0 1280x800x24" \
+            timeout --signal=TERM 20 "$appimage"
+          rc=$?
+          set -e
+          # 124/143 = still running when the timeout fired, which is the pass.
+          if [ "$rc" -ne 124 ] && [ "$rc" -ne 143 ]; then
+            echo "::error::AppImage exited early with code $rc — the bundle is incomplete"
+            exit 1
+          fi
+          echo "OK — AppImage stayed up for 20s under Xvfb"
+
+      - name: Verify the .deb
+        run: |
+          deb=$(ls dist/*.deb)
+          dpkg-deb --contents "$deb" | head -20
+          sudo apt-get install -y "./$deb"
+          test -x /opt/FinanceDashboard/bin/FinanceDashboard
+          test -L /usr/bin/finance-dashboard
+          sudo apt-get remove -y finance-dashboard
+
+      - name: List artifacts
+        run: ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-linux
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+  source-archive:
+    name: Package — source
+    runs-on: ubuntu-24.04
+    steps:
+      # Full history so `git archive` sees a real tree, and so the archive
+      # matches what a `git clone` at this commit would give.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version
+        id: version
+        run: echo "version=$(python3 tools/version.py current)" >> "$GITHUB_OUTPUT"
+
+      # git archive, not `tar` over the working tree: it respects .gitignore and
+      # .gitattributes by construction, so no build directory, no logs/ and no
+      # IDE state can ever leak into a published source archive.
+      - name: Create source archives
+        run: |
+          version="${{ steps.version.outputs.version }}"
+          prefix="FinanceDashboard-${version}/"
+          mkdir -p dist
+          git archive --format=tar.gz -9 --prefix="$prefix" \
+            -o "dist/FinanceDashboard-${version}-source.tar.gz" HEAD
+          git archive --format=zip -9 --prefix="$prefix" \
+            -o "dist/FinanceDashboard-${version}-source.zip" HEAD
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: packages-source
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  # ────────────────────────────────────────────────────────────────────────────
+  #  Release — the only job with dependencies, and only on main
+  # ────────────────────────────────────────────────────────────────────────────
+  release:
+    name: Release
+    needs: [package-windows, package-linux, source-archive]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write        # create the release/tag and push the version bump
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Keep the token so the version-bump commit at the end can be pushed,
+          # and the full history so the rebase-retry below has something to
+          # rebase onto (a shallow clone makes `git pull --rebase` unreliable).
+          persist-credentials: true
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Read version
+        id: version
+        run: |
+          version=$(python tools/version.py current)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      # Defence in depth: if a run is somehow replayed, or a bump commit failed
+      # to push last time, stop rather than publishing a second v-same release.
+      - name: Skip if this version is already released
+        id: guard
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "::warning::${{ steps.version.outputs.tag }} already exists — nothing to release. Run \`python tools/version.py bump\` and push."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Download every package
+        if: steps.guard.outputs.already == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: packages-*
+          merge-multiple: true
+          path: dist
+
+      - name: Checksums
+        if: steps.guard.outputs.already == 'false'
+        working-directory: dist
+        run: |
+          # Written outside the directory first, so the sums file can never end
+          # up listing (a partially written copy of) itself.
+          find . -maxdepth 1 -type f -printf '%f\0' | sort -z \
+            | xargs -0 sha256sum > ../SHA256SUMS.txt
+          mv ../SHA256SUMS.txt .
+          cat SHA256SUMS.txt
+
+      # The changelog for this version comes from version.json; the "how do I
+      # install this" half is the same every time and lives in a file so it can
+      # be edited without touching the workflow.
+      - name: Build release notes
+        if: steps.guard.outputs.already == 'false'
+        run: |
+          {
+            python tools/version.py notes --version "${{ steps.version.outputs.version }}"
+            echo
+            cat .github/release-notes-footer.md
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Publish the GitHub release
+        if: steps.guard.outputs.already == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "Finance Dashboard ${{ steps.version.outputs.tag }}" \
+            --notes-file release-notes.md \
+            --target "$GITHUB_SHA" \
+            dist/*
+
+      # ── Roll the version forward ────────────────────────────────────────────
+      # Stamp today's date on the version that just shipped, open the next patch
+      # version as the new in-progress one, regenerate version.md, and commit
+      # both back. A push authenticated with GITHUB_TOKEN does not start another
+      # workflow run, so this cannot loop — the [skip ci] marker is belt and
+      # braces for anyone who later swaps in a PAT.
+      - name: Stamp and bump the version
+        if: steps.guard.outputs.already == 'false'
+        run: |
+          python tools/version.py release
+          next=$(python tools/version.py bump patch)
+          python tools/version.py render
+          python tools/version.py check
+          echo "next=$next" >> "$GITHUB_ENV"
+
+      - name: Commit the version bump
+        if: steps.guard.outputs.already == 'false'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.json version.md
+          if git diff --cached --quiet; then
+            echo "nothing to commit"
+            exit 0
+          fi
+          git commit -m "chore(release): ${{ steps.version.outputs.tag }}, open v${next} [skip ci]"
+          # main may have moved while the packages were building.
+          for attempt in 1 2 3; do
+            git pull --rebase origin main && git push origin HEAD:main && exit 0
+            echo "push attempt $attempt failed, retrying..."
+            sleep $((attempt * 5))
+          done
+          echo "::error::Could not push the version bump to main. Run \`python tools/version.py release && python tools/version.py bump patch && python tools/version.py render\` locally and push, or the next run will refuse to release."
+          exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          {
+            echo "### Release"
+            if [ "${{ steps.guard.outputs.already }}" = "true" ]; then
+              echo "Skipped — \`${{ steps.version.outputs.tag }}\` already exists."
+            else
+              echo "Published **${{ steps.version.outputs.tag }}**; next in-progress version is \`${next:-?}\`."
+              echo ""
+              echo "https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata. Software centres (GNOME Software, KDE Discover) and
+     appimagetool read this; it is what makes the .deb and the AppImage show a
+     name, a description and an icon instead of a bare file name.
+     Spec: https://www.freedesktop.org/software/appstream/docs/ -->
+<component type="desktop-application">
+  <id>io.github.nicolas_goyon.FinanceDashboard</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Finance Dashboard</name>
+  <summary>Local-first personal finance dashboard</summary>
+
+  <description>
+    <p>
+      Finance Dashboard is a desktop personal-finance analytics app. Import bank
+      statements, categorize transactions with a predictor that learns from your
+      own past choices, track accounts, and watch net worth, cash flow, savings
+      and investments over time.
+    </p>
+    <p>
+      Everything stays on the machine it runs on: the data lives in a local
+      SQLite file, there is no bank connectivity, no account linking and no
+      external data fetching of any kind.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">finance-dashboard.desktop</launchable>
+  <url type="homepage">https://github.com/nicolas-goyon/FinanceDashboard</url>
+  <url type="bugtracker">https://github.com/nicolas-goyon/FinanceDashboard/issues</url>
+
+  <provides>
+    <binary>FinanceDashboard</binary>
+  </provides>
+
+  <categories>
+    <category>Office</category>
+    <category>Finance</category>
+  </categories>
+
+  <content_rating type="oars-1.1"/>
+
+  <!-- Releases are appended by CI at package time from version.json — see
+       packaging/linux/make-appimage.sh and CI-CD.md. -->
+  <releases/>
+</component>
