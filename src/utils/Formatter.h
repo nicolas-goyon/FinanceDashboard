@@ -93,6 +93,40 @@ inline QString dateOrDash(const QDate& date)
     return date.isValid() ? date.toString(QStringLiteral("dd/MM/yyyy")) : QStringLiteral("—");
 }
 
+namespace detail {
+// Buckets for the import review screen's CONFIDENCE badge. Chosen to line up
+// with what the category predictor actually produces (see
+// src/predict/CategoryPredictor.h): a merchant seen once scores 0.67 → amber
+// "check this", seen twice scores 0.80 → green.
+constexpr double kConfidenceDangerBelow  = 0.5;
+constexpr double kConfidenceWarningBelow = 0.8;
+constexpr double kPercentScale = 100.0;
+} // namespace detail
+
+/// StatusBadge variant name for a 0.0–1.0 prediction confidence.
+/// `confidence <= 0` is **"not scored yet"**, not "the model is 0% sure" —
+/// it renders neutral, never as a failure.
+/// Hoisted here from ImportSnapshotPage.qml's page-level `confidenceVariant()`
+/// JS helper so the thresholds live next to every other display rule instead
+/// of being computed client-side — see TODO.md § Convention drift.
+inline QString confidenceVariant(double confidence)
+{
+    if (confidence <= 0.0)                                { return QStringLiteral("neutral"); }
+    if (confidence < detail::kConfidenceDangerBelow)      { return QStringLiteral("danger"); }
+    if (confidence < detail::kConfidenceWarningBelow)     { return QStringLiteral("warning"); }
+    return QStringLiteral("success");
+}
+
+/// Badge text for a 0.0–1.0 prediction confidence: "83 %", or "—" when the
+/// row hasn't been scored. Counterpart to confidenceVariant() above.
+inline QString confidenceText(double confidence)
+{
+    if (confidence <= 0.0) {
+        return QStringLiteral("—");
+    }
+    return QString::number(std::lround(confidence * detail::kPercentScale)) + QStringLiteral(" %");
+}
+
 } // namespace Fmt
 
 #endif // FINANCEDASHBOARD_UTILS_FORMATTER_H

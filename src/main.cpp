@@ -22,7 +22,11 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
 {
     QGuiApplication app(argc, argv);
     QGuiApplication::setApplicationName("FinanceDashboard");
-    QGuiApplication::setApplicationVersion("0.2.0");
+    // The version string comes from version.json, via the FD_VERSION_STRING
+    // compile definition set in CMakeLists.txt — see CI-CD.md. Never hard-code
+    // it here: this is the number the About/window title and any future update
+    // check would report, and it has to match the installer and the release tag.
+    QGuiApplication::setApplicationVersion(QStringLiteral(FD_VERSION_STRING));
     QGuiApplication::setOrganizationName("DataAnalysis");
 
     // Must be set before any QML importing Qt Quick Controls is loaded

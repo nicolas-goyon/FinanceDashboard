@@ -1,0 +1,18 @@
+# Keeps the actions used by .github/workflows/ci.yml current. Pinned major tags
+# (@v4) already pick up patch fixes, but a new major — say actions/checkout@v5 —
+# needs a deliberate change, and this raises a PR for it instead of letting the
+# pipeline quietly rot until an old runner image is retired.
+#
+# Qt itself is NOT managed here: its version is pinned in ci.yml's QT_VERSION
+# and bumping it is a decision about what the app is built against, not a
+# dependency refresh. See CI-CD.md.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+    labels:
+      - ci

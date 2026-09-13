@@ -7,8 +7,30 @@ investment trends over time — all data stays local in a SQLite file, with no b
 or external data fetching.
 
 For what the app is trying to do product-wise, see `PROJECT.md`. For how it's built, see
-`ARCHITECTURE.MD` (which indexes into `docs/`). For the current backlog and version history,
-see `TODO.md` and `version.md`.
+`ARCHITECTURE.MD`. For how it's tested, packaged and released, see `CI-CD.md`. For the current
+backlog and version history, see `TODO.md` and `version.md`.
+
+---
+
+## Install (no build required)
+
+Grab the latest [release](https://github.com/nicolas-goyon/FinanceDashboard/releases) and pick
+one file. Qt travels inside every package — nothing else to install.
+
+| Platform | File | What you do |
+|---|---|---|
+| Windows | `FinanceDashboard-<version>-windows-x64.msi` | Double-click. Start-menu shortcut and uninstaller included. |
+| Windows (portable) | `…-windows-x64.zip` | Unzip, run `FinanceDashboard.exe`. |
+| Linux | `FinanceDashboard-<version>-linux-x86_64.AppImage` | `chmod +x`, run. |
+| Linux (Debian/Ubuntu) | `finance-dashboard_<version>_amd64.deb` | `sudo apt install ./…deb` |
+| Linux (portable) | `…-linux-x86_64.tar.gz` | Extract, run `bin/FinanceDashboard`. |
+
+Releases are cut automatically from `main` — see `CI-CD.md`. Linux builds need glibc 2.39+
+(Ubuntu 24.04+, Debian 13+, Fedora 40+); on anything older, build from source below.
+
+Your data lives in one local SQLite file and never leaves the machine:
+`%APPDATA%\DataAnalysis\FinanceDashboard\` on Windows,
+`~/.local/share/DataAnalysis/FinanceDashboard/` on Linux.
 
 ---
 
@@ -17,7 +39,7 @@ see `TODO.md` and `version.md`.
 | Tool | Version |
 |---|---|
 | Qt | 6.8+ (developed against **6.11**) — include the **Qt Graphs** and **Qt Quick** modules |
-| CMake | 3.20+ |
+| CMake | 3.21+ (3.30+ only if you want to build the Windows `.msi` yourself) |
 | C++ compiler | MSVC 2022 (recommended on Windows) or MinGW 13+ |
 
 Qt Charts and Qt Widgets are not required.
@@ -39,16 +61,7 @@ cmake -B build -G "Visual Studio 17 2022" -DCMAKE_PREFIX_PATH="C:/Qt/6.11.1/msvc
 cmake --build build --config Release
 ```
 
-### 3. Deploy Qt DLLs (first run only)
-
-```powershell
-cd build/Release
-windeployqt.exe --qmldir ../../qml FinanceDashboard.exe
-```
-
-The `--qmldir` flag is required so the QML and Qt Graphs runtime files are deployed.
-
-### 4. Run
+### 3. Run
 
 ```powershell
 .\build\Release\FinanceDashboard.exe
@@ -56,6 +69,26 @@ The `--qmldir` flag is required so the QML and Qt Graphs runtime files are deplo
 
 Or open the project in **Qt Creator** (`File → Open File or Project → CMakeLists.txt`) and
 press **Run**.
+
+There is no manual `windeployqt` step any more. To produce a copy that runs on a machine with
+no Qt installed, install the project instead — `qt_generate_deploy_qml_app_script()` pulls in
+every Qt library, plugin and QML module the binary actually uses:
+
+```powershell
+cmake --install build --config Release --prefix stage
+```
+
+That `stage/` directory is exactly what the installers and the AppImage are built from. The
+version number comes from `version.json`, not from `CMakeLists.txt` — bump it with
+`python tools/version.py bump`.
+
+### Tests
+
+```bash
+cmake -B build -DFD_BUILD_TESTS=ON
+cmake --build build
+ctest --test-dir build --output-on-failure
+```
 
 ---
 
@@ -65,47 +98,47 @@ press **Run**.
 FinanceDashboard/
 ├── qml/        — UI only (QML). No business logic.
 ├── src/        — Controllers, database layer, models, statement-import templates (all C++).
-├── docs/       — Design-decision detail, split by topic (see ARCHITECTURE.MD's index).
-└── tools/      — PowerShell static-analysis runners + the doc-generation script below.
+├── tests/      — CTest registration for the predictor self-test harness.
+├── tools/      — Static-analysis runners, the doc generator, and version.py (version/changelog).
+├── packaging/  — App icon, Linux .desktop/AppStream metadata, AppImage and .deb build scripts.
+└── .github/    — The CI/CD pipeline. See CI-CD.md.
 ```
-
-The full breakdown (every file and what it's for) lives in
-[`docs/directory-map.md`](docs/directory-map.md), not here — see `ARCHITECTURE.MD` for the
-complete documentation index.
 
 ---
 
-## Documentation & static analysis
+## Documentation
 
-- **`ARCHITECTURE.MD`** — start here for anything design-related; it indexes into `docs/*.md`.
-- **`docs/build-and-tooling.md`** — clang-tidy / qmllint setup and the "add a new page"
-  checklist.
+- **`ARCHITECTURE.MD`** — start here for anything design-related.
+- **`CI-CD.md`** — the build/test/package/release pipeline, and how to change it.
+- **`PROJECT.md`** — product spec: target pages, charts, features.
 - **`TODO.md`** — known limitations, bugs, and planned work.
-- **`version.md`** — changelog (current version + history).
+- **`version.md`** — changelog. Generated from `version.json`; edit that, or use
+  `python tools/version.py add <Section> "<text>"`.
 
-### Auto-generated docs
+## Changelog and version
 
-`docs/generated/source-tree.md` (a file-by-file listing with descriptions) is generated from
-the source tree rather than hand-maintained. Regenerate it after adding, removing, or renaming
-a file under `src/` or `qml/`:
+The version number and the changelog live in one place, `version.json`:
 
 ```bash
-python tools/generate_docs.py          # writes docs/generated/source-tree.md
-python tools/generate_docs.py --check  # exit 1 if the file is stale, no write (for CI)
+python tools/version.py current                       # what's in progress
+python tools/version.py add Fixed "…what you fixed."  # log it as you go
+python tools/version.py check                         # what CI enforces
 ```
 
-It works by reading each file's existing banner comment (the `// ── Name ── ... description`
-block most files already start with) — no Python dependencies, no new comment convention to
-adopt on files that already follow that style. See
-[`docs/automated-docs.md`](docs/automated-docs.md) for the exact convention, current
-limitations, and how to extend it.
+`CMakeLists.txt` reads that version, so it is also the app's version, the installer's version
+and the release tag's version. Never type a version number anywhere else.
 
-Static analysis (clang-tidy + qmllint) is likewise scripted rather than manual — see
-`docs/build-and-tooling.md` for setup, or just run:
+## Static analysis
+
+clang-tidy and qmllint run on every push (as non-blocking jobs — see `CI-CD.md`). Locally:
 
 ```powershell
 ./tools/run-static-analysis.ps1
 ```
+
+`tools/generate_docs.py` regenerates a file-by-file source listing from each file's banner
+comment. It writes into `docs/`, which this project no longer keeps, so it is not wired into
+CI; run it by hand if you want the listing back.
 
 Chart patterns come from [QtGraphsExamples](https://github.com/nicolas-goyon/QtGraphsExamples)
 — always check that project and https://doc.qt.io/qt-6/qtgraphs-index.html before adding a new

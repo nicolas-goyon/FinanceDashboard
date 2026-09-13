@@ -29,20 +29,29 @@ struct ImportedTransaction {
     double  debit{0.0};        // magnitude, 0 if this row is a credit
     double  credit{0.0};       // magnitude, 0 if this row is a debit
     double  balanceAfter{0.0};
-    QString category;          // picked manually from CategoryController — empty until set,
-                                // or (once a prediction model exists) pre-filled by it
-    QString subcategory;       // picked manually, filtered to the chosen category — empty
-                                // until set, or pre-filled the same way as category
-    double  confidence{0.0};   // 0.0-1.0 — how confident the (future) category-prediction
-                                // model is in the `category`/`subcategory` it pre-filled for
-                                // this row. Review-screen-only: lets the UI flag low-
-                                // confidence rows for the user to double-check before saving.
-                                // No model exists yet, so this is always 0.0 for now ("no
-                                // confidence, needs review/setting" — not "the model is 0%
-                                // sure"). **Deliberately NOT persisted** — save() only ever
-                                // writes the resulting category/subcategory to
-                                // Data::Transaction, never this field (see ARCHITECTURE.MD §
-                                // Statement Import for the full design).
+    QString category;          // pre-filled by Predict::CategoryPredictor at parse time (see
+                                // docs/category-prediction.md), then freely overridable from
+                                // CategoryController's list on the review screen
+    QString subcategory;       // same, filtered to the chosen category — may stay empty even
+                                // when `category` is filled, when the predictor was sure about
+                                // the category but not the subcategory
+    double  confidence{0.0};   // 0.0-1.0 — how confident Predict::CategoryPredictor is in the
+                                // `category`/`subcategory` it pre-filled for this row (see
+                                // src/predict/CategoryPredictor.h). Review-screen-only: lets
+                                // the UI flag low-confidence rows for the user to double-check
+                                // before saving. 0.0 means "not scored" — either nothing
+                                // cleared the predictor's minimum, or the user has since set
+                                // the category by hand — **not** "the model is 0% sure".
+                                // **Deliberately NOT persisted** — save() only ever writes the
+                                // resulting category/subcategory to Data::Transaction, never
+                                // this field (see ARCHITECTURE.MD § Statement Import for the
+                                // full design).
+    QString predictionReason;  // one line of plain English explaining where `category` came
+                                // from ("Categorized "EDF" as Utilities in 3 of 3 previous
+                                // transactions"), surfaced as a tooltip on the confidence
+                                // badge. Same review-screen-only, never-persisted status as
+                                // `confidence`, and cleared the moment the user overrides the
+                                // row by hand — a stale explanation is worse than none.
     bool    included{true};    // unchecked rows are excluded from Save
 };
 

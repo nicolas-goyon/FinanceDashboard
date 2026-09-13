@@ -2,6 +2,7 @@
 #include "models/Account.h"
 #include "models/AssetEntry.h"
 #include "models/Category.h"
+#include "models/CategoryRule.h"
 #include "models/Transaction.h"
 
 #include <QDate>
@@ -28,6 +29,7 @@ Database::Database()
     , m_accountTypesTable(kConnection)
     , m_transactionsTable(kConnection)
     , m_balanceCheckpointsTable(kConnection)
+    , m_categoryRulesTable(kConnection)
 {}
 
 Database& Database::instance()
@@ -64,7 +66,8 @@ bool Database::open(const QString& path)
         !m_accountsTable.createTable()         ||
         !m_accountHashesTable.createTable()    ||
         !m_transactionsTable.createTable()     ||
-        !m_balanceCheckpointsTable.createTable())
+        !m_balanceCheckpointsTable.createTable()||
+        !m_categoryRulesTable.createTable())
     {
         m_lastError = "Failed to create tables.";
         return false;
@@ -374,6 +377,58 @@ std::optional<Data::Transaction> Database::latestTransactionOnOrBefore(int accou
     return m_transactionsTable.latestOnOrBefore(accountId, date);
 }
 
+QVector<Data::Transaction> Database::allCategorizedTransactions() const
+{
+    if (!isOpen()) { return {}; }
+    return m_transactionsTable.allCategorized();
+}
+
+// ── Category rules ────────────────────────────────────────────────────────────
+
+QVector<Data::CategoryRule> Database::loadCategoryRules() const
+{
+    if (!isOpen()) { return {}; }
+    return m_categoryRulesTable.all();
+}
+
+int Database::addCategoryRule(const QString& pattern, const QString& category, const QString& subcategory)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    if (pattern.isEmpty() || category.isEmpty()) {
+        m_lastError = "A category rule needs both a pattern and a category.";
+        return -1;
+    }
+
+    // Upsert rather than insert: the table has UNIQUE(pattern), and the
+    // realistic sequence is "teach a rule, then later correct it". A second
+    // insert would just fail with a constraint violation, and stacking two
+    // rules for the same merchant would leave the predictor picking between
+    // contradictory instructions — see CategoryRulesTable's class comment.
+    const Data::CategoryRule existing = m_categoryRulesTable.byPattern(pattern);
+    if (existing.id >= 0) {
+        if (existing.category == category && existing.subcategory == subcategory) {
+            return existing.id; // already says exactly this — nothing to write
+        }
+        if (!m_categoryRulesTable.updateTarget(existing.id, category, subcategory)) {
+            m_lastError = "Failed to update category rule.";
+            return -1;
+        }
+        return existing.id;
+    }
+
+    Data::CategoryRule rule;
+    rule.pattern = pattern;
+    rule.category = category;
+    rule.subcategory = subcategory;
+    return m_categoryRulesTable.insert(rule);
+}
+
+bool Database::removeCategoryRule(int ruleId)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return m_categoryRulesTable.remove(ruleId);
+}
+
 // ── Balance checkpoints ───────────────────────────────────────────────────────
 
 QVector<Data::AccountBalanceCheckpoint> Database::loadBalanceCheckpoints(int accountId) const
@@ -412,11 +467,12 @@ bool Database::resetAll()
     // actually matter here — no FK constraints are declared anywhere in
     // this schema — but listed in roughly the same order tables were
     // introduced for readability).
-    static const std::array<const char*, 10> kTables = {
+    static const std::array<const char*, 11> kTables = {
         "asset_entries", "snapshots",
         "subcategories", "categories",
         "account_hashes", "transactions", "account_balance_checkpoints", "accounts",
         "account_categories", "account_types",
+        "category_rules",
     };
 
     QSqlQuery query(m_db);
@@ -440,7 +496,8 @@ bool Database::resetAll()
         !m_accountsTable.createTable()         ||
         !m_accountHashesTable.createTable()    ||
         !m_transactionsTable.createTable()     ||
-        !m_balanceCheckpointsTable.createTable())
+        !m_balanceCheckpointsTable.createTable()||
+        !m_categoryRulesTable.createTable())
     {
         m_db.rollback();
         m_lastError = "Failed to recreate tables after reset.";

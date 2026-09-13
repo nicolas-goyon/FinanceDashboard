@@ -10,12 +10,12 @@
 | Field | Value |
 |---|---|
 | Name | FinanceDashboard |
-| Version | 0.2.1 — see `version.md` for the changelog |
+| Version | Read from `version.json` — see `version.md` for the changelog |
 | Language | C++17 |
 | UI framework | Qt Quick / QML + Qt Graphs |
-| Build system | CMake 3.20+ (`qt_add_qml_module`) |
+| Build system | CMake 3.21+ (`qt_add_qml_module`, `qt_generate_deploy_qml_app_script`) |
 | Database | SQLite via Qt6::Sql |
-| Target platform | Windows (primary), Linux/macOS compatible |
+| Target platform | Windows (primary), Linux/macOS compatible — Windows and Linux are built and packaged by CI |
 | Reference project | [QtGraphsExamples](https://github.com/nicolas-goyon/QtGraphsExamples) — patterns for every chart type |
 
 ## Design rule (the one thing to remember)
@@ -35,6 +35,7 @@ page.
 | Shared QML component library | [`docs/shared-components.md`](docs/shared-components.md) |
 | Statement import (parsing, reconciliation, report) | [`docs/statement-import.md`](docs/statement-import.md) |
 | Category management | [`docs/category-management.md`](docs/category-management.md) |
+| Category prediction (auto-fill on import) | [`docs/category-prediction.md`](docs/category-prediction.md) |
 | Account management (accounts, hashes, types/categories) | [`docs/account-management.md`](docs/account-management.md) |
 | Balance checkpoints | [`docs/balance-checkpoints.md`](docs/balance-checkpoints.md) |
 | Account History page | [`docs/account-history.md`](docs/account-history.md) |
@@ -47,13 +48,19 @@ page.
 | Page/controller status (MOCK vs. REAL) | [`docs/app-status.md`](docs/app-status.md) |
 | Automated documentation generation | [`docs/automated-docs.md`](docs/automated-docs.md) |
 | Auto-generated file listing (regenerate, don't hand-edit) | [`docs/generated/source-tree.md`](docs/generated/source-tree.md) |
+| Build, test, package and release pipeline | [`CI-CD.md`](CI-CD.md) |
+| Version number & changelog (single source of truth) | [`CI-CD.md`](CI-CD.md) § Working with the changelog |
 
 ## Other top-level docs
 
-- `README.md` — what the app is and how to build/run it.
+- `README.md` — what the app is, where to download it, and how to build/run it.
+- `CI-CD.md` — how the app is built, tested, packaged and released. Read this before touching
+  `.github/`, `packaging/`, `version.json` or the install/CPack half of `CMakeLists.txt`.
 - `PROJECT.md` — product spec (target pages, charts, features). Check before adding features.
 - `TODO.md` — backlog: known limitations, bugs, cleanups.
-- `version.md` — changelog (current version + every previous one).
+- `version.md` — changelog (current version + every previous one). **Generated** from
+  `version.json`; edit that file, or run `python tools/version.py add <Section> "<text>"`.
+- `LICENSE` — MIT. Also feeds the Windows installer's licence page.
 
 ## Before inventing a Qt Graphs property or QML API
 

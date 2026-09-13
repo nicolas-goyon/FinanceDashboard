@@ -1,2 +1,9 @@
 ﻿cmake-build-debug
 logs
+
+# CI / packaging output (see CI-CD.md)
+build
+build-*
+stage
+dist
+squashfs-root
