@@ -63,7 +63,7 @@ jobs:
     name: Changelog & version
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -84,7 +84,7 @@ jobs:
     name: Tests (ctest)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-qt
         with:
@@ -113,7 +113,7 @@ jobs:
     # CI-CD.md § Turning the linters into gates.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-qt
         with:
@@ -144,7 +144,7 @@ jobs:
     # aggressive and has never been enforced, so this reports rather than gates.
     continue-on-error: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: ./.github/actions/setup-qt
         with:
@@ -208,7 +208,7 @@ jobs:
     name: Package — Windows (MSI + portable)
     runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read version
         id: version
@@ -291,7 +291,7 @@ jobs:
     name: Package — Linux (AppImage + .deb + portable)
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Read version
         id: version
@@ -376,7 +376,7 @@ jobs:
     steps:
       # Full history so `git archive` sees a real tree, and so the archive
       # matches what a `git clone` at this commit would give.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -416,7 +416,7 @@ jobs:
     permissions:
       contents: write        # create the release/tag and push the version bump
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Keep the token so the version-bump commit at the end can be pushed,
           # and the full history so the rebase-retry below has something to
