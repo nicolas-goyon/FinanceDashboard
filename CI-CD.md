@@ -216,8 +216,28 @@ current in-progress version. Only the command is new. If you do edit
 ## Changing things
 
 **Bump Qt.** One line, `QT_VERSION` in `.github/workflows/ci.yml`. Available
-versions: <https://download.qt.io/online/qtsdkrepository/>. Qt Graphs comes from
-the `qtgraphs` add-on module, already listed in `QT_MODULES`.
+versions: <https://download.qt.io/online/qtsdkrepository/>.
+
+**Adding a Qt module.** `QT_MODULES` must list not just the modules the app
+uses but everything *those* modules depend on — aqt installs exactly what you
+name and resolves nothing. Qt Graphs is the example: the binary Qt ships it
+built with both the 2D and 3D features on, so it lists `Qt::Quick3D` as a public
+link dependency and `Qt6GraphsConfig.cmake` calls `find_dependency(Qt6Quick3D)`.
+Install `qtgraphs` alone and CMake says:
+
+```
+Failed to find required Qt component "Graphs".
+  Expected Config file at ".../Qt6Graphs/Qt6GraphsConfig.cmake" exists
+```
+
+Read that carefully — *exists*. The component is installed; one of its
+dependencies is not. Hence `QT_MODULES: qtgraphs qtquick3d qtshadertools`.
+
+The composite action's **Verify the Qt CMake packages this project needs** step
+exists for exactly this: it checks each `Qt6<Component>Config.cmake` right after
+install and, when one is absent, names it and lists everything that *was*
+installed — five seconds, and an error that says what to add. Add any new
+`find_package(Qt6 COMPONENTS ...)` entry to that step's list too.
 
 **Turning the linters into gates.** `qmllint` and `clang-tidy` are
 `continue-on-error: true` because neither has ever run over this codebase in CI
