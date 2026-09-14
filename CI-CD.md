@@ -218,6 +218,29 @@ current in-progress version. Only the command is new. If you do edit
 **Bump Qt.** One line, `QT_VERSION` in `.github/workflows/ci.yml`. Available
 versions: <https://download.qt.io/online/qtsdkrepository/>.
 
+Check that aqtinstall can actually fetch the version you pick, though — the
+pipeline gets Qt from aqt, not from the Qt installer, and aqt has to be taught
+each change to Qt's repository layout. Qt 6.11.0 moved the Windows packages
+from `windows_x86/desktop/qt6_<ver>/qt6_<ver>/` to a per-compiler
+`qt6_<ver>_msvc2022_64/`, and aqtinstall 3.3.0 still requests the old path:
+
+```
+ERROR : Failed to locate XML data for Qt version '6.11.2'.
+```
+
+Linux kept the flat layout, so a version bump can break Windows alone and look
+like a Windows problem. `QT_VERSION` is therefore pinned to **6.10.3** until
+[aqtinstall #959](https://github.com/miurahr/aqtinstall/issues/959) (fixed by
+PR #1000) reaches a release; then it goes back to 6.11.x with a one-word edit.
+The project itself needs Qt 6.8+, so this is purely a tooling constraint — it
+does not affect what the app can use, and developing locally against a newer Qt
+than CI builds with is fine.
+
+To check a layout before bumping, look for
+`.../qt6_<version-without-dots>/` under
+`windows_x86/desktop/` and `linux_x64/desktop/` and see whether the folder
+inside it repeats the name or carries a compiler suffix.
+
 **Adding a Qt module.** `QT_MODULES` must list not just the modules the app
 uses but everything *those* modules depend on — aqt installs exactly what you
 name and resolves nothing. Qt Graphs is the example: the binary Qt ships it
