@@ -30,7 +30,7 @@ endif()
 # Qt Quick / QML + Qt Graphs (2D). Qt Charts and Widgets are no longer used.
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2)
 
-qt_standard_project_setup(REQUIRES 6.8)
+qt_standard_project_setup(REQUIRES 6.11)
 
 # QTP0004: auto-generate qmldir for QML files in subdirectories
 qt_policy(SET QTP0004 NEW)
