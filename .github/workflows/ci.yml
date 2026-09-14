@@ -41,7 +41,20 @@ concurrency:
 
 env:
   # The one place the Qt version is written. Bump it here and every job follows.
-  QT_VERSION: 6.11.2
+  #
+  # Pinned to 6.10.3 rather than 6.11.x on purpose. Qt changed the Windows
+  # repository layout at 6.11.0 — the packages moved from
+  #   windows_x86/desktop/qt6_<ver>/qt6_<ver>/
+  # to a per-compiler folder
+  #   windows_x86/desktop/qt6_<ver>/qt6_<ver>_msvc2022_64/
+  # and aqtinstall 3.3.0 (the newest release) still asks for the old path, so
+  # the Windows job dies with "Failed to locate XML data for Qt version". Linux
+  # kept the old layout, which is why only Windows broke.
+  # Fixed upstream in aqtinstall PR #1000, unreleased as of 2026-09-14:
+  #   https://github.com/miurahr/aqtinstall/issues/959
+  # When aqtinstall > 3.3.0 ships, this is a one-word change back to 6.11.x —
+  # nothing else in the pipeline or the project cares (the app needs Qt 6.8+).
+  QT_VERSION: 6.10.3
   # qtgraphs is what the app uses; qtquick3d and qtshadertools are what qtgraphs
   # needs. Qt's binary Graphs module is built with both the 2D and the 3D feature
   # on and lists Qt::Quick3D as a *public* link dependency, so Qt6GraphsConfig
