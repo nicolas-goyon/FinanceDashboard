@@ -19,9 +19,13 @@ inputs:
     description: Qt version to install, e.g. 6.11.2. Must be an exact version, not a wildcard.
     required: true
   modules:
-    description: Space-separated extra Qt modules (this project needs Qt Graphs).
+    description: >
+      Space-separated extra Qt modules. This project needs Qt Graphs, plus the
+      modules Graphs itself depends on (Quick3D, ShaderTools) — see QT_MODULES
+      in ci.yml. Note that an explicitly empty value does NOT fall back to this
+      default, so callers must always pass a real list.
     required: false
-    default: qtgraphs
+    default: qtgraphs qtquick3d qtshadertools
   cache:
     description: Cache the Qt installation between runs.
     required: false
@@ -66,9 +70,40 @@ runs:
         target: desktop
         arch: ${{ runner.os == 'Windows' && 'win64_msvc2022_64' || 'linux_gcc_64' }}
 
+    # Fail here, in five seconds, instead of two minutes later inside CMake with
+    # a message that does not say which aqt module is missing.
+    #
+    # find_package(Qt6 COMPONENTS ...) needs one Qt6<Component>Config.cmake per
+    # component AND per transitive dependency: Qt6GraphsConfig.cmake exists but
+    # calls find_dependency(Qt6Quick3D), so a missing Quick3D is reported as
+    # "Failed to find required Qt component Graphs". Checking the files directly
+    # says exactly what is absent, and prints what did get installed.
+    - name: Verify the Qt CMake packages this project needs
+      shell: bash
+      run: |
+        qt_dir="${QT_ROOT_DIR//\\//}"          # Windows hands us backslashes
+        missing=()
+        for component in Core Gui Quick Qml Sql QuickControls2 Graphs Quick3D ShaderTools; do
+          if [ ! -f "$qt_dir/lib/cmake/Qt6$component/Qt6${component}Config.cmake" ]; then
+            missing+=("$component")
+          fi
+        done
+        if [ "${#missing[@]}" -gt 0 ]; then
+          echo "::error::Qt ${{ inputs.qt-version }} is missing the CMake package(s): ${missing[*]}"
+          echo ""
+          echo "Installed Qt6 CMake packages under $qt_dir/lib/cmake:"
+          ls "$qt_dir/lib/cmake" 2>/dev/null | grep '^Qt6' | sed 's/^/  /'
+          echo ""
+          echo "Add the aqt module that provides the missing component to QT_MODULES"
+          echo "in .github/workflows/ci.yml (currently: '${{ inputs.modules }}')."
+          exit 1
+        fi
+        echo "All required Qt CMake packages are present."
+
     - name: Report toolchain
       shell: bash
       run: |
         echo "Qt      : ${{ inputs.qt-version }} (QT_ROOT_DIR=$QT_ROOT_DIR)"
+        echo "Modules : ${{ inputs.modules }}"
         cmake --version | head -1
         echo "Python  : $(python3 --version 2>&1 || python --version 2>&1)"

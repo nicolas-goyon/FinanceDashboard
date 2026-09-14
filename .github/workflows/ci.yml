@@ -42,7 +42,14 @@ concurrency:
 env:
   # The one place the Qt version is written. Bump it here and every job follows.
   QT_VERSION: 6.11.2
-  QT_MODULES: qtgraphs
+  # qtgraphs is what the app uses; qtquick3d and qtshadertools are what qtgraphs
+  # needs. Qt's binary Graphs module is built with both the 2D and the 3D feature
+  # on and lists Qt::Quick3D as a *public* link dependency, so Qt6GraphsConfig
+  # calls find_dependency(Qt6Quick3D) — install qtgraphs alone and CMake reports
+  # 'Failed to find required Qt component "Graphs"' even though Qt6GraphsConfig
+  # is sitting right there. Quick3D in turn pulls in ShaderTools.
+  # Source: qtgraphs/src/CMakeLists.txt, PUBLIC_LIBRARIES of the Graphs module.
+  QT_MODULES: qtgraphs qtquick3d qtshadertools
 
 jobs:
 
