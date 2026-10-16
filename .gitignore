@@ -1,9 +1,14 @@
 ﻿cmake-build-debug
 logs
+__pycache__/
 
 # CI / packaging output (see CI-CD.md)
 build
-build-*
+build-*/
 stage
 dist
 squashfs-root
+
+# Docker build (see README.md § Building with Docker)
+build-docker/
+.env

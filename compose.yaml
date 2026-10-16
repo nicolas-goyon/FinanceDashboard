@@ -1,0 +1,43 @@
+# Docker build of FinanceDashboard — see docs/docker-build.md.
+#
+#   1. Edit .env (copy .env.example if it's missing)
+#   2. ./tools/docker-build.ps1   (Windows)   or   ./tools/docker-build.sh
+#      which runs the requirement check (tools/check-requirements.*), then
+#      docker compose build builder && docker compose run --rm -T builder
+#   3. Result in dist/<TARGET>-<LINK_MODE>-<build type>/, logs in
+#      logs/docker-build/<timestamp>_<variant>/
+#
+# Values below come from .env (Compose reads it automatically from this
+# folder); the ":-" fallbacks apply when .env is missing.
+services:
+  builder:
+    # One image per toolchain variant, so switching TARGET/LINK_MODE in .env
+    # doesn't throw away the other variant's (possibly multi-hour) Qt build.
+    image: financedashboard-builder:qt${QT_VERSION:-6.11.1}-${TARGET:-windows}-${LINK_MODE:-shared}
+    # The Qt / llvm-mingw binaries are x86_64. On ARM hosts (Apple Silicon)
+    # Docker runs them under emulation — slower, but works.
+    platform: linux/amd64
+    build:
+      context: ./docker
+      args:
+        TARGET: ${TARGET:-windows}
+        LINK_MODE: ${LINK_MODE:-shared}
+        QT_VERSION: ${QT_VERSION:-6.11.1}
+        LLVM_MINGW_VERSION: ${LLVM_MINGW_VERSION:-20231128}
+        QT_BUILD_JOBS: ${QT_BUILD_JOBS:-}
+    environment:
+      TARGET: ${TARGET:-windows}
+      LINK_MODE: ${LINK_MODE:-shared}
+      BUILD_TYPE: ${BUILD_TYPE:-Release}
+      BUILD_JOBS: ${BUILD_JOBS:-}
+      # Set by tools/docker-build.* to logs/<RUN_LOG_DIR> (per-run, timestamped):
+      # build-app.sh writes configure.log / build.log / deploy.log there.
+      RUN_LOG_DIR: ${RUN_LOG_DIR:-}
+    # Linux/macOS hosts: set HOST_UID/HOST_GID in .env so build-docker/ and
+    # dist/ aren't owned by root. Irrelevant on Docker Desktop for Windows.
+    user: "${HOST_UID:-0}:${HOST_GID:-0}"
+    volumes:
+      - ./:/project:ro
+      - ./build-docker:/work/build
+      - ./dist:/work/dist
+      - ./logs:/work/logs

@@ -1,14 +1,13 @@
-#include "db/Database.h"
+#include "startup/StartupChecks.h"
 
 #include <QCoreApplication>
-#include <QDebug>
-#include <QDir>
 #include <QGuiApplication>
+#include <QList>
 #include <QObject>
 #include <QQmlApplicationEngine>
 #include <QQuickStyle>
-#include <QStandardPaths>
 #include <QString>
+#include <QVariantMap>
 #include <Qt>
 #include <QtLogging>
 
@@ -38,24 +37,19 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
     // https://doc.qt.io/qt-6/qtquickcontrols2-customize.html#customization-reference
     QQuickStyle::setStyle(QStringLiteral("Basic"));
 
-    // ── Open database ─────────────────────────────────────────────────────────
-    // AppDataLocation resolves to:
-    //   Windows : %APPDATA%\DataAnalysis\FinanceDashboard\
-    //   Linux   : ~/.local/share/DataAnalysis/FinanceDashboard/
-    //   macOS   : ~/Library/Application Support/DataAnalysis/FinanceDashboard/
-    const QString dbDir  = QStandardPaths::writableLocation(
-                               QStandardPaths::AppDataLocation);
-    const QString dbPath = dbDir + QDir::separator() + "finance_dashboard.db";
-
-    QDir().mkpath(dbDir);   // create the directory if it doesn't exist yet
-
-    if (!Database::instance().open(dbPath)) {
-        qCritical() << "[main] Failed to open database at" << dbPath
-                    << "—" << Database::instance().lastError();
-        // The app continues — tabs that need the DB will show an error inline.
-    } else {
-        qInfo() << "[main] Database opened at" << dbPath;
+    // ── Start-up stage ────────────────────────────────────────────────────────
+    // Requirement checks, then initialization (data folder + database), on
+    // every launch — see src/startup/StartupChecks.h and docs/startup.md.
+    // A failed *fatal* step shows StartupErrorWindow.qml (every step listed as
+    // met / not met) instead of the dashboard. (Failures that stop the app
+    // before this code can run — missing DLLs, OS too old — are reported by
+    // the launcher, launcher/.)
+    QString dbPath;
+    QList<Startup::StartupStep> steps = Startup::StartupChecks::runRequirementChecks();
+    if (!Startup::StartupChecks::hasFatalFailure(steps)) {
+        steps += Startup::StartupChecks::runInitialization(dbPath);
     }
+    Startup::StartupChecks::log(steps);
 
     // ── QML engine ────────────────────────────────────────────────────────────
     QQmlApplicationEngine engine;
@@ -68,7 +62,13 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
         Qt::QueuedConnection
     );
 
-    engine.loadFromModule("FinanceDashboard", "Main");
+    if (Startup::StartupChecks::hasFatalFailure(steps)) {
+        engine.setInitialProperties(
+            {{QStringLiteral("steps"), Startup::StartupChecks::toVariantList(steps)}});
+        engine.loadFromModule("FinanceDashboard", "StartupErrorWindow");
+    } else {
+        engine.loadFromModule("FinanceDashboard", "Main");
+    }
 
     return QGuiApplication::exec();
 }

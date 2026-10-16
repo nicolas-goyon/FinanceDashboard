@@ -38,6 +38,10 @@ qt_policy(SET QTP0004 NEW)
 # ── Executable — entry point + UI-independent C++ (db / models / utils) ───────
 qt_add_executable(FinanceDashboard
     src/main.cpp
+    # Start-up stage: requirement checks + initialization, run before the main
+    # window loads (see docs/startup.md).
+    src/startup/StartupChecks.h
+    src/startup/StartupChecks.cpp
     src/models/AssetEntry.h
     src/models/AssetEntry.cpp
     src/models/ImportedStatement.h
@@ -122,6 +126,7 @@ qt_add_qml_module(FinanceDashboard
         src/controllers/database/DatabaseManagementController.cpp
     QML_FILES
         qml/Main.qml
+        qml/StartupErrorWindow.qml
         qml/components/KpiCard.qml
         qml/components/ChartCard.qml
         qml/components/HoverPoint.qml
@@ -207,6 +212,30 @@ if(WIN32)
     set_target_properties(FinanceDashboard PROPERTIES
         WIN32_EXECUTABLE $<CONFIG:Release>
     )
+endif()
+
+# ── Launcher (Windows) ─────────────────────────────────────────────────────────
+# Tiny Win32 program with NO Qt dependency, linked statically, that checks the
+# app's requirements (app/requirements.txt, OS version) before starting it, and
+# reports loader failures (missing DLL) the app itself can't. The Docker build
+# ships it as dist/<variant>/FinanceDashboard.exe next to app/ — see
+# docs/startup.md. (On Linux the launcher is a shell script,
+# launcher/linux/FinanceDashboard.sh, so nothing to build.)
+if(WIN32)
+    add_executable(FinanceDashboardLauncher WIN32 launcher/windows/main.cpp)
+    set_target_properties(FinanceDashboardLauncher PROPERTIES
+        # Not a Qt target — keep qt_standard_project_setup()'s AUTOMOC etc. off it.
+        AUTOMOC OFF
+        AUTOUIC OFF
+        AUTORCC OFF
+        # MSVC: static C runtime (https://cmake.org/cmake/help/latest/prop_tgt/MSVC_RUNTIME_LIBRARY.html)
+        MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>"
+    )
+    # MinGW / llvm-mingw: link the C++ runtime statically → no DLL besides Windows' own.
+    target_link_options(FinanceDashboardLauncher PRIVATE
+        $<$<NOT:$<CXX_COMPILER_ID:MSVC>>:-static>
+    )
+    target_link_libraries(FinanceDashboardLauncher PRIVATE user32)
 endif()
 
 # ── Static analysis — clang-tidy (opt-in) ──────────────────────────────────

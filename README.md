@@ -92,6 +92,33 @@ ctest --test-dir build --output-on-failure
 
 ---
 
+## Building with Docker (no local Qt / compiler needed)
+
+Only [Docker](https://docs.docker.com/get-docker/) is required — Qt 6.11.1, CMake and the
+compiler live in the image. Options (target `windows`/`linux`, link mode `shared`/`static`,
+build type, Qt version) are set in `.env`; the build script creates it from `.env.example` on
+first run.
+
+```powershell
+./tools/check-requirements.ps1    # optional: can this computer build + run it? (Linux/macOS: .sh)
+./tools/docker-build.ps1          # Windows  (Linux/macOS: ./tools/docker-build.sh)
+```
+
+The build script runs that requirement check first (`CHECK_REQUIREMENTS` / `FORCE_BUILD` in
+`.env`, or `-SkipChecks` / `-Force`) and keeps every run's logs in
+`logs/docker-build/<date_time>_<variant>/`.
+
+Result: `dist/<target>-<link mode>-<build type>/` — e.g. `dist/windows-shared-release/` holds
+`FinanceDashboard.exe` (a small launcher that checks the requirements, then starts the app)
+and `app/` (the real app plus its Qt DLLs, `plugins/` and `qml/`). Nothing needs installing on
+the computer that runs it; copy the whole folder anywhere and start `FinanceDashboard.exe`.
+`LINK_MODE=static` puts everything in a single executable instead, but the first
+image build compiles Qt from source (~1–3 h). The Windows exe is cross-compiled with
+**llvm-mingw (clang)**, not the MinGW g++ used by the local CLion build. Every option is
+documented in `.env.example`.
+
+---
+
 ## Project layout, at a glance
 
 ```
@@ -99,7 +126,10 @@ FinanceDashboard/
 ├── qml/        — UI only (QML). No business logic.
 ├── src/        — Controllers, database layer, models, statement-import templates (all C++).
 ├── tests/      — CTest registration for the predictor self-test harness.
-├── tools/      — Static-analysis runners, the doc generator, and version.py (version/changelog).
+├── tools/      — Static-analysis runners, the doc generator, version.py (version/changelog),
+│                 Docker build wrappers + requirement check (docker-build.*, check-requirements.*).
+├── docker/     — Docker build toolchain image + in-container build scripts.
+├── launcher/   — Start-up launcher (Windows Win32 exe / Linux script).
 ├── packaging/  — App icon, Linux .desktop/AppStream metadata, AppImage and .deb build scripts.
 └── .github/    — The CI/CD pipeline. See CI-CD.md.
 ```
