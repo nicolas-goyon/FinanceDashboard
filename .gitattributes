@@ -1,0 +1,6 @@
+# Scripts that run inside the Linux build container must keep LF line endings,
+# even on a Windows checkout with core.autocrlf=true (see docs/docker-build.md).
+*.sh            text eol=lf
+docker/**       text eol=lf
+compose.yaml    text eol=lf
+.env.example    text eol=lf

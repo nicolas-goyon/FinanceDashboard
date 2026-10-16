@@ -13,7 +13,7 @@
 | Version | Read from `version.json` — see `version.md` for the changelog |
 | Language | C++17 |
 | UI framework | Qt Quick / QML + Qt Graphs |
-| Build system | CMake 3.21+ (`qt_add_qml_module`, `qt_generate_deploy_qml_app_script`) |
+| Build system | CMake 3.21+ (`qt_add_qml_module`, `qt_generate_deploy_qml_app_script`); optional Docker build via `compose.yaml` + `.env` — see `README.md` § Building with Docker |
 | Database | SQLite via Qt6::Sql |
 | Target platform | Windows (primary), Linux/macOS compatible — Windows and Linux are built and packaged by CI |
 | Reference project | [QtGraphsExamples](https://github.com/nicolas-goyon/QtGraphsExamples) — patterns for every chart type |
@@ -45,6 +45,8 @@ page.
 | Styling / Catppuccin palette | [`docs/styling.md`](docs/styling.md) |
 | Qt Graphs pitfalls learned on this project | [`docs/charting-gotchas.md`](docs/charting-gotchas.md) |
 | Build, static analysis, new-page checklist | [`docs/build-and-tooling.md`](docs/build-and-tooling.md) |
+| Docker build (any machine; Windows/Linux targets, shared/static Qt), pre-build requirement check, build logs | [`README.md`](README.md) § Building with Docker; options in `.env.example` |
+| Start-up: launcher + in-app requirement checks / initialization (`src/startup/`) | Header comment of `src/startup/StartupChecks.h`; `launcher/` |
 | Page/controller status (MOCK vs. REAL) | [`docs/app-status.md`](docs/app-status.md) |
 | Automated documentation generation | [`docs/automated-docs.md`](docs/automated-docs.md) |
 | Auto-generated file listing (regenerate, don't hand-edit) | [`docs/generated/source-tree.md`](docs/generated/source-tree.md) |
