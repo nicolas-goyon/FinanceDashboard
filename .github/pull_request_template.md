@@ -12,7 +12,7 @@ Closes #
 
 ## Checklist
 
-- [ ] The branch is `feature/<issue>-<slug>` or `bugfix/<issue>-<slug>`, from `develop`
+- [ ] The branch is `feature/<issue>-<slug>` or `bugfix/<issue>-<slug>`, from `develop` or from the branch of the pull request below it in the stack
 - [ ] Changelog: `python tools/version.py add <Section> "…"`, or the entry of the unreleased feature is changed
 - [ ] `README.md` / `ARCHITECTURE.MD` updated if the behaviour or the structure changes
-- [ ] No other open pull request changes the same lines (see `CONTRIBUTING.md` § Batches)
+- [ ] In a stack: the pull request below it is named in the description (see `CONTRIBUTING.md` § Stacked pull requests)

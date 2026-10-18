@@ -167,9 +167,10 @@ pass in the same in-progress version.
   loads the new `qml/StartupErrorWindow.qml` (every step as met / not met + fix hint) instead
   of `Main.qml`.
 - `CONTRIBUTING.md`, a pull-request template and issue forms (bug, feature, chore): the gitflow
-  branch model (`main`, `develop`, `feature/*`, `bugfix/*`, `release/*`, `hotfix/*`),
-  Conventional Commits, the label set, the definition of done and the repository settings.
-  Dependabot pull requests now target `develop`.
+  branch model (`main`, `develop`, `feature/*`, `bugfix/*`, `release/*`, `hotfix/*`), stacked
+  pull requests (each one based on the one before it, merged from the bottom up), Conventional
+  Commits, the label set, the definition of done and the repository settings. Dependabot pull
+  requests now target `develop`.
 
 ### Changed
 - **Removed** all `docs` for pruning and reduce overhead.

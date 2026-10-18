@@ -30,10 +30,16 @@ Do not push to `main` or `develop` directly.
 5. CI must be green. The maintainer reviews the pull request and merges it.
 
 **Batches.** Put related changes in one pull request: a general refactor is one pull request.
-Changes in different places can be a batch of several pull requests. Two open pull requests
-must not change the same lines, so that each one merges without a conflict. The usual conflict
-is `version.json`: when two pull requests change the same changelog entry, or two adjacent
-entries, rebase the second one after the first is merged.
+Changes in different places can be a batch of several pull requests.
+
+**Stacked pull requests.** The pull requests of a batch, and the batches themselves, form a
+stack: each pull request is based on the branch of the one before it, so its diff shows only its
+own changes, and CI checks it with everything below it. Merge from the bottom up. After a merge
+into `develop`, the next pull request targets `develop` again: GitHub does it when the merged
+branch is deleted; otherwise rebase it with
+`git rebase --onto develop <merged-branch> <next-branch>`. A change to a pull request in the
+middle of the stack means a rebase of every pull request above it. The usual conflict is
+`version.json`: resolve it there, then run `python tools/version.py render`.
 
 ---
 
