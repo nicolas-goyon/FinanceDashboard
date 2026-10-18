@@ -263,6 +263,16 @@ pass in the same in-progress version.
   leave the connection open after a failure, so the app started on an empty dashboard and the
   SQLite error went only to the log. It now closes the connection, and the start-up error
   window shows the cause ("file is not a database", for example) and what to do.
+- **Statement import — row dates get the right year.** A row date has no year (`MM/dd`); it
+  used to get the year of the period start, so a January row of a December → January statement
+  was dated a year too early, and a December row of a January statement eleven months later. It
+  now gets the year that puts it in the statement period (from 31 days before its start to its
+  end), and a statement without a readable "Period" line is refused instead of losing every row
+  (#30). A 29 February row is no longer skipped (#31).
+- **Statement import — amounts.** Amounts grouped with spaces ("1 300.00", also with no-break
+  spaces), with a decimal comma ("1 234,56 €") or with a thousands comma ("1,234") are read,
+  and "nan", "inf" or any text that is not a number are refused: a debit of "-1 300.00" used to
+  skip its row with only a warning (#32).
 
 ### Docs
 - See `Added`/`Changed`/`Fixed` above.
