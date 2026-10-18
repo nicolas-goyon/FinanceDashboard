@@ -3,9 +3,9 @@ cmake_minimum_required(VERSION 3.21)
 # ── Version — single source of truth is version.json ─────────────────────────
 # The version is NOT typed here. version.json's "current" field is read below
 # and fed straight into project(... VERSION ...), so the build, the installers,
-# the release tag and the changelog can never drift apart. Bump it with
-# `python tools/version.py bump` (CI does this automatically on every release —
-# see CI-CD.md), never by editing a number in this file.
+# the release tag and the changelog can never drift apart. The release flow
+# sets it (see CI-CD.md); change it with `python tools/version.py bump`, never
+# by editing a number in this file.
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/version.json" FD_VERSION_JSON)
 string(JSON FD_VERSION GET "${FD_VERSION_JSON}" current)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS

@@ -5,14 +5,17 @@
 #
 #  * Every job is self-contained. None of them `needs:` another (the single
 #    exception is `release`, which by definition cannot run before the things it
-#    publishes exist). A job that fails can be re-run on its own from the GitHub
-#    UI without dragging five other jobs along, and a broken linter never blocks
-#    a build. Each job checks out, sets up Qt and reads the version itself.
+#    publishes exist, and must not run when a blocking job failed). A job that
+#    fails can be re-run on its own from the GitHub UI without dragging five
+#    other jobs along, and a broken linter never blocks a build. Each job checks
+#    out, sets up Qt and reads the version itself.
 #
-#  * Every push to `main` publishes a release. The version comes from
-#    version.json — no tag to remember to push. After the release is out, CI
-#    stamps that version's date in the changelog and opens the next patch
-#    version, then commits both files back to `main`.
+#  * Gitflow. CI runs on pull requests and on pushes to main, develop,
+#    release/** and hotfix/**. main only receives merges of release/* and
+#    hotfix/* branches, whose version is already dated (`version.py release`).
+#    A push to main publishes that version: tag vX.Y.Z and a GitHub release,
+#    with no commit to main. Then CI opens a pull request into develop that
+#    merges main back and opens the next patch version.
 #
 #  * The end products are meant to be plug and play. A user downloads one file:
 #      Windows  FinanceDashboard-<v>-windows-x64.exe   setup, shortcuts,
@@ -24,18 +27,20 @@
 name: CI
 
 on:
+  # feature/* and bugfix/* branches run through their pull request, so a push
+  # to them does not start a second run.
   push:
-    branches: ["**"]
+    branches: [main, develop, "release/**", "hotfix/**"]
   pull_request:
   workflow_dispatch:
 
-# Read-only by default; the release job asks for `contents: write` for itself.
+# Read-only by default; the release job asks for more for itself.
 permissions:
   contents: read
 
 concurrency:
-  # One run per branch. On main, never cancel — a cancelled run could kill a
-  # release halfway between publishing the assets and bumping the version.
+  # One run per branch or pull request. On main, never cancel — a cancelled
+  # run could stop a release halfway between the tag and the back-merge PR.
   group: ci-${{ github.ref }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
@@ -71,10 +76,11 @@ jobs:
   # ────────────────────────────────────────────────────────────────────────────
 
   # Cheapest job in the pipeline and the one that protects the release flow: if
-  # version.md and version.json disagree, or the version that just shipped was
-  # never bumped, the changelog and the release notes would ship wrong — and
-  # since the version number is what names every artifact and every tag, wrong
-  # here means wrong everywhere.
+  # version.md and version.json disagree, if more than one version is in
+  # progress, or if a branch changes a version that is already released on
+  # main, the changelog and the release notes would ship wrong — and since the
+  # version number is what names every artifact and every tag, wrong here means
+  # wrong everywhere.
   #
   # tools/generate_docs.py --check is deliberately NOT run: it regenerates
   # docs/generated/source-tree.md, and docs/ was removed from this project (see
@@ -89,8 +95,13 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: version.json ↔ version.md are in sync
-        run: python tools/version.py check
+      # main is the base: the versions that are released (dated) there cannot
+      # change on any other branch.
+      - name: Fetch main
+        run: git fetch --no-tags --depth=1 origin main
+
+      - name: version.json ↔ version.md are in sync, released versions unchanged
+        run: python tools/version.py check --base FETCH_HEAD
 
       - name: Preview the release notes this version would publish
         run: |
@@ -486,19 +497,18 @@ jobs:
   # ────────────────────────────────────────────────────────────────────────────
   release:
     name: Release
-    needs: [package-windows, package-linux, source-archive]
+    # Every blocking job: a red Tests or Changelog job stops the release too.
+    needs: [changelog, tests, package-windows, package-linux, source-archive]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     permissions:
-      contents: write        # create the release/tag and push the version bump
+      contents: write        # create the tag and the release, push the back-merge branch
+      pull-requests: write   # open the back-merge pull request into develop
     steps:
       - uses: actions/checkout@v4
         with:
-          # Keep the token so the version-bump commit at the end can be pushed,
-          # and the full history so the rebase-retry below has something to
-          # rebase onto (a shallow clone makes `git pull --rebase` unreliable).
+          # Keep the token so the back-merge branch can be pushed.
           persist-credentials: true
-          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -511,8 +521,25 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
-      # Defence in depth: if a run is somehow replayed, or a bump commit failed
-      # to push last time, stop rather than publishing a second v-same release.
+      # main only receives release/* and hotfix/* merges, and those branches
+      # stamp the date with `version.py release`. An undated version here means
+      # that something else was merged into main.
+      - name: The version is dated
+        run: |
+          python - <<'PY'
+          import json, sys
+          data = json.load(open("version.json", encoding="utf-8"))
+          release = next(r for r in data["releases"] if r["version"] == data["current"])
+          if not release.get("date"):
+              print(f"::error::v{data['current']} has no date. main only receives merges of "
+                    f"release/* and hotfix/* branches, which run `python tools/version.py release` "
+                    f"first. See CI-CD.md § The release flow.")
+              sys.exit(1)
+          print(f"v{data['current']} — {release['date']}")
+          PY
+
+      # Defence in depth: if a run is replayed, stop rather than publishing a
+      # second v-same release.
       - name: Skip if this version is already released
         id: guard
         env:
@@ -520,7 +547,7 @@ jobs:
         run: |
           if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
             echo "already=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::${{ steps.version.outputs.tag }} already exists — nothing to release. Run \`python tools/version.py bump\` and push."
+            echo "::warning::${{ steps.version.outputs.tag }} already exists — nothing to release."
           else
             echo "already=false" >> "$GITHUB_OUTPUT"
           fi
@@ -557,6 +584,7 @@ jobs:
           } > release-notes.md
           cat release-notes.md
 
+      # `gh release create --target` also creates the tag vX.Y.Z on this commit.
       - name: Publish the GitHub release
         if: steps.guard.outputs.already == 'false'
         env:
@@ -568,40 +596,37 @@ jobs:
             --target "$GITHUB_SHA" \
             dist/*
 
-      # ── Roll the version forward ────────────────────────────────────────────
-      # Stamp today's date on the version that just shipped, open the next patch
-      # version as the new in-progress one, regenerate version.md, and commit
-      # both back. A push authenticated with GITHUB_TOKEN does not start another
-      # workflow run, so this cannot loop — the [skip ci] marker is belt and
-      # braces for anyone who later swaps in a PAT.
-      - name: Stamp and bump the version
+      # ── Back into develop ────────────────────────────────────────────────────
+      # A branch from this commit opens the next patch version, and a pull
+      # request merges it into develop: develop gets the dated release and the
+      # new in-progress version in one merge. Nothing is committed to main.
+      #
+      # GitHub can refuse the pull request if the repository does not allow
+      # GitHub Actions to create pull requests (Settings → Actions → General →
+      # Workflow permissions). The branch is pushed first, so the pull request
+      # can then be opened by hand. Note: a pull request opened with
+      # GITHUB_TOKEN does not start a CI run of its own.
+      - name: Open the back-merge pull request into develop
         if: steps.guard.outputs.already == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          python tools/version.py release
-          next=$(python tools/version.py bump patch)
-          python tools/version.py render
-          python tools/version.py check
-          echo "next=$next" >> "$GITHUB_ENV"
-
-      - name: Commit the version bump
-        if: steps.guard.outputs.already == 'false'
-        run: |
+          version="${{ steps.version.outputs.version }}"
+          branch="chore/back-merge-v${version}"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$branch" "$GITHUB_SHA"
+          next=$(python tools/version.py bump patch)
+          python tools/version.py check
           git add version.json version.md
-          if git diff --cached --quiet; then
-            echo "nothing to commit"
-            exit 0
+          git commit -m "chore(release): open v${next} after v${version}"
+          git push origin "$branch"
+          echo "next=$next" >> "$GITHUB_ENV"
+          if ! gh pr create --base develop --head "$branch" \
+              --title "chore(release): merge v${version} back into develop and open v${next}" \
+              --body "Merges \`main\` (release v${version}) back into \`develop\` and opens v${next} as the in-progress version. Opened by the release job. See CI-CD.md § The release flow."; then
+            echo "::warning::Could not open the pull request. Open it by hand from ${branch} into develop, or allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions)."
           fi
-          git commit -m "chore(release): ${{ steps.version.outputs.tag }}, open v${next} [skip ci]"
-          # main may have moved while the packages were building.
-          for attempt in 1 2 3; do
-            git pull --rebase origin main && git push origin HEAD:main && exit 0
-            echo "push attempt $attempt failed, retrying..."
-            sleep $((attempt * 5))
-          done
-          echo "::error::Could not push the version bump to main. Run \`python tools/version.py release && python tools/version.py bump patch && python tools/version.py render\` locally and push, or the next run will refuse to release."
-          exit 1
 
       - name: Summary
         if: always()
@@ -611,7 +636,7 @@ jobs:
             if [ "${{ steps.guard.outputs.already }}" = "true" ]; then
               echo "Skipped — \`${{ steps.version.outputs.tag }}\` already exists."
             else
-              echo "Published **${{ steps.version.outputs.tag }}**; next in-progress version is \`${next:-?}\`."
+              echo "Published **${{ steps.version.outputs.tag }}**. Back-merge into develop opens \`v${next:-?}\`."
               echo ""
               echo "https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}"
             fi

@@ -30,8 +30,9 @@ administrator rights) or "for all users" in `C:\Program Files\FinanceDashboard` 
 rights). To update, run the setup of the new version. It keeps the install mode, the shortcuts
 and your data.
 
-Releases are cut automatically from `main` — see `CI-CD.md`. Linux builds need glibc 2.39+
-(Ubuntu 24.04+, Debian 13+, Fedora 40+); on anything older, build from source below.
+A release is published when a `release/<x.y.z>` branch is merged into `main` — see `CI-CD.md`.
+Linux builds need glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+); on anything older, build
+from source below.
 
 Your data lives in one local SQLite file and never leaves the machine:
 `%APPDATA%\DataAnalysis\FinanceDashboard\` on Windows,
@@ -84,8 +85,9 @@ cmake --install build --config Release --prefix stage
 ```
 
 That `stage/` directory is exactly what the installers and the AppImage are built from. The
-version number comes from `version.json`, not from `CMakeLists.txt` — bump it with
-`python tools/version.py bump`.
+version number comes from `version.json`, not from `CMakeLists.txt`. The release flow sets it
+(see `CI-CD.md`); to make the in-progress version a minor or major one, use
+`python tools/version.py bump minor` (or `major`).
 
 ### Tests
 

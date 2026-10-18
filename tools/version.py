@@ -13,14 +13,13 @@
 `version.json` (or use `version.py add`), never `version.md` directly. CI runs
 `version.py check` and fails if the two disagree.
 
-Release flow, run by .github/workflows/ci.yml on every push to main:
+Release flow (gitflow, see CI-CD.md):
 
-    version.py current            -> 0.2.1        (what gets built and tagged)
-    version.py notes              -> release-notes markdown for that version
-    version.py release            -> stamps today's date on 0.2.1
-    version.py bump patch         -> opens 0.2.2 as the new in-progress version
-    version.py render             -> rewrites version.md
-                                     (both files committed back to main)
+    on release/0.2.1:  version.py release   -> stamps today's date on 0.2.1
+    merge into main:   CI publishes v0.2.1 (tag + GitHub release), using
+                       version.py current / notes
+    CI, after that:    version.py bump patch on a branch from main
+                       -> opens 0.2.2; CI opens a PR from it into develop
 
 Day-to-day, log a change the moment you make it — same maintenance rule as
 before, just a different command:
@@ -40,6 +39,7 @@ import argparse
 import datetime as _dt
 import json
 import re
+import subprocess
 import sys
 import textwrap
 from pathlib import Path
@@ -79,9 +79,10 @@ fact. Small fixes to a feature that's still unreleased/in-progress in the *same*
 need their own extra line; fold them into the feature's own entry instead of listing "fixed a
 bug in the thing I just added two lines above."
 
-**Releases** are cut automatically: every push to `main` publishes the in-progress version as a
-GitHub release (installers + portable builds + source archives), stamps its date here, and
-opens the next patch version as the new in-progress one. See `CI-CD.md`.
+**Releases** follow gitflow. A `release/<x.y.z>` branch stamps the date here
+(`version.py release`). Its merge into `main` publishes the GitHub release (setup, portable
+builds, source archives). Then CI opens a pull request into `develop` that opens the next patch
+version as the new in-progress one. See `CI-CD.md`.
 """
 
 
@@ -146,14 +147,22 @@ def wrap_entry(text: str, bullet: str = "- ") -> str:
     )
 
 
-def render_release(release: dict[str, Any], *, heading_level: int = 2, with_heading: bool = True) -> str:
+def render_release(release: dict[str, Any], *, heading_level: int = 2, with_heading: bool = True,
+                   current: str | None = None) -> str:
     out: list[str] = []
     if with_heading:
         heading = "#" * heading_level
         version = release["version"]
         date = release.get("date")
         title = release.get("title")
-        suffix = f" — {title}" if title else ("" if date else " (current)")
+        if title:
+            suffix = f" — {title}"
+        elif date:
+            suffix = ""
+        else:
+            # Only the in-progress version is "current". `check` refuses any
+            # other undated release, so the second label is a safety net only.
+            suffix = " (current)" if version == current else " (unreleased)"
         stamp = f" — {date}" if date else ""
         out.append(f"{heading} v{version}{stamp}{suffix}")
         out.append("")
@@ -194,7 +203,7 @@ def render_release(release: dict[str, Any], *, heading_level: int = 2, with_head
 def render_markdown(data: dict[str, Any]) -> str:
     parts = [MD_PREAMBLE.rstrip(), "", "---", ""]
     for release in data["releases"]:
-        parts.append(render_release(release))
+        parts.append(render_release(release, current=data["current"]))
         parts.append("")
         parts.append("---")
         parts.append("")
@@ -326,9 +335,17 @@ def cmd_notes(args: argparse.Namespace) -> int:
     return 0
 
 
+def require_in_progress(release: dict[str, Any]) -> None:
+    """Refuse to change a version that is already released (dated)."""
+    if release.get("date"):
+        sys.exit(f"error: v{release['version']} is released ({release['date']}). Open the next "
+                 f"version first: `python tools/version.py bump`.")
+
+
 def cmd_add(args: argparse.Namespace) -> int:
     data = load()
     release = current_release(data)
+    require_in_progress(release)
     section = get_section(release, args.section, create=True)
     assert section is not None
     title = args.group
@@ -346,6 +363,7 @@ def cmd_add(args: argparse.Namespace) -> int:
 def cmd_summary(args: argparse.Namespace) -> int:
     data = load()
     release = current_release(data)
+    require_in_progress(release)
     release["summary"] = args.text.strip()
     save(data)
     VERSION_MD.write_text(render_markdown(data), encoding="utf-8", newline="\n")
@@ -361,15 +379,42 @@ def cmd_release(args: argparse.Namespace) -> int:
                  f"(use --force to overwrite)")
     release["date"] = args.date or _dt.date.today().isoformat()
     save(data)
+    VERSION_MD.write_text(render_markdown(data), encoding="utf-8", newline="\n")
     print(release["date"])
     return 0
 
 
+def latest_released(data: dict[str, Any]) -> str | None:
+    """The highest version that has a date, or None."""
+    dated = [r["version"] for r in data["releases"]
+             if r.get("date") and SEMVER_RE.match(r["version"])]
+    if not dated:
+        return None
+    return max(dated, key=lambda v: tuple(int(p) for p in SEMVER_RE.match(v).groups()))
+
+
 def cmd_bump(args: argparse.Namespace) -> int:
+    """Open the next version.
+
+    If the current version is released (dated), insert a new undated version
+    above it. If the current version is still in progress (undated), rename it
+    instead, so that its entries stay together and there is never more than one
+    in-progress version: a `bump minor` on an in-progress 0.2.2 makes it 0.3.0.
+    The next number is counted from the latest released version, so a rename
+    from 0.2.2 to 0.3.0 and back to a patch gives 0.2.2 again, not 0.3.1.
+    """
     data = load()
-    match = SEMVER_RE.match(data["current"])
+    release = current_release(data)
+    in_progress = not release.get("date")
+    base = latest_released(data) if in_progress else data["current"]
+    if base is None:
+        base = data["current"]
+        if in_progress:
+            sys.exit(f"error: v{base} is the only version and is not released; "
+                     f"there is nothing to count the next version from")
+    match = SEMVER_RE.match(base)
     if not match:
-        sys.exit(f"error: current version {data['current']!r} is not X.Y.Z")
+        sys.exit(f"error: version {base!r} is not X.Y.Z")
     major, minor, patch = (int(part) for part in match.groups())
     if args.part == "major":
         major, minor, patch = major + 1, 0, 0
@@ -378,17 +423,24 @@ def cmd_bump(args: argparse.Namespace) -> int:
     else:
         patch += 1
     new_version = f"{major}.{minor}.{patch}"
+    if in_progress and new_version == release["version"]:
+        print(new_version)
+        return 0
     if any(r["version"] == new_version for r in data["releases"]):
         sys.exit(f"error: v{new_version} already exists in version.json")
-    data["releases"].insert(0, {
-        "version": new_version,
-        "date": None,
-        "title": None,
-        "summary": "",
-        "sections": [],
-    })
+    if in_progress:
+        release["version"] = new_version
+    else:
+        data["releases"].insert(0, {
+            "version": new_version,
+            "date": None,
+            "title": None,
+            "summary": "",
+            "sections": [],
+        })
     data["current"] = new_version
     save(data)
+    VERSION_MD.write_text(render_markdown(data), encoding="utf-8", newline="\n")
     print(new_version)
     return 0
 
@@ -400,19 +452,23 @@ def cmd_render(_args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_check(_args: argparse.Namespace) -> int:
+def load_at(ref: str) -> dict[str, Any]:
+    """version.json as it is in a git ref (for example origin/main)."""
+    try:
+        text = subprocess.run(["git", "show", f"{ref}:version.json"], cwd=REPO_ROOT,
+                              check=True, capture_output=True, text=True, encoding="utf-8").stdout
+    except (OSError, subprocess.CalledProcessError) as exc:
+        sys.exit(f"error: cannot read version.json at {ref!r}: {exc}")
+    return json.loads(text)
+
+
+def cmd_check(args: argparse.Namespace) -> int:
     data = load()
     expected = render_markdown(data)
     actual = VERSION_MD.read_text(encoding="utf-8") if VERSION_MD.exists() else ""
     if expected != actual:
         print("version.md is out of sync with version.json — run "
               "`python tools/version.py render` and commit the result.", file=sys.stderr)
-        return 1
-    release = current_release(data)
-    if release.get("date"):
-        print(f"version.json's current version (v{release['version']}) is already dated "
-              f"{release['date']} — `version.py bump` was not run after the last release.",
-              file=sys.stderr)
         return 1
     seen: set[str] = set()
     for rel in data["releases"]:
@@ -423,6 +479,40 @@ def cmd_check(_args: argparse.Namespace) -> int:
             print(f"duplicate version: {rel['version']}", file=sys.stderr)
             return 1
         seen.add(rel["version"])
+    if data["current"] not in seen:
+        print(f"current version v{data['current']} is not in the releases list", file=sys.stderr)
+        return 1
+    # At most one version is in progress, and it is the current one. On develop
+    # the current version is in progress; on main (after a release) it is dated.
+    undated = [r["version"] for r in data["releases"] if not r.get("date")]
+    if len(undated) > 1:
+        print(f"more than one version has no date: {', '.join('v' + v for v in undated)}. "
+              f"Only the current version can be in progress.", file=sys.stderr)
+        return 1
+    if undated and undated[0] != data["current"]:
+        print(f"v{undated[0]} has no date but is not the current version "
+              f"(v{data['current']}).", file=sys.stderr)
+        return 1
+    # A version that is released on the base branch cannot change any more.
+    if args.base:
+        base = {r["version"]: r for r in load_at(args.base)["releases"]}
+        here = {r["version"]: r for r in data["releases"]}
+        for version, rel in base.items():
+            if not rel.get("date"):
+                continue
+            if version not in here:
+                print(f"v{version} is released on {args.base} but missing here.", file=sys.stderr)
+                return 1
+            if not here[version].get("date"):
+                # develop before the back-merge PR: not a change, only behind.
+                print(f"note: v{version} is released on {args.base}; merge the back-merge "
+                      f"pull request into this branch.")
+                continue
+            if here[version] != rel:
+                print(f"v{version} is released on {args.base}, and this branch changes it. "
+                      f"Log the change under the current version (v{data['current']}).",
+                      file=sys.stderr)
+                return 1
     print(f"ok — version.json and version.md agree (current: v{data['current']})")
     return 0
 
@@ -470,7 +560,10 @@ def main(argv: list[str] | None = None) -> int:
     bump.set_defaults(func=cmd_bump)
 
     sub.add_parser("render", help="regenerate version.md from version.json").set_defaults(func=cmd_render)
-    sub.add_parser("check", help="fail if version.md is stale or the model is invalid").set_defaults(func=cmd_check)
+    check = sub.add_parser("check", help="fail if version.md is stale or the model is invalid")
+    check.add_argument("--base", help="git ref (for example origin/main): fail if this branch "
+                                      "changes a version that is released there")
+    check.set_defaults(func=cmd_check)
 
     import_md = sub.add_parser("import-md", help="one-shot: build version.json from version.md")
     import_md.add_argument("--force", action="store_true")
