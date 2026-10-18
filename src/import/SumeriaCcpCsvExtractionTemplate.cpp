@@ -13,6 +13,7 @@
 #include <QStringList>
 #include <QTextStream>
 #include <QVector>
+#include <algorithm>
 #include <cmath>
 
 namespace {
@@ -21,8 +22,6 @@ using Data::ImportLogEntry;
 using Data::LogLevel;
 
 constexpr char16_t kDownwardsArrowWithCorner = 0x21B5; // ↵ (embedded-newline marker in log previews)
-constexpr char16_t kNarrowNoBreakSpace = 0x202F;       // narrow no-break space (thousands sep)
-constexpr char16_t kNoBreakSpace = 0x00A0;             // no-break space
 constexpr int kPreviewMaxChars = 200;                  // parse-log preview truncation length
 
 // Transaction row column layout (see the format spec in this file's header comment).
@@ -207,43 +206,47 @@ QString previewRawText(const CsvRecord& rec)
     return text;
 }
 
-// ── Amount parser — tolerant of "1 234.56 €", "1234,56", "-86.40", "€"… ─────
-bool parseAmount(QString raw, double& outValue)
+// ── Amount parser — "1 234.56 €", "1234,56", "-86.40", "1.234,56" ──────────
+// Whitespace (no-break spaces too) and the euro sign are removed. The decimal
+// separator is the last "." or "," when one or two digits follow it; every
+// other separator groups thousands, so "1,234" is 1234. Anything else —
+// letters, "nan", "inf", an exponent — is refused (#32).
+bool parseAmount(const QString& raw, double& outValue)
 {
-    raw = raw.trimmed();
-    if (raw.isEmpty()) {
+    QString compact;
+    compact.reserve(raw.size());
+    for (const QChar c : raw) {
+        if (!c.isSpace() && c != QChar(L'€')) { // isSpace(): also U+00A0, U+202F
+            compact.append(c);
+        }
+    }
+    static const QRegularExpression kShape(QStringLiteral("^[+-]?[0-9][0-9.,]*$"));
+    if (!kShape.match(compact).hasMatch()) {
         return false;
     }
 
-    raw.remove(QChar(L'€'));
-    raw.remove(QChar(kNarrowNoBreakSpace));
-    raw.remove(QChar(kNoBreakSpace));
-    raw = raw.simplified();
-    // raw.remove(QLatin1Char(' '));
-
-    const int lastComma = static_cast<int>(raw.lastIndexOf(QLatin1Char(',')));
-    const int lastDot   = static_cast<int>(raw.lastIndexOf(QLatin1Char('.')));
-
-    if (lastComma >= 0 && lastDot >= 0) {
-        // Both present — the later one is the decimal separator, the earlier
-        // one is a thousands separator to strip.
-        if (lastComma > lastDot) {
-            raw.remove(QLatin1Char('.'));
-            raw.replace(QLatin1Char(','), QLatin1Char('.'));
-        } else {
-            raw.remove(QLatin1Char(','));
-        }
-    } else if (lastComma >= 0) {
-        raw.replace(QLatin1Char(','), QLatin1Char('.'));
+    const qsizetype separator = std::max(compact.lastIndexOf(QLatin1Char('.')),
+                                         compact.lastIndexOf(QLatin1Char(',')));
+    const qsizetype decimals = separator < 0 ? 0 : compact.size() - separator - 1;
+    QString number;
+    if (decimals == 1 || decimals == 2) {
+        QString integer = compact.left(separator);
+        integer.remove(QLatin1Char('.'));
+        integer.remove(QLatin1Char(','));
+        number = integer + QLatin1Char('.') + compact.mid(separator + 1);
+    } else {
+        number = compact;
+        number.remove(QLatin1Char('.'));
+        number.remove(QLatin1Char(','));
     }
-    // else: only dot or no separator at all — already toDouble()-ready.
 
     bool success = false;
-    const double parsed = raw.toDouble(&success);
-    if (success) {
-        outValue = parsed;
+    const double parsed = number.toDouble(&success);
+    if (!success || !std::isfinite(parsed)) {
+        return false;
     }
-    return success;
+    outValue = parsed;
+    return true;
 }
 
 QDate parseStatementDate(const QString& raw)
@@ -252,12 +255,27 @@ QDate parseStatementDate(const QString& raw)
     return QDate::fromString(raw.trimmed(), QStringLiteral("MM/dd/yyyy"));
 }
 
-QDate parseStatementDateNoYear(const QString& raw, QDate refYear)
+// Row dates have no year ("MM/dd"). The year is the one that puts the date in
+// [periodFrom − 31 days, periodTo] (#30): a December row of a statement that
+// starts in January is from the year before, and a January row of a statement
+// that starts in December is from the year after. The year is added to the
+// text before it is parsed, so that 29 February is checked against a real
+// year (#31). Returns an invalid date when no year fits.
+QDate parseStatementDateNoYear(const QString& raw, const QDate& periodFrom, const QDate& periodTo)
 {
-    // Format given verbatim in the spec: MM/DD/YYYY.
-    QDate baseDate = QDate::fromString(raw.trimmed(), QStringLiteral("MM/dd"));
-    baseDate.setDate(refYear.year(),baseDate.month(),baseDate.day());
-    return baseDate;
+    if (!periodFrom.isValid() || !periodTo.isValid()) {
+        return {};
+    }
+    const QString monthDay = raw.trimmed();
+    const QDate earliest = periodFrom.addDays(-31);
+    for (int year = earliest.year(); year <= periodTo.year(); ++year) {
+        const QDate date = QDate::fromString(QStringLiteral("%1/%2").arg(monthDay).arg(year),
+                                             QStringLiteral("MM/dd/yyyy"));
+        if (date.isValid() && date >= earliest && date <= periodTo) {
+            return date;
+        }
+    }
+    return {};
 }
 
 } // namespace
@@ -361,9 +379,6 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
             if (match.hasMatch()) {
                 outStatement.periodFrom = parseStatementDate(match.captured(1));
                 outStatement.periodTo   = parseStatementDate(match.captured(2));
-            } else {
-                outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
-                    QStringLiteral("Could not parse the statement period"), previewRawText(rec) });
             }
         } else {
             const QRegularExpressionMatch match = kBalanceLabelRe.match(label);
@@ -392,6 +407,17 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
         }
     }
 
+    // The row dates have no year: without a valid period, no row date can be
+    // read (#30).
+    if (!outStatement.periodFrom.isValid() || !outStatement.periodTo.isValid() ||
+        outStatement.periodFrom > outStatement.periodTo) {
+        outLog.append(ImportLogEntry{ LogLevel::Error, 0,
+            QStringLiteral("Could not read the statement period (a \"Period\" line \"From MM/dd/yyyy to "
+                           "MM/dd/yyyy\"). The row dates have no year, so they cannot be read without it."),
+            QString() });
+        return false;
+    }
+
     if (balanceLinesSeen < 2) {
         outLog.append(ImportLogEntry{ LogLevel::Warning, 0,
             QStringLiteral("Expected 2 \"Account balance on\" lines, found %1").arg(balanceLinesSeen),
@@ -413,8 +439,10 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
             continue;
         }
 
-        const QDate confirmationDate = parseStatementDateNoYear(rec.fields.at(kColConfirmationDate), outStatement.periodFrom);
-        const QDate operationDate    = parseStatementDateNoYear(rec.fields.at(kColOperationDate), outStatement.periodFrom);
+        const QDate confirmationDate = parseStatementDateNoYear(rec.fields.at(kColConfirmationDate),
+                                                                outStatement.periodFrom, outStatement.periodTo);
+        const QDate operationDate    = parseStatementDateNoYear(rec.fields.at(kColOperationDate),
+                                                                outStatement.periodFrom, outStatement.periodTo);
         if (!confirmationDate.isValid() && !operationDate.isValid()) {
             outLog.append(ImportLogEntry{ LogLevel::Error, rec.startLine,
                 QStringLiteral("Could not parse either date on this row — row skipped"), previewRawText(rec) });

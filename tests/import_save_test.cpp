@@ -13,6 +13,9 @@
 //        a row that breaks a NOT NULL column fails the save instead of being
 //        skipped
 //   #29  the parser reads the statement this file writes
+//   #30  a row date gets the year that puts it in the statement period
+//   #31  a 29 February row is read
+//   #32  grouped and comma amounts are read; "nan" and "inf" are refused
 
 #include "SnapshotImportController.h"
 #include "db/Database.h"
@@ -165,6 +168,12 @@ private slots:
     void identicalRowsAreTwoTransactions();
     void oneMoreIdenticalRowIsAdded();
     void nullAmountFailsTheSave();
+    void leapDayRowIsRead();
+    void rowsAcrossNewYearGetTheirYear();
+    void decemberRowInJanuaryStatement();
+    void missingPeriodFailsTheParse();
+    void groupedAndCommaAmountsAreRead();
+    void nonFiniteAmountsAreRefused();
 
 private:
     void parse(SnapshotImportController& controller, const QByteArray& csv);
@@ -527,6 +536,87 @@ void ImportSaveTest::nullAmountFailsTheSave()
     int inserted = -1;
     QVERIFY(!Database::instance().saveImport(m_account, {row}, QString(), {}, &inserted));
     QCOMPARE(transactionCount(), 0);
+}
+
+void ImportSaveTest::leapDayRowIsRead()
+{
+    const QVector<Data::Transaction> rows = parseAndSave(statement(
+        "From 02/01/2024 to 02/29/2024", "02/01/2024,100.00 \xE2\x82\xAC", "02/29/2024,90.00 \xE2\x82\xAC",
+        "02/29,02/28,\"Card payment 1234: SHOP\nInternal ref.: L1\",-10.00,,90.00\n"));
+    QCOMPARE(rows.size(), qsizetype(1));
+    QCOMPARE(rows.at(0).confirmationDate, QDate(2024, 2, 29));
+    QCOMPARE(rows.at(0).operationDate, QDate(2024, 2, 28));
+}
+
+void ImportSaveTest::rowsAcrossNewYearGetTheirYear()
+{
+    const QVector<Data::Transaction> rows = parseAndSave(statement(
+        "From 12/15/2025 to 01/14/2026", "12/15/2025,100.00 \xE2\x82\xAC", "01/14/2026,80.00 \xE2\x82\xAC",
+        "12/20,12/20,\"Card payment 1234: GIFTS\nInternal ref.: Y1\",-10.00,,90.00\n"
+        "01/05,01/05,\"Card payment 1234: SALES\nInternal ref.: Y2\",-10.00,,80.00\n"));
+    QCOMPARE(rows.size(), qsizetype(2));
+    QCOMPARE(rows.at(0).operationDate, QDate(2025, 12, 20));
+    QCOMPARE(rows.at(1).operationDate, QDate(2026, 1, 5)); // not 2025-01-05
+}
+
+void ImportSaveTest::decemberRowInJanuaryStatement()
+{
+    // Card payment on 31 December, booked on 2 January.
+    const QVector<Data::Transaction> rows = parseAndSave(statement(
+        "From 01/01/2026 to 01/31/2026", "01/01/2026,100.00 \xE2\x82\xAC", "01/31/2026,90.00 \xE2\x82\xAC",
+        "01/02,12/31,\"Card payment 1234: PARTY\nInternal ref.: D1\",-10.00,,90.00\n"));
+    QCOMPARE(rows.size(), qsizetype(1));
+    QCOMPARE(rows.at(0).confirmationDate, QDate(2026, 1, 2));
+    QCOMPARE(rows.at(0).operationDate, QDate(2025, 12, 31)); // not 2026-12-31
+}
+
+void ImportSaveTest::missingPeriodFailsTheParse()
+{
+    const QString path = m_dir.filePath(QStringLiteral("no-period.csv"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(statement("", "03/01/2026,500.00 \xE2\x82\xAC", "03/31/2026,480.00 \xE2\x82\xAC",
+                         "03/02,03/02,\"Card payment 1234: CARREFOUR\nInternal ref.: A1\",-20.00,,480.00\n"));
+    file.close();
+    SnapshotImportController controller;
+    controller.parseFile(QUrl::fromLocalFile(path), QString::fromLatin1(kTemplate));
+    QVERIFY(controller.lastParseFailed());
+    QVERIFY(controller.errorCount() >= 1);
+}
+
+void ImportSaveTest::groupedAndCommaAmountsAreRead()
+{
+    // 2 000.00 (narrow no-break space) − 1 300.00 + 1 234,56 − 1,234 = 700.56
+    SnapshotImportController controller;
+    parse(controller, statement(
+        "From 03/01/2026 to 03/31/2026", "03/01/2026,2\xE2\x80\xAF" "000.00 \xE2\x82\xAC",
+        "03/31/2026,700.56 \xE2\x82\xAC",
+        "03/02,03/02,\"Transfer: RENT\nInternal ref.: G1\",-1 300.00,,700.00\n"
+        "03/03,03/03,\"Payment received: SALARY\nInternal ref.: G2\",,\"1 234,56 \xE2\x82\xAC\",1934.56\n"
+        "03/04,03/04,\"Card payment 1234: LAPTOP\nInternal ref.: G3\",\"-1,234\",,700.56\n"));
+    QCOMPARE(controller.transactionRows().size(), qsizetype(3));
+    QVERIFY(controller.checkReconciliation(m_account).value(QStringLiteral("endOk")).toBool());
+    controller.save(m_account, QStringLiteral("Checking"));
+    QVector<Data::Transaction> rows = Database::instance().transactionsForAccount(m_account);
+    std::sort(rows.begin(), rows.end(), [](const Data::Transaction& a, const Data::Transaction& b) {
+        return a.id < b.id;
+    });
+    QCOMPARE(rows.size(), qsizetype(3));
+    QCOMPARE(rows.at(0).debit, 1300.0);
+    QCOMPARE(rows.at(1).credit, 1234.56);
+    QCOMPARE(rows.at(2).debit, 1234.0);
+}
+
+void ImportSaveTest::nonFiniteAmountsAreRefused()
+{
+    SnapshotImportController controller;
+    parse(controller, statement(
+        "From 03/01/2026 to 03/31/2026", "03/01/2026,500.00 \xE2\x82\xAC", "03/31/2026,480.00 \xE2\x82\xAC",
+        "03/02,03/02,\"Card payment 1234: CARREFOUR\nInternal ref.: A1\",-20.00,,480.00\n"
+        "03/03,03/03,\"Card payment 1234: ODD\nInternal ref.: N1\",nan,,480.00\n"
+        "03/04,03/04,\"Card payment 1234: ODDER\nInternal ref.: N2\",-inf,,480.00\n"));
+    QCOMPARE(controller.transactionRows().size(), qsizetype(1)); // both rows skipped
+    QVERIFY(controller.warningCount() >= 2);
 }
 
 QTEST_GUILESS_MAIN(ImportSaveTest)
