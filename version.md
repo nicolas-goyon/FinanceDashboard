@@ -20,9 +20,10 @@ fact. Small fixes to a feature that's still unreleased/in-progress in the *same*
 need their own extra line; fold them into the feature's own entry instead of listing "fixed a
 bug in the thing I just added two lines above."
 
-**Releases** are cut automatically: every push to `main` publishes the in-progress version as a
-GitHub release (installers + portable builds + source archives), stamps its date here, and
-opens the next patch version as the new in-progress one. See `CI-CD.md`.
+**Releases** follow gitflow. A `release/<x.y.z>` branch stamps the date here
+(`version.py release`). Its merge into `main` publishes the GitHub release (setup, portable
+builds, source archives). Then CI opens a pull request into `develop` that opens the next patch
+version as the new in-progress one. See `CI-CD.md`.
 
 ---
 
@@ -90,17 +91,24 @@ pass in the same in-progress version.
   recurrence, subcategory ambiguity and the evaluator. Not part of the CMake build — it has its
   own `main()`; see `TODO.md`'s "no tests" item for the Qt Test suite it stands in for.
 - Full CI/CD pipeline on GitHub Actions (`.github/workflows/ci.yml`, documented in `CI-CD.md`).
-  Every push builds and packages the app on Windows and Linux and runs the tests and linters as
-  independent, individually re-runnable jobs; every push to `main` publishes a GitHub release.
-  Ships a Windows setup (`.exe`, made with Inno Setup: it asks "for me only" or "for all
-  users", and the setup of a newer version updates an installed copy in place) and portable
-  `.zip`, a Linux `.AppImage`, `.deb` and portable `.tar.gz`, source archives and
-  `SHA256SUMS.txt` — none of which need Qt installed on the target machine.
+  Every pull request, and every push to `main`, `develop`, `release/**` and `hotfix/**`, builds
+  and packages the app on Windows and Linux and runs the tests and linters as independent,
+  individually re-runnable jobs. The project follows gitflow: merging a `release/*` or
+  `hotfix/*` branch into `main` publishes a GitHub release and its tag, once every blocking job
+  (including Tests and Changelog) is green, and CI then opens a pull request that merges `main`
+  back into `develop` and opens the next version. CI never commits to `main`. Ships a Windows
+  setup (`.exe`, made with Inno Setup: it asks "for me only" or "for all users", and the setup
+  of a newer version updates an installed copy in place) and portable `.zip`, a Linux
+  `.AppImage`, `.deb` and portable `.tar.gz`, source archives and `SHA256SUMS.txt` — none of
+  which need Qt installed on the target machine.
 - `version.json` + `tools/version.py` — the version and the changelog are now one
   machine-readable file. `CMakeLists.txt` reads `current` straight into `project(... VERSION
   ...)`, so the build, the installer file names, the release tag and the app's own
   `setApplicationVersion()` can no longer disagree. `version.md` is generated from it
-  (`version.py render`); log a change with `version.py add <Section> "<text>"`.
+  (`version.py render`); log a change with `version.py add <Section> "<text>"`. Only the
+  current version can be in progress: `bump` renames an in-progress version instead of adding a
+  second one, `add` refuses a released version, and `check --base origin/main` refuses any
+  change to a version that is released on `main`.
 - Self-contained deployment via `qt_generate_deploy_qml_app_script()` — `cmake --install` now
   produces a directory that runs on a machine with no Qt, and every package is cut from that
   one tree. Plus `packaging/` (generated app icon, `.desktop` entry, AppStream metadata,
