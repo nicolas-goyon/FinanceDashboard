@@ -44,9 +44,10 @@ it, or the upgrade failed) closes the connection and stops the app at start-up, 
 (a fatal step in `StartupChecks`).
 
 A transaction's `fingerprint` is its identity in the bank's statement
-(`TransactionsTable::fingerprints()`): a row that the account already has is not saved again.
-Compute the fingerprints of a statement on all its rows, before you filter them: the second
-identical row of a statement has occurrence 2 in its fingerprint.
+(`TransactionsTable::fingerprints()`): the bank's reference and the amount when the row has a
+reference (`bankReference()`), else every field. A row that the account already has is not saved
+again. Compute the fingerprints of a statement on all its rows, before you filter them: the
+second identical row of a statement has occurrence 2 in its fingerprint.
 
 ## Where to look
 

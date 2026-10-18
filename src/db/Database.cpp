@@ -97,16 +97,32 @@ bool Database::openFile(const QString& path)
     // change to the file.
     const bool upgrading = existedBefore && from < kSchemaVersion;
     QString backupPath;
-    if (upgrading && !backUp(path, backupPath)) {
-        return false;
+    bool copyCleared = false;
+    if (upgrading) {
+        if (!backUp(path, backupPath)) {
+            return false;
+        }
+        // Maintainer decision (2026-10-18): the copy keeps no IBAN, BIC or
+        // account number either. The app does not use them since v0.2.0.
+        const QStringList numbers = accountNumberColumns();
+        if (!numbers.isEmpty()) {
+            if (!clearAccountNumbersInCopy(backupPath, numbers)) {
+                const QString detail = m_lastError;
+                QFile::remove(backupPath);
+                return failOpen(OpenError::UpgradeFailed,
+                                QStringLiteral("Could not remove the account numbers from the copy of the "
+                                               "database, so it was not upgraded: %1 The file was not changed.")
+                                    .arg(detail));
+            }
+            copyCleared = true;
+        }
     }
 
     // The base tables and every migration step in one SQL transaction: if a
     // step fails, the rollback leaves the file as it was.
-    int removedDuplicates = 0;
+    UpgradeStats stats;
     m_lastError.clear();
-    const bool done = m_db.transaction() && createBaseTables() && upgrade(from, removedDuplicates) &&
-                      m_db.commit();
+    const bool done = m_db.transaction() && createBaseTables() && upgrade(from, stats) && m_db.commit();
     if (!done) {
         const QString detail = m_lastError.isEmpty() ? m_db.lastError().text() : m_lastError;
         m_db.rollback();
@@ -124,6 +140,16 @@ bool Database::openFile(const QString& path)
                             .arg(detail));
     }
 
+    // The account numbers that step 1 removed can stay in the free pages of
+    // the file: VACUUM writes the file again without them.
+    if (stats.droppedAccountNumbers) {
+        QSqlQuery vacuum(m_db);
+        if (!vacuum.exec(QStringLiteral("VACUUM;"))) {
+            qWarning() << "[Database] VACUUM after the upgrade failed:" << vacuum.lastError().text();
+        }
+        vacuum.finish();
+    }
+
     // WAL mode: better read concurrency, faster writes. After the upgrade:
     // journal_mode cannot change inside a transaction.
     QSqlQuery pragma(m_db);
@@ -131,6 +157,11 @@ bool Database::openFile(const QString& path)
     // The PRAGMA returns a row; finish() releases the statement, else the
     // next commit() fails with "SQL statements in progress".
     pragma.finish();
+    if (stats.droppedAccountNumbers) {
+        // Write the WAL into the file and empty it: the old pages go too.
+        pragma.exec(QStringLiteral("PRAGMA wal_checkpoint(TRUNCATE);"));
+        pragma.finish();
+    }
 
     if (upgrading) {
         m_upgradeReport = QStringLiteral("The database was upgraded from schema version %1 to %2.\n\n"
@@ -138,10 +169,22 @@ bool Database::openFile(const QString& path)
                               .arg(from)
                               .arg(kSchemaVersion)
                               .arg(QDir::toNativeSeparators(backupPath));
-        if (removedDuplicates > 0) {
+        if (copyCleared) {
+            m_upgradeReport += QStringLiteral("\n\nThe old IBAN, BIC and account numbers were removed, from "
+                                              "the database and from the copy.");
+        }
+        if (stats.removedDuplicates > 0) {
             m_upgradeReport += QStringLiteral("\n\n%1 duplicate transaction(s) were removed: the same "
-                                              "statement rows had been saved more than once.")
-                                   .arg(removedDuplicates);
+                                              "statement rows had been saved more than once. Of each row, "
+                                              "the copy with a category stays (then the one with a "
+                                              "subcategory, then the oldest one).")
+                                   .arg(stats.removedDuplicates);
+        }
+        if (stats.removedWithOtherValues > 0) {
+            m_upgradeReport += QStringLiteral("\n\n%1 of the removed copies had another category, "
+                                              "subcategory, label, date or balance. The copy from before "
+                                              "the upgrade keeps them, and the application log lists them.")
+                                   .arg(stats.removedWithOtherValues);
         }
         qInfo().noquote() << "[Database]" << m_upgradeReport;
     }
@@ -216,6 +259,59 @@ bool Database::backUp(const QString& path, QString& backupPath)
     return true;
 }
 
+QStringList Database::accountNumberColumns() const
+{
+    const QStringList columns = columnsOf(QStringLiteral("accounts"));
+    QStringList result;
+    for (const QString& legacy : {QStringLiteral("iban"), QStringLiteral("bic"), QStringLiteral("number")}) {
+        if (columns.contains(legacy, Qt::CaseInsensitive)) {
+            result.append(legacy);
+        }
+    }
+    return result;
+}
+
+// Its own connection to the copy. secure_delete writes zeros over the old
+// values, and VACUUM writes the file again without free pages, so the old
+// bytes are not in the file any more. The copy uses a rollback journal: one
+// file, no -wal next to it.
+bool Database::clearAccountNumbersInCopy(const QString& backupPath, const QStringList& columns)
+{
+    static const QLatin1String kCopyConnection("finance_dashboard_copy");
+    QStringList assignments;
+    for (const QString& column : columns) {
+        assignments.append(QStringLiteral("%1 = ''").arg(column));
+    }
+    bool ok = false;
+    {
+        QSqlDatabase copy = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), kCopyConnection);
+        copy.setDatabaseName(backupPath);
+        if (copy.open()) {
+            const QStringList statements = {
+                QStringLiteral("PRAGMA journal_mode = DELETE;"),
+                QStringLiteral("PRAGMA secure_delete = ON;"),
+                QStringLiteral("UPDATE accounts SET %1;").arg(assignments.join(QStringLiteral(", "))),
+                QStringLiteral("VACUUM;"),
+            };
+            ok = true;
+            for (const QString& sql : statements) {
+                QSqlQuery query(copy);
+                if (!query.exec(sql)) {
+                    m_lastError = query.lastError().text();
+                    ok = false;
+                    break;
+                }
+                query.finish();
+            }
+            copy.close();
+        } else {
+            m_lastError = copy.lastError().text();
+        }
+    }
+    QSqlDatabase::removeDatabase(kCopyConnection);
+    return ok;
+}
+
 // ── Schema migrations ─────────────────────────────────────────────────────────
 //
 // createTable() in each table class makes the base schema (version 0, the
@@ -247,14 +343,14 @@ QStringList Database::columnsOf(const QString& table) const
     return columns;
 }
 
-bool Database::upgrade(int from, int& removedDuplicates)
+bool Database::upgrade(int from, UpgradeStats& stats)
 {
     m_lastError.clear();
     for (int step = from + 1; step <= kSchemaVersion; ++step) {
         bool ok = false;
         switch (step) {
-        case 1: ok = migrateTo1(); break;
-        case 2: ok = migrateTo2(removedDuplicates); break;
+        case 1: ok = migrateTo1(stats); break;
+        case 2: ok = migrateTo2(stats); break;
         default: m_lastError = QStringLiteral("there is no migration step %1.").arg(step); break;
         }
         if (!ok) {
@@ -280,16 +376,12 @@ bool Database::upgrade(int from, int& removedDuplicates)
 // plain-text values. Rebuild the table without them (SQLite's procedure for a
 // schema change that ALTER TABLE cannot always do: new table, copy, drop,
 // rename). No-op when the columns are not there.
-bool Database::migrateTo1()
+bool Database::migrateTo1(UpgradeStats& stats)
 {
-    const QStringList columns = columnsOf(QStringLiteral("accounts"));
-    const QStringList legacy = {QStringLiteral("iban"), QStringLiteral("bic"), QStringLiteral("number")};
-    const bool hasLegacy = std::any_of(legacy.cbegin(), legacy.cend(), [&columns](const QString& column) {
-        return columns.contains(column, Qt::CaseInsensitive);
-    });
-    if (!hasLegacy) {
+    if (accountNumberColumns().isEmpty()) {
         return true;
     }
+    const QStringList columns = columnsOf(QStringLiteral("accounts"));
 
     const QStringList keep = {QStringLiteral("id"), QStringLiteral("name"), QStringLiteral("type"),
                               QStringLiteral("category"), QStringLiteral("currency"), QStringLiteral("notes")};
@@ -320,15 +412,18 @@ bool Database::migrateTo1()
     if (!ok) {
         m_lastError = query.lastError().text();
     }
+    stats.droppedAccountNumbers = ok;
     return ok;
 }
 
 // Version 2 — one fingerprint per transaction (TransactionsTable), unique
 // per account, so that a statement row is saved only once. Existing rows get
-// their fingerprint from their stored values. Exact duplicates that a
-// re-import saved before this version are removed: the row with the lowest
-// id stays (maintainer decision, 2026-10-18; open() saved a copy first).
-bool Database::migrateTo2(int& removedDuplicates)
+// their fingerprint from their stored values. The duplicates that re-imports
+// saved before this version are removed (open() saved a copy first).
+// Maintainer decision (2026-10-18): of each row, the copy with a category
+// stays, then the one with a subcategory, then the oldest one. The removed
+// copies that differ from the one that stays are counted and logged.
+bool Database::migrateTo2(UpgradeStats& stats)
 {
     QSqlQuery query(m_db);
     if (!columnsOf(QStringLiteral("transactions")).contains(QStringLiteral("fingerprint"), Qt::CaseInsensitive) &&
@@ -337,31 +432,71 @@ bool Database::migrateTo2(int& removedDuplicates)
         return false;
     }
 
-    QSqlQuery rows(m_db);
-    if (!rows.exec(QStringLiteral("SELECT id, operation_date, confirmation_date, debit, credit, balance_after,"
-                                  " description FROM transactions;"))) {
-        m_lastError = rows.lastError().text();
-        return false;
+    // Read every row first, then write: no UPDATE while the SELECT is open.
+    struct Row { int id; QString fingerprint; };
+    QVector<Row> rows;
+    {
+        QSqlQuery select(m_db);
+        if (!select.exec(QStringLiteral("SELECT id, operation_date, confirmation_date, debit, credit,"
+                                        " balance_after, description FROM transactions;"))) {
+            m_lastError = select.lastError().text();
+            return false;
+        }
+        while (select.next()) {
+            rows.append({select.value(0).toInt(),
+                         TransactionsTable::fingerprint(select.value(1).toString(), select.value(2).toString(),
+                                                        select.value(3).toDouble(), select.value(4).toDouble(),
+                                                        select.value(5).toDouble(), select.value(6).toString())});
+        }
     }
     QSqlQuery update(m_db);
     update.prepare(QStringLiteral("UPDATE transactions SET fingerprint = ? WHERE id = ?;"));
-    while (rows.next()) {
-        update.addBindValue(TransactionsTable::fingerprint(rows.value(1).toString(), rows.value(2).toString(),
-                                                           rows.value(3).toDouble(), rows.value(4).toDouble(),
-                                                           rows.value(5).toDouble(), rows.value(6).toString()));
-        update.addBindValue(rows.value(0).toInt());
+    for (const Row& row : rows) {
+        update.addBindValue(row.fingerprint);
+        update.addBindValue(row.id);
         if (!update.exec()) {
             m_lastError = update.lastError().text();
             return false;
         }
     }
 
-    if (!query.exec(QStringLiteral("DELETE FROM transactions WHERE id NOT IN"
-                                   " (SELECT MIN(id) FROM transactions GROUP BY account_id, fingerprint);"))) {
+    // rank 1: the copy that stays.
+    static const QString kRanked = QStringLiteral(
+        "WITH ranked AS (SELECT *, ROW_NUMBER() OVER (PARTITION BY account_id, fingerprint"
+        " ORDER BY (category <> '') DESC, (subcategory <> '') DESC, id) AS copy_rank FROM transactions) ");
+
+    {
+        QSqlQuery differ(m_db);
+        if (!differ.exec(kRanked + QStringLiteral(
+                "SELECT r.id, k.id, r.operation_date, r.description, r.category, r.subcategory, r.name,"
+                " r.confirmation_date, r.balance_after"
+                " FROM ranked r JOIN ranked k ON k.account_id = r.account_id AND k.fingerprint = r.fingerprint"
+                " AND k.copy_rank = 1"
+                " WHERE r.copy_rank > 1 AND (r.category IS NOT k.category OR r.subcategory IS NOT k.subcategory"
+                " OR r.name IS NOT k.name OR r.operation_date IS NOT k.operation_date"
+                " OR r.confirmation_date IS NOT k.confirmation_date OR r.balance_after IS NOT k.balance_after);"))) {
+            m_lastError = differ.lastError().text();
+            return false;
+        }
+        while (differ.next()) {
+            ++stats.removedWithOtherValues;
+            qInfo().noquote() << QStringLiteral("[Database] duplicate transaction %1 removed (transaction %2 "
+                                                "stays): %3 \"%4\", category \"%5\", subcategory \"%6\", "
+                                                "label \"%7\", confirmation date %8, balance after %9")
+                                     .arg(differ.value(0).toString(), differ.value(1).toString(),
+                                          differ.value(2).toString(), differ.value(3).toString(),
+                                          differ.value(4).toString(), differ.value(5).toString(),
+                                          differ.value(6).toString(), differ.value(7).toString(),
+                                          differ.value(8).toString());
+        }
+    }
+
+    if (!query.exec(kRanked + QStringLiteral(
+            "DELETE FROM transactions WHERE id IN (SELECT id FROM ranked WHERE copy_rank > 1);"))) {
         m_lastError = query.lastError().text();
         return false;
     }
-    removedDuplicates = query.numRowsAffected();
+    stats.removedDuplicates = query.numRowsAffected();
 
     if (!query.exec(QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_fingerprint"
                                    " ON transactions(account_id, fingerprint);"))) {
@@ -825,9 +960,9 @@ bool Database::resetAll()
     // EXISTS, so this is safe to call again right after dropping them all),
     // then bring them to the latest schema, in the same transaction: if a
     // step fails, the rollback keeps the data as it was.
-    int removedDuplicates = 0;
+    UpgradeStats stats;
     m_lastError.clear();
-    if (!createBaseTables() || !upgrade(0, removedDuplicates)) {
+    if (!createBaseTables() || !upgrade(0, stats)) {
         const QString detail = m_lastError;
         m_db.rollback();
         m_lastError = QStringLiteral("Failed to recreate the tables after the reset: %1").arg(detail);

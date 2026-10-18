@@ -181,8 +181,9 @@ pass in the same in-progress version.
   version of the app, or an upgrade that fails, stops the app at start-up with the reason, and
   the file is not changed (the connection is closed, so nothing writes to it; a failed upgrade
   removes its copy). Migration 1 drops the `iban`, `bic` and `number` columns of an old
-  `accounts` table and keeps its id counter; migration 2 adds the transaction fingerprints.
-  `resetAll()` runs the steps again on the empty tables.
+  `accounts` table and keeps its id counter; their values are also removed from the copy, and
+  the file is compacted (`VACUUM`) so that no old bytes stay in it. Migration 2 adds the
+  transaction fingerprints. `resetAll()` runs the steps again on the empty tables.
 
 ### Changed
 - **Removed** all `docs` for pruning and reduce overhead.
@@ -244,13 +245,17 @@ pass in the same in-progress version.
   database, and each retry stored them again.
 - **Statement import — a statement row is saved only once.** Re-importing a statement, or
   importing one that overlaps an earlier one, saved every row again while the reconciliation
-  stayed green. Each row now has a fingerprint (dates, debit, credit and balance after in
-  cents, description), unique per account: rows that the account already has are skipped, and
-  the status line and the import report say how many. Two identical rows of one statement are
-  two transactions (the second one has its occurrence number in its fingerprint), and a row
-  that breaks a `NOT NULL` column fails the save instead of being skipped. The upgrade to
-  schema version 2 removes the duplicates that earlier re-imports saved (the first copy stays),
-  after it saves a copy of the database.
+  stayed green. Each row now has a fingerprint, unique per account: the bank's reference
+  ("Internal ref.") and the amount when the row has one, so that a later export with another
+  value date or running balance still matches, else the dates, debit, credit and balance after
+  in cents, and the description. Rows that the account already has are skipped, and the status
+  line and the import report say how many. Two identical rows of one statement are two
+  transactions (the second one has its occurrence number in its fingerprint), and a row that
+  breaks a `NOT NULL` column fails the save instead of being skipped. The upgrade to schema
+  version 2 removes the duplicates that earlier re-imports saved, after it saves a copy of the
+  database: of each row, the copy with a category stays, then the one with a subcategory, then
+  the oldest one. The upgrade dialog says how many removed copies had another category, label,
+  date or balance, and the application log lists them.
 - **A database that does not open stops the app with the cause.** `Database::open()` used to
   leave the connection open after a failure, so the app started on an empty dashboard and the
   SQLite error went only to the log. It now closes the connection, and the start-up error

@@ -38,9 +38,11 @@
 //   CREATE UNIQUE INDEX idx_transactions_fingerprint
 //     ON transactions(account_id, fingerprint);        -- schema version 2
 //
-// **fingerprint** — the identity of a row as the bank exported it: a SHA-256
+// **fingerprint** — the identity of a row as the bank exported it, a SHA-256
+// (see fingerprint()): of the bank's reference ("Internal ref." in the
+// description) and the debit and credit in cents when the row has one, else
 // of the dates, the debit, credit and balance_after in cents, and the
-// description (see fingerprint()). With the UNIQUE index, the same statement
+// description. With the UNIQUE index, the same statement
 // row can be saved only once per account, so a re-import or an overlapping
 // statement adds only the new rows (insertBatch() skips a fingerprint that the
 // account has: ON CONFLICT … DO NOTHING; any other failure stops the save).
@@ -107,6 +109,10 @@ public:
     // The fingerprints of a batch (one statement), in order: the k-th row
     // that has the same plain fingerprint as earlier rows gets occurrence k.
     [[nodiscard]] static QStringList fingerprints(const QVector<Data::Transaction>& txs);
+    // The bank's own id of a transaction, from its description: the
+    // "Internal ref." of the Sumeria export (the only template so far), or ""
+    // when there is none. A template with another kind of id adds it here.
+    [[nodiscard]] static QString bankReference(const QString& description);
 
     // The fingerprints that `accountId` already has.
     [[nodiscard]] QSet<QString> fingerprintsForAccount(int accountId) const;

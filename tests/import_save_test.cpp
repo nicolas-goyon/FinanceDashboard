@@ -8,8 +8,10 @@
 //        (a null QString used to be bound as SQL NULL in NOT NULL columns)
 //   #17  a failed save writes nothing, and a retry stores each row once
 //   #18  a re-import adds nothing, an overlapping statement adds only its new rows;
-//        two identical rows of one statement are two transactions; a row that
-//        breaks a NOT NULL column fails the save instead of being skipped
+//        a later export with other dates and balances matches by bank
+//        reference; two identical rows of one statement are two transactions;
+//        a row that breaks a NOT NULL column fails the save instead of being
+//        skipped
 //   #29  the parser reads the statement this file writes
 
 #include "SnapshotImportController.h"
@@ -75,6 +77,25 @@ QByteArray overlappingStatement()
     return csv;
 }
 
+// The March statement as a later export can show it: other confirmation
+// dates and other running balances, but the same bank references and amounts.
+QByteArray marchStatementLaterExport()
+{
+    QByteArray csv;
+    csv += "IBAN,";
+    csv += kIban;
+    csv += "\nBIC,";
+    csv += kBic;
+    csv += "\nPeriod,From 03/01/2026 to 03/31/2026\n";
+    csv += "Account balance on 03/01/2026,500.00 \xE2\x82\xAC\n";
+    csv += "Account balance on 03/31/2026,440.00 \xE2\x82\xAC\n";
+    csv += "Confirmation date/ value,Operation date,Description and identifier,Debit (-),Credit (+),Balance\n";
+    csv += "03/03,03/02,\"Card payment 1234: CARREFOUR\nInternal ref.: A1\",-20.00,,481.00\n";
+    csv += "03/06,03/05,\"Card payment 1234: SNCF\nInternal ref.: A2\",-30.00,,451.00\n";
+    csv += "03/10,03/09,\"Card payment 1234: BOULANGERIE\nInternal ref.: A3\",-10.00,,441.00\n";
+    return csv;
+}
+
 // A statement with the same row `copies` times: same dates, amount and
 // description, and an empty balance cell, so nothing in the file tells the
 // rows apart.
@@ -115,6 +136,7 @@ private slots:
     void retryAfterFailureStoresEachRowOnce();
     void reimportAddsNothing();
     void overlappingStatementAddsOnlyNewRows();
+    void laterExportMatchesByBankReference();
     void identicalRowsAreTwoTransactions();
     void oneMoreIdenticalRowIsAdded();
     void nullAmountFailsTheSave();
@@ -346,6 +368,23 @@ void ImportSaveTest::overlappingStatementAddsOnlyNewRows()
     QCOMPARE(transactionCount(), 4);  // 3 from March + the one new row
     QCOMPARE(controller.lastImportReport().value(QStringLiteral("alreadySavedCount")).toInt(), 2);
     QCOMPARE(controller.lastImportReport().value(QStringLiteral("transactionCount")).toInt(), 1);
+}
+
+void ImportSaveTest::laterExportMatchesByBankReference()
+{
+    {
+        SnapshotImportController controller;
+        parse(controller, marchStatement());
+        controller.save(m_account, QStringLiteral("Checking"));
+        QCOMPARE(transactionCount(), 3);
+    }
+    // Other dates and balances, same references and amounts: nothing new.
+    SnapshotImportController controller;
+    parse(controller, marchStatementLaterExport());
+    QCOMPARE(controller.checkReconciliation(m_account).value(QStringLiteral("alreadySavedCount")).toInt(), 3);
+    controller.save(m_account, QStringLiteral("Checking"));
+    QCOMPARE(transactionCount(), 3);
+    QCOMPARE(controller.lastImportReport().value(QStringLiteral("alreadySavedCount")).toInt(), 3);
 }
 
 void ImportSaveTest::identicalRowsAreTwoTransactions()
