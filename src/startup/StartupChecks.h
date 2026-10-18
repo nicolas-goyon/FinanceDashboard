@@ -18,9 +18,10 @@
 // launcher's job (launcher/, see docs/startup.md).
 //
 // There are currently no hard requirements — runRequirementChecks() is the
-// place to add them (see the example comment in StartupChecks.cpp). The
-// initialization steps keep main()'s previous behaviour: a database that
-// fails to open is reported but not fatal (pages show the error inline).
+// place to add them (see the example comment in StartupChecks.cpp). A
+// database that this version cannot use (saved by a newer version, or an
+// upgrade that failed) is a fatal step; a database that fails to open for
+// another reason is reported but not fatal, as before.
 
 namespace Startup {
 

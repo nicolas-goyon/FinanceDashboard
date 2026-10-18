@@ -7,6 +7,7 @@
 #include <QDate>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <QSqlDatabase>
 
@@ -41,11 +42,14 @@
 // of the dates, the debit, credit and balance_after in cents, and the
 // description (see fingerprint()). With the UNIQUE index, the same statement
 // row can be saved only once per account, so a re-import or an overlapping
-// statement adds only the new rows (insertBatch() uses INSERT OR IGNORE).
-// updateById() keeps the fingerprint: after an edit, a re-import of the
-// original statement still finds the row. The column and the index are added
-// by schema migration 2 (Database::migrate()), not by createTable(), which
-// keeps the base schema.
+// statement adds only the new rows (insertBatch() skips a fingerprint that the
+// account has: ON CONFLICT … DO NOTHING; any other failure stops the save).
+// Two identical rows in one statement are two transactions: the second one
+// has its occurrence number in its hash (fingerprints()), so it is saved too,
+// and a re-import still matches each one to one. updateById() keeps the
+// fingerprint: after an edit, a re-import of the original statement still
+// finds the row. The column and the index are added by schema migration 2
+// (Database::upgrade()), not by createTable(), which keeps the base schema.
 //
 // **No `confidence` column on purpose.** The (future) category-prediction
 // model's per-row confidence is a review-screen-only concept
@@ -54,13 +58,14 @@
 // category/subcategory get written here; confidence is discarded, not
 // persisted alongside them.
 //
-// `name` was added after the table already shipped — createTable() runs an
-// `ALTER TABLE ... ADD COLUMN` (guarded by a `PRAGMA table_info` check, since
-// SQLite versions before 3.35 don't support `ADD COLUMN IF NOT EXISTS`) so
-// existing databases pick it up without a manual migration step.
-// `ensureColumn()` is a reusable helper (name+DDL parameters) for exactly
-// this — any future additive column should get its own `ensureColumn()` call
-// in `createTable()`.
+// `name` was added after the table already shipped, before schema
+// versioning — createTable() runs an `ALTER TABLE ... ADD COLUMN` (guarded by
+// a `PRAGMA table_info` check, since SQLite versions before 3.35 don't support
+// `ADD COLUMN IF NOT EXISTS`), so that a file from before it reaches the base
+// schema. createTable() is the base schema (version 0) and must not change:
+// a new column or index is a migration step in Database::upgrade(), never a
+// new `ensureColumn()` call here. createTable() runs before the steps, so
+// SQL here that used a column added by a step would fail on every old file.
 //
 // **updateById()** — added for the per-account transactions page's "✎ Edit"
 // action (AccountTransactionsPage.qml, see ARCHITECTURE.MD § Account
@@ -84,17 +89,24 @@ public:
     // this account — this is not the "delete-then-insert" pattern
     // AssetEntriesTable uses, since multiple statement imports for the same
     // account over time should accumulate, not overwrite). A row whose
-    // fingerprint the account already has is skipped (INSERT OR IGNORE);
-    // `inserted`, when not null, receives the number of rows written.
+    // fingerprint the account already has is skipped (ON CONFLICT DO
+    // NOTHING); any other constraint failure (a NULL amount, say) returns
+    // false. A row keeps its `fingerprint` when it has one, else gets the one
+    // from fingerprints(txs). `inserted`, when not null, receives the number
+    // of rows written.
     bool insertBatch(int accountId, const QVector<Data::Transaction>& txs, int* inserted = nullptr);
 
     // The fingerprint of a row (see the schema comment above). Two rows with
     // the same dates, amounts in cents, balance after and description have
-    // the same fingerprint.
-    [[nodiscard]] static QString fingerprint(const Data::Transaction& tx);
+    // the same fingerprint; `occurrence` 2, 3, … makes the 2nd, 3rd, …
+    // identical row of one batch different (1 is the plain fingerprint).
+    [[nodiscard]] static QString fingerprint(const Data::Transaction& tx, int occurrence = 1);
     [[nodiscard]] static QString fingerprint(const QString& operationDate, const QString& confirmationDate,
                                              double debit, double credit, double balanceAfter,
-                                             const QString& description);
+                                             const QString& description, int occurrence = 1);
+    // The fingerprints of a batch (one statement), in order: the k-th row
+    // that has the same plain fingerprint as earlier rows gets occurrence k.
+    [[nodiscard]] static QStringList fingerprints(const QVector<Data::Transaction>& txs);
 
     // The fingerprints that `accountId` already has.
     [[nodiscard]] QSet<QString> fingerprintsForAccount(int accountId) const;

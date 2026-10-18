@@ -8,6 +8,7 @@
 #include <QDate>
 #include <QDateTime>
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include <QLatin1String>
 #include <QSqlQuery>
@@ -47,6 +48,19 @@ Database& Database::instance()
 bool Database::open(const QString& path)
 {
     m_upgradeReport.clear();
+    m_openError = OpenError::None;
+    if (openFile(path)) {
+        return true;
+    }
+    // Nothing may write to a file that this version cannot use (newer
+    // schema, failed upgrade): the connection is closed, so isOpen() is false
+    // and every write fails with "Database not open".
+    close();
+    return false;
+}
+
+bool Database::openFile(const QString& path)
+{
     // Read before the open: QSqlDatabase::open() creates the file.
     const QFileInfo fileBefore(path);
     const bool existedBefore = fileBefore.exists() && fileBefore.size() > 0;
@@ -56,28 +70,97 @@ bool Database::open(const QString& path)
     m_db.setDatabaseName(path);
 
     if (!m_db.open()) {
-        m_lastError = m_db.lastError().text();
-        qWarning() << "[Database] Cannot open:" << m_lastError;
+        return failOpen(OpenError::CannotOpen, QStringLiteral("Cannot open: %1").arg(m_db.lastError().text()));
+    }
+
+    const int from = schemaVersion();
+    if (from < 0) {
+        return failOpen(OpenError::CannotOpen,
+                        QStringLiteral("Cannot read the schema version: %1").arg(m_db.lastError().text()));
+    }
+    // A file from a newer version of the app: refuse it before any change.
+    if (from > kSchemaVersion) {
+        return failOpen(OpenError::NewerSchema,
+                        QStringLiteral("This database uses schema version %1. This version of the app "
+                                       "knows schema version %2 at most: use a newer version of the app.")
+                            .arg(from)
+                            .arg(kSchemaVersion));
+    }
+
+    // An existing file that this version upgrades: a copy first, before any
+    // change to the file.
+    const bool upgrading = existedBefore && from < kSchemaVersion;
+    QString backupPath;
+    if (upgrading && !backUp(path, backupPath)) {
         return false;
     }
 
-    // WAL mode: better read concurrency, faster writes
+    // The base tables and every migration step in one SQL transaction: if a
+    // step fails, the rollback leaves the file as it was.
+    int removedDuplicates = 0;
+    m_lastError.clear();
+    const bool done = m_db.transaction() && createBaseTables() && upgrade(from, removedDuplicates) &&
+                      m_db.commit();
+    if (!done) {
+        const QString detail = m_lastError.isEmpty() ? m_db.lastError().text() : m_lastError;
+        m_db.rollback();
+        if (!upgrading) {
+            return failOpen(OpenError::CannotOpen, QStringLiteral("Cannot create the tables: %1").arg(detail));
+        }
+        // The file is unchanged, so this copy is not needed: without this, each
+        // failed start would leave one more copy.
+        QFile::remove(backupPath);
+        return failOpen(OpenError::UpgradeFailed,
+                        QStringLiteral("Could not upgrade the database from schema version %1 to %2: %3 "
+                                       "The file was not changed.")
+                            .arg(from)
+                            .arg(kSchemaVersion)
+                            .arg(detail));
+    }
+
+    // WAL mode: better read concurrency, faster writes. After the upgrade:
+    // journal_mode cannot change inside a transaction.
     QSqlQuery pragma(m_db);
     pragma.exec(QStringLiteral("PRAGMA journal_mode = WAL;"));
     // The PRAGMA returns a row; finish() releases the statement, else the
-    // first commit() below fails with "SQL statements in progress".
+    // next commit() fails with "SQL statements in progress".
     pragma.finish();
 
-    // A file from a newer version of the app: refuse it before any change.
-    if (schemaVersion() > kSchemaVersion) {
-        m_lastError = QStringLiteral("This database uses schema version %1. This version of the app "
-                                     "knows schema version %2 at most: use a newer version of the app.")
-                          .arg(schemaVersion())
-                          .arg(kSchemaVersion);
-        qWarning() << "[Database]" << m_lastError;
-        return false;
+    if (upgrading) {
+        m_upgradeReport = QStringLiteral("The database was upgraded from schema version %1 to %2.\n\n"
+                                         "A copy from before the upgrade is in:\n%3")
+                              .arg(from)
+                              .arg(kSchemaVersion)
+                              .arg(QDir::toNativeSeparators(backupPath));
+        if (removedDuplicates > 0) {
+            m_upgradeReport += QStringLiteral("\n\n%1 duplicate transaction(s) were removed: the same "
+                                              "statement rows had been saved more than once.")
+                                   .arg(removedDuplicates);
+        }
+        qInfo().noquote() << "[Database]" << m_upgradeReport;
     }
+    return true;
+}
 
+bool Database::failOpen(OpenError error, const QString& message)
+{
+    m_openError = error;
+    m_lastError = message;
+    qWarning().noquote() << "[Database]" << message;
+    return false;
+}
+
+void Database::close()
+{
+    if (m_db.isValid()) {
+        m_db.close();
+    }
+    m_db = QSqlDatabase();
+    QSqlDatabase::removeDatabase(QLatin1String(kConnection));
+}
+
+bool Database::createBaseTables()
+{
     // Each table class creates its own schema
     if (!m_snapshots.createTable()             ||
         !m_assetEntries.createTable()          ||
@@ -91,29 +174,49 @@ bool Database::open(const QString& path)
         !m_balanceCheckpointsTable.createTable()||
         !m_categoryRulesTable.createTable())
     {
-        m_lastError = "Failed to create tables.";
+        m_lastError = QStringLiteral("Failed to create tables (see the log).");
         return false;
     }
-
-    return migrate(path, existedBefore);
+    return true;
 }
 
-void Database::close()
+// A copy of the file before the first change. VACUUM INTO writes a
+// consistent copy that includes what is still in the WAL file; it must run
+// outside a transaction, and the target must not exist yet.
+bool Database::backUp(const QString& path, QString& backupPath)
 {
-    if (m_db.isValid()) {
-        m_db.close();
+    const QFileInfo info(path);
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
+    backupPath = info.dir().filePath(
+        QStringLiteral("%1.backup-%2.%3").arg(info.completeBaseName(), stamp, info.suffix()));
+    for (int n = 2; QFileInfo::exists(backupPath); ++n) {
+        backupPath = info.dir().filePath(
+            QStringLiteral("%1.backup-%2-%3.%4").arg(info.completeBaseName(), stamp).arg(n).arg(info.suffix()));
     }
-    m_db = QSqlDatabase();
-    QSqlDatabase::removeDatabase(QLatin1String(kConnection));
+    QSqlQuery backup(m_db);
+    backup.prepare(QStringLiteral("VACUUM INTO ?;"));
+    backup.addBindValue(QDir::toNativeSeparators(backupPath));
+    if (!backup.exec()) {
+        const QString detail = backup.lastError().text();
+        backup.finish();
+        QFile::remove(backupPath); // a partial copy, if any
+        return failOpen(OpenError::UpgradeFailed,
+                        QStringLiteral("Could not save a copy of the database before the upgrade, so it "
+                                       "was not upgraded: %1 The file was not changed.")
+                            .arg(detail));
+    }
+    return true;
 }
 
 // ── Schema migrations ─────────────────────────────────────────────────────────
 //
-// createTable() in each table class keeps the base schema (version 0, the
-// schema before versioning). Every later change is one step here, so a new
-// database and an old one go through the same steps and end with the same
-// schema. Add a step: write migrateToN(), add its case below, raise
-// kSchemaVersion, and add a test in tests/db_migration_test.cpp.
+// createTable() in each table class makes the base schema (version 0, the
+// schema before versioning), and must not change: a database at any version
+// starts from it. Every later change is one step here, so a new database and
+// an old one go through the same steps and end with the same schema. Add a
+// step: write migrateToN() with its own SQL (not a createTable() that changed),
+// add its case below, raise kSchemaVersion, and add a test in
+// tests/db_migration_test.cpp.
 
 int Database::schemaVersion() const
 {
@@ -136,89 +239,32 @@ QStringList Database::columnsOf(const QString& table) const
     return columns;
 }
 
-bool Database::migrate(const QString& path, bool existedBefore)
+bool Database::upgrade(int from, int& removedDuplicates)
 {
-    const int from = schemaVersion();
-    if (from < 0) {
-        m_lastError = QStringLiteral("Cannot read the schema version: %1").arg(m_db.lastError().text());
-        return false;
-    }
-    if (from > kSchemaVersion) {
-        m_lastError = QStringLiteral("This database uses schema version %1. This version of the app "
-                                     "knows schema version %2 at most: use a newer version of the app.")
-                          .arg(from)
-                          .arg(kSchemaVersion);
-        return false;
-    }
-    if (from == kSchemaVersion) {
-        return true;
-    }
-
-    // A copy of the file before the first change. VACUUM INTO writes a
-    // consistent copy that includes what is still in the WAL file; it must
-    // run outside a transaction, and the target must not exist yet.
-    QString backupPath;
-    if (existedBefore) {
-        const QFileInfo info(path);
-        const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-        backupPath = info.dir().filePath(
-            QStringLiteral("%1.backup-%2.%3").arg(info.completeBaseName(), stamp, info.suffix()));
-        for (int n = 2; QFileInfo::exists(backupPath); ++n) {
-            backupPath = info.dir().filePath(
-                QStringLiteral("%1.backup-%2-%3.%4").arg(info.completeBaseName(), stamp).arg(n).arg(info.suffix()));
-        }
-        QSqlQuery backup(m_db);
-        backup.prepare(QStringLiteral("VACUUM INTO ?;"));
-        backup.addBindValue(QDir::toNativeSeparators(backupPath));
-        if (!backup.exec()) {
-            m_lastError = QStringLiteral("Could not save a copy of the database before the upgrade: %1")
-                              .arg(backup.lastError().text());
-            qWarning() << "[Database]" << m_lastError;
-            return false;
-        }
-    }
-
-    int removedDuplicates = 0;
+    m_lastError.clear();
     for (int step = from + 1; step <= kSchemaVersion; ++step) {
-        if (!m_db.transaction()) {
-            m_lastError = QStringLiteral("Cannot start a transaction: %1").arg(m_db.lastError().text());
-            return false;
-        }
         bool ok = false;
         switch (step) {
         case 1: ok = migrateTo1(); break;
         case 2: ok = migrateTo2(removedDuplicates); break;
-        default: break;
+        default: m_lastError = QStringLiteral("there is no migration step %1.").arg(step); break;
         }
-        QSqlQuery setVersion(m_db);
-        ok = ok && setVersion.exec(QStringLiteral("PRAGMA user_version = %1;").arg(step));
-        setVersion.finish();
-        if (!ok || !m_db.commit()) {
-            const QString detail = ok ? m_db.lastError().text() : m_lastError;
-            m_db.rollback();
-            m_lastError = QStringLiteral("Could not upgrade the database to schema version %1: %2")
-                              .arg(step)
-                              .arg(detail);
-            qWarning() << "[Database]" << m_lastError;
+        if (!ok) {
+            m_lastError = QStringLiteral("step %1 failed: %2").arg(step).arg(m_lastError);
             return false;
         }
-        qInfo() << "[Database] schema version" << step;
+        qInfo() << "[Database] migration step" << step << "done";
     }
-
-    if (existedBefore) {
-        m_upgradeReport = QStringLiteral("The database was upgraded from schema version %1 to %2.\n\n"
-                                         "A copy from before the upgrade is in:\n%3")
-                              .arg(from)
-                              .arg(kSchemaVersion)
-                              .arg(QDir::toNativeSeparators(backupPath));
-        if (removedDuplicates > 0) {
-            m_upgradeReport += QStringLiteral("\n\n%1 duplicate transaction(s) were removed: the same "
-                                              "statement rows had been saved more than once.")
-                                   .arg(removedDuplicates);
-        }
-        qInfo().noquote() << "[Database]" << m_upgradeReport;
+    if (from == kSchemaVersion) {
+        return true;
     }
-    return true;
+    QSqlQuery setVersion(m_db);
+    const bool ok = setVersion.exec(QStringLiteral("PRAGMA user_version = %1;").arg(kSchemaVersion));
+    if (!ok) {
+        m_lastError = setVersion.lastError().text();
+    }
+    setVersion.finish();
+    return ok;
 }
 
 // Version 1 — an accounts table from before the "no IBAN / BIC / account
@@ -245,12 +291,23 @@ bool Database::migrateTo1()
             copied.append(column);
         }
     }
+    // AUTOINCREMENT: the new table takes over the counter of the old one
+    // (RENAME moved its sqlite_sequence row), so that the id of a deleted
+    // account is never given to a new one.
     QSqlQuery query(m_db);
     const bool ok =
         query.exec(QStringLiteral("ALTER TABLE accounts RENAME TO accounts_before_v1;")) &&
         m_accountsTable.createTable() &&
         query.exec(QStringLiteral("INSERT INTO accounts (%1) SELECT %1 FROM accounts_before_v1;")
                        .arg(copied.join(QStringLiteral(", ")))) &&
+        query.exec(QStringLiteral(
+            "UPDATE sqlite_sequence SET seq = MAX(seq, COALESCE("
+            " (SELECT seq FROM sqlite_sequence WHERE name = 'accounts_before_v1'), 0))"
+            " WHERE name = 'accounts';")) &&
+        query.exec(QStringLiteral(
+            "INSERT INTO sqlite_sequence (name, seq)"
+            " SELECT 'accounts', seq FROM sqlite_sequence WHERE name = 'accounts_before_v1'"
+            " AND NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'accounts');")) &&
         query.exec(QStringLiteral("DROP TABLE accounts_before_v1;"));
     if (!ok) {
         m_lastError = query.lastError().text();
@@ -757,29 +814,15 @@ bool Database::resetAll()
     }
 
     // Recreate every table empty (each createTable() is CREATE TABLE IF NOT
-    // EXISTS, so this is safe to call again right after dropping them all).
-    if (!m_snapshots.createTable()             ||
-        !m_assetEntries.createTable()          ||
-        !m_categoriesTable.createTable()       ||
-        !m_subcategoriesTable.createTable()    ||
-        !m_accountCategoriesTable.createTable()||
-        !m_accountTypesTable.createTable()     ||
-        !m_accountsTable.createTable()         ||
-        !m_accountHashesTable.createTable()    ||
-        !m_transactionsTable.createTable()     ||
-        !m_balanceCheckpointsTable.createTable()||
-        !m_categoryRulesTable.createTable())
-    {
+    // EXISTS, so this is safe to call again right after dropping them all),
+    // then bring them to the latest schema, in the same transaction: if a
+    // step fails, the rollback keeps the data as it was.
+    int removedDuplicates = 0;
+    m_lastError.clear();
+    if (!createBaseTables() || !upgrade(0, removedDuplicates)) {
+        const QString detail = m_lastError;
         m_db.rollback();
-        m_lastError = "Failed to recreate tables after reset.";
-        return false;
-    }
-
-    // The tables now have the base schema again: start the migration steps
-    // from version 0. No copy first: the tables are empty.
-    if (!query.exec(QStringLiteral("PRAGMA user_version = 0;"))) {
-        m_db.rollback();
-        m_lastError = QStringLiteral("Failed to reset the schema version: %1").arg(query.lastError().text());
+        m_lastError = QStringLiteral("Failed to recreate the tables after the reset: %1").arg(detail);
         return false;
     }
 
@@ -788,5 +831,5 @@ bool Database::resetAll()
         m_db.rollback();
         return false;
     }
-    return migrate(QString(), false);
+    return true;
 }

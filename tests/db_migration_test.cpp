@@ -9,7 +9,11 @@
 //     legacy columns dropped, the exact duplicates removed (the lowest id
 //     stays), fingerprints and the UNIQUE index added, and a report;
 //   - an upgraded file is not upgraded again;
-//   - a file from a newer version of the app is refused;
+//   - a file from a newer version of the app is refused, and closed;
+//   - a failed upgrade leaves the file as it was (one SQL transaction for
+//     every step), closes it, and leaves no backup copy;
+//   - the backup copy is taken before any change to the file;
+//   - the accounts rebuild keeps the AUTOINCREMENT counter;
 //   - resetAll() keeps the latest schema.
 
 #include "db/Database.h"
@@ -59,6 +63,35 @@ constexpr const char* kAccountsLegacy =
     "  number   TEXT    NOT NULL DEFAULT ''"
     ");";
 
+// A transactions table from an old version: no `name` column yet.
+constexpr const char* kTransactionsWithoutName =
+    "CREATE TABLE transactions ("
+    "  id                INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  account_id        INTEGER NOT NULL,"
+    "  confirmation_date TEXT    NOT NULL DEFAULT '',"
+    "  operation_date    TEXT    NOT NULL DEFAULT '',"
+    "  description       TEXT    NOT NULL DEFAULT '',"
+    "  debit             REAL    NOT NULL DEFAULT 0,"
+    "  credit            REAL    NOT NULL DEFAULT 0,"
+    "  balance_after     REAL    NOT NULL DEFAULT 0,"
+    "  category          TEXT    NOT NULL DEFAULT '',"
+    "  subcategory       TEXT    NOT NULL DEFAULT '',"
+    "  source_template   TEXT    NOT NULL DEFAULT ''"
+    ");";
+
+// A damaged transactions table: no `description`, so that migration step 2
+// fails after step 1 has rebuilt the accounts table.
+constexpr const char* kTransactionsWithoutDescription =
+    "CREATE TABLE transactions ("
+    "  id                INTEGER PRIMARY KEY AUTOINCREMENT,"
+    "  account_id        INTEGER NOT NULL,"
+    "  confirmation_date TEXT    NOT NULL DEFAULT '',"
+    "  operation_date    TEXT    NOT NULL DEFAULT '',"
+    "  debit             REAL    NOT NULL DEFAULT 0,"
+    "  credit            REAL    NOT NULL DEFAULT 0,"
+    "  balance_after     REAL    NOT NULL DEFAULT 0"
+    ");";
+
 } // namespace
 
 class DbMigrationTest : public QObject
@@ -73,6 +106,9 @@ private slots:
     void oldDatabaseIsUpgraded();
     void upgradedDatabaseIsNotUpgradedAgain();
     void newerSchemaIsRefused();
+    void failedUpgradeChangesNothing();
+    void backupIsTakenBeforeAnyChange();
+    void accountCounterIsKept();
     void resetKeepsTheLatestSchema();
 
 private:
@@ -258,7 +294,99 @@ void DbMigrationTest::newerSchemaIsRefused()
     Database& db = Database::instance();
     QVERIFY(!db.open(path));
     QVERIFY2(db.lastError().contains(QStringLiteral("schema version 99")), qPrintable(db.lastError()));
-    QCOMPARE(countOn(path, QStringLiteral("PRAGMA user_version;")), 99); // left as it was
+    QCOMPARE(db.openError(), Database::OpenError::NewerSchema);
+    // Closed: nothing can write to the file.
+    QVERIFY(!db.isOpen());
+    QCOMPARE(db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QString(), QStringLiteral("EUR"),
+                           QString()),
+             -1);
+    // Left as it was: same version, no table added.
+    QCOMPARE(countOn(path, QStringLiteral("PRAGMA user_version;")), 99);
+    QCOMPARE(countOn(path, QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'"
+                                          " AND name != 'sqlite_sequence';")),
+             1);
+    QVERIFY(backups().isEmpty());
+}
+
+void DbMigrationTest::failedUpgradeChangesNothing()
+{
+    const QString path = m_dir->filePath(QStringLiteral("damaged.db"));
+    execOn(path, {
+        QString::fromLatin1(kAccountsLegacy),
+        QStringLiteral("INSERT INTO accounts (name, iban) VALUES ('Checking', 'FR7630006000011234567890189');"),
+        QString::fromLatin1(kTransactionsWithoutDescription),
+        QStringLiteral("INSERT INTO transactions (account_id, debit) VALUES (1, 20.0);"),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    Database& db = Database::instance();
+    QVERIFY(!db.open(path));
+    QCOMPARE(db.openError(), Database::OpenError::UpgradeFailed);
+    QVERIFY2(db.lastError().contains(QStringLiteral("step 2")), qPrintable(db.lastError()));
+    QVERIFY2(db.lastError().contains(QStringLiteral("not changed")), qPrintable(db.lastError()));
+    QVERIFY(!db.isOpen());
+
+    // Step 1 (the accounts rebuild) was rolled back with step 2, and so were
+    // the base tables and the `name` column.
+    QCOMPARE(countOn(path, QStringLiteral("PRAGMA user_version;")), 0);
+    QCOMPARE(countOn(path, QStringLiteral("SELECT COUNT(*) FROM pragma_table_info('accounts') WHERE name = 'iban';")), 1);
+    QCOMPARE(countOn(path, QStringLiteral("SELECT COUNT(*) FROM accounts WHERE iban != '';")), 1);
+    QCOMPARE(countOn(path, QStringLiteral("SELECT COUNT(*) FROM pragma_table_info('transactions')"
+                                          " WHERE name IN ('name', 'fingerprint');")),
+             0);
+    QCOMPARE(countOn(path, QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE name = 'category_rules';")), 0);
+    QCOMPARE(countOn(path, QStringLiteral("SELECT COUNT(*) FROM transactions;")), 1);
+    // The file is unchanged, so the copy of this start was removed: a start
+    // that fails again does not add one more.
+    QVERIFY(backups().isEmpty());
+    QVERIFY(!db.open(path));
+    QVERIFY(backups().isEmpty());
+}
+
+void DbMigrationTest::backupIsTakenBeforeAnyChange()
+{
+    const QString path = m_dir->filePath(QStringLiteral("older.db"));
+    execOn(path, {
+        QString::fromLatin1(kAccountsLegacy),
+        QStringLiteral("INSERT INTO accounts (name) VALUES ('Checking');"),
+        QString::fromLatin1(kTransactionsWithoutName),
+        QStringLiteral("INSERT INTO transactions (account_id, operation_date, description, debit)"
+                       " VALUES (1, '2026-03-02', 'Card payment: CARREFOUR', 20.0);"),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    Database& db = Database::instance();
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    QVERIFY(columns(QStringLiteral("transactions")).contains(QStringLiteral("name")));
+
+    const QStringList copies = backups();
+    QCOMPARE(copies.size(), qsizetype(1));
+    const QString backup = m_dir->filePath(copies.first());
+    // As the file was: no `name` column, no table that createTable() adds.
+    QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM pragma_table_info('transactions') WHERE name = 'name';")), 0);
+    QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE name = 'category_rules';")), 0);
+    QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM transactions;")), 1);
+}
+
+void DbMigrationTest::accountCounterIsKept()
+{
+    const QString path = m_dir->filePath(QStringLiteral("deleted.db"));
+    execOn(path, {
+        QString::fromLatin1(kAccountsLegacy),
+        QStringLiteral("INSERT INTO accounts (name) VALUES ('Checking'), ('Savings'), ('Closed');"),
+        QStringLiteral("DELETE FROM accounts WHERE name = 'Closed';"), // id 3: counter 3, highest id 2
+        QString::fromLatin1(kTransactionsV0),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    Database& db = Database::instance();
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    QCOMPARE(count(QStringLiteral("SELECT seq FROM sqlite_sequence WHERE name = 'accounts';")), 3);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM sqlite_sequence WHERE name = 'accounts_before_v1';")), 0);
+    // The id of the deleted account is not given again.
+    QCOMPARE(db.addAccount(QStringLiteral("New"), QStringLiteral("CCP"), QStringLiteral(""), QStringLiteral("EUR"),
+                           QStringLiteral("")),
+             4);
 }
 
 void DbMigrationTest::resetKeepsTheLatestSchema()

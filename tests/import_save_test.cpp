@@ -7,7 +7,9 @@
 //   #16  rows with an empty category, subcategory or date are saved
 //        (a null QString used to be bound as SQL NULL in NOT NULL columns)
 //   #17  a failed save writes nothing, and a retry stores each row once
-//   #18  a re-import adds nothing, an overlapping statement adds only its new rows
+//   #18  a re-import adds nothing, an overlapping statement adds only its new rows;
+//        two identical rows of one statement are two transactions; a row that
+//        breaks a NOT NULL column fails the save instead of being skipped
 //   #29  the parser reads the statement this file writes
 
 #include "SnapshotImportController.h"
@@ -24,6 +26,8 @@
 #include <QTest>
 #include <QUrl>
 #include <QVariantMap>
+
+#include <limits>
 
 namespace {
 
@@ -71,6 +75,26 @@ QByteArray overlappingStatement()
     return csv;
 }
 
+// A statement with the same row `copies` times: same dates, amount and
+// description, and an empty balance cell, so nothing in the file tells the
+// rows apart.
+QByteArray repeatedRowStatement(int copies)
+{
+    QByteArray csv;
+    csv += "IBAN,";
+    csv += kIban;
+    csv += "\nBIC,";
+    csv += kBic;
+    csv += "\nPeriod,From 03/01/2026 to 03/31/2026\n";
+    csv += "Account balance on 03/01/2026,500.00 \xE2\x82\xAC\n";
+    csv += "Account balance on 03/31/2026," + QByteArray::number(500 - 2 * copies) + ".00 \xE2\x82\xAC\n";
+    csv += "Confirmation date/ value,Operation date,Description and identifier,Debit (-),Credit (+),Balance\n";
+    for (int i = 0; i < copies; ++i) {
+        csv += "03/02,03/02,Coffee machine,-2.00,,\n";
+    }
+    return csv;
+}
+
 } // namespace
 
 class ImportSaveTest : public QObject
@@ -91,6 +115,9 @@ private slots:
     void retryAfterFailureStoresEachRowOnce();
     void reimportAddsNothing();
     void overlappingStatementAddsOnlyNewRows();
+    void identicalRowsAreTwoTransactions();
+    void oneMoreIdenticalRowIsAdded();
+    void nullAmountFailsTheSave();
 
 private:
     void parse(SnapshotImportController& controller, const QByteArray& csv);
@@ -319,6 +346,59 @@ void ImportSaveTest::overlappingStatementAddsOnlyNewRows()
     QCOMPARE(transactionCount(), 4);  // 3 from March + the one new row
     QCOMPARE(controller.lastImportReport().value(QStringLiteral("alreadySavedCount")).toInt(), 2);
     QCOMPARE(controller.lastImportReport().value(QStringLiteral("transactionCount")).toInt(), 1);
+}
+
+void ImportSaveTest::identicalRowsAreTwoTransactions()
+{
+    {
+        SnapshotImportController controller;
+        parse(controller, repeatedRowStatement(2));
+        QCOMPARE(controller.transactionRows().size(), qsizetype(2));
+        QCOMPARE(controller.checkReconciliation(m_account).value(QStringLiteral("alreadySavedCount")).toInt(), 0);
+        controller.save(m_account, QStringLiteral("Checking"));
+        QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓  Saved 2 of 2")),
+                 qPrintable(controller.statusText()));
+        QCOMPARE(transactionCount(), 2);
+    }
+    // A re-import matches each row one to one.
+    SnapshotImportController controller;
+    parse(controller, repeatedRowStatement(2));
+    QCOMPARE(controller.checkReconciliation(m_account).value(QStringLiteral("alreadySavedCount")).toInt(), 2);
+    controller.save(m_account, QStringLiteral("Checking"));
+    QCOMPARE(transactionCount(), 2);
+    QCOMPARE(controller.lastImportReport().value(QStringLiteral("alreadySavedCount")).toInt(), 2);
+}
+
+void ImportSaveTest::oneMoreIdenticalRowIsAdded()
+{
+    {
+        SnapshotImportController controller;
+        parse(controller, repeatedRowStatement(1));
+        controller.save(m_account, QStringLiteral("Checking"));
+        QCOMPARE(transactionCount(), 1);
+    }
+    // A later export of the same period has the row twice: one is new.
+    SnapshotImportController controller;
+    parse(controller, repeatedRowStatement(2));
+    QCOMPARE(controller.checkReconciliation(m_account).value(QStringLiteral("alreadySavedCount")).toInt(), 1);
+    controller.save(m_account, QStringLiteral("Checking"));
+    QCOMPARE(transactionCount(), 2);
+    QCOMPARE(controller.lastImportReport().value(QStringLiteral("alreadySavedCount")).toInt(), 1);
+    QCOMPARE(controller.lastImportReport().value(QStringLiteral("transactionCount")).toInt(), 1);
+}
+
+void ImportSaveTest::nullAmountFailsTheSave()
+{
+    // A NaN amount binds as NULL. INSERT OR IGNORE skipped such a row without
+    // an error; only a fingerprint conflict may be skipped.
+    Data::Transaction row;
+    row.operationDate = QDate(2026, 3, 2);
+    row.confirmationDate = row.operationDate;
+    row.description = QStringLiteral("Card payment: CARREFOUR");
+    row.debit = std::numeric_limits<double>::quiet_NaN();
+    int inserted = -1;
+    QVERIFY(!Database::instance().saveImport(m_account, {row}, QString(), {}, &inserted));
+    QCOMPARE(transactionCount(), 0);
 }
 
 QTEST_GUILESS_MAIN(ImportSaveTest)

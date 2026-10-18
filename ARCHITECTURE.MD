@@ -35,9 +35,17 @@ through `Sql::text()` (`src/db/tables/SqlText.h`), because Qt binds a null `QStr
 `NULL`.
 
 The schema has a version (`PRAGMA user_version`, `Database::kSchemaVersion`). `createTable()`
-keeps the base schema; each change after it is one migration step in `Database::migrate()`, with
-a test in `tests/db_migration_test.cpp`. Before the first step on an existing database, the app
-saves a copy next to it (`VACUUM INTO`).
+is the base schema and does not change; each change after it is one migration step in
+`Database::upgrade()`, written with its own SQL, with a test in `tests/db_migration_test.cpp`.
+Before it upgrades an existing database, the app saves a copy next to it (`VACUUM INTO`), before
+any change. The base tables and every step run in one SQL transaction, so the file is either
+upgraded or unchanged. A database from a newer version, or a failed upgrade, closes the
+connection and stops the app at start-up (a fatal step in `StartupChecks`).
+
+A transaction's `fingerprint` is its identity in the bank's statement
+(`TransactionsTable::fingerprints()`): a row that the account already has is not saved again.
+Compute the fingerprints of a statement on all its rows, before you filter them: the second
+identical row of a statement has occurrence 2 in its fingerprint.
 
 ## Where to look
 

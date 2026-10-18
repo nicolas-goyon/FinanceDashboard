@@ -52,14 +52,33 @@ QList<StartupStep> StartupChecks::runInitialization(QString& dbPath)
     steps.append(folder);
 
     // ── Database ─────────────────────────────────────────────────────────────
-    // Not fatal — same behaviour as before the start-up stage existed: the
-    // app continues and pages that need the DB show the error inline.
+    // Fatal when this version cannot use the file: a newer version of the
+    // app saved it, or the upgrade failed. open() closed the connection, so
+    // the dashboard would only show empty pages. Other failures are not
+    // fatal, as before the start-up stage existed: the app starts without
+    // data.
     StartupStep db;
     db.name   = QStringLiteral("Database");
     db.ok     = Database::instance().open(dbPath);
     db.detail = db.ok ? dbPath
                       : dbPath + QStringLiteral(" — ") + Database::instance().lastError();
-    db.hint   = QStringLiteral("Check the data folder above; delete or restore a corrupted database file.");
+    switch (Database::instance().openError()) {
+    case Database::OpenError::NewerSchema:
+        db.fatal = true;
+        db.hint  = QStringLiteral("A newer version of the app saved this file. Install that version or a "
+                                  "later one. The file was not changed.");
+        break;
+    case Database::OpenError::UpgradeFailed:
+        db.fatal = true;
+        db.hint  = QStringLiteral("The file was not changed. If the disk is full, free some space, then "
+                                  "start the app again. If the upgrade fails again, send the application "
+                                  "log to the maintainer.");
+        break;
+    case Database::OpenError::None:
+    case Database::OpenError::CannotOpen:
+        db.hint  = QStringLiteral("Check the data folder above; delete or restore a corrupted database file.");
+        break;
+    }
     steps.append(db);
 
     // ── Database upgrade ─────────────────────────────────────────────────────

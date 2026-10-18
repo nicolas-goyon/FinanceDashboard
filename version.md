@@ -174,13 +174,15 @@ pass in the same in-progress version.
   Commits, the label set, the definition of done and the repository settings. Dependabot pull
   requests now target `develop`.
 - **Database schema versioning.** `PRAGMA user_version` and ordered migration steps in
-  `Database::migrate()`, one SQL transaction each, run when the app opens the database. Before
-  it upgrades an existing database, the app saves a copy next to it
-  (`finance_dashboard.backup-<date>.db`, made with `VACUUM INTO`), and a dialog at start-up
-  says what changed. A database from a newer version of the app is refused before any change.
-  Migration 1 drops the `iban`, `bic` and `number` columns of an old `accounts` table;
-  migration 2 adds the transaction fingerprints. `resetAll()` runs the steps again on the empty
-  tables.
+  `Database::upgrade()`, run when the app opens the database, all in one SQL transaction: the
+  file is either upgraded or unchanged. Before it upgrades an existing database, and before any
+  change to it, the app saves a copy next to it (`finance_dashboard.backup-<date>.db`, made
+  with `VACUUM INTO`), and a dialog at start-up says what changed. A database from a newer
+  version of the app, or an upgrade that fails, stops the app at start-up with the reason, and
+  the file is not changed (the connection is closed, so nothing writes to it; a failed upgrade
+  removes its copy). Migration 1 drops the `iban`, `bic` and `number` columns of an old
+  `accounts` table and keeps its id counter; migration 2 adds the transaction fingerprints.
+  `resetAll()` runs the steps again on the empty tables.
 
 ### Changed
 - **Removed** all `docs` for pruning and reduce overhead.
@@ -244,9 +246,11 @@ pass in the same in-progress version.
   importing one that overlaps an earlier one, saved every row again while the reconciliation
   stayed green. Each row now has a fingerprint (dates, debit, credit and balance after in
   cents, description), unique per account: rows that the account already has are skipped, and
-  the status line and the import report say how many. The upgrade to schema version 2 removes
-  the duplicates that earlier re-imports saved (the first copy stays), after it saves a copy of
-  the database.
+  the status line and the import report say how many. Two identical rows of one statement are
+  two transactions (the second one has its occurrence number in its fingerprint), and a row
+  that breaks a `NOT NULL` column fails the save instead of being skipped. The upgrade to
+  schema version 2 removes the duplicates that earlier re-imports saved (the first copy stays),
+  after it saves a copy of the database.
 
 ### Docs
 - See `Added`/`Changed`/`Fixed` above.
