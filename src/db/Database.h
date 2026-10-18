@@ -17,6 +17,9 @@
 #include "models/Account.h"
 #include "models/Transaction.h"
 
+#include <QSet>
+#include <QStringList>
+
 #include <optional>
 #include <QString>
 #include <QDate>
@@ -37,10 +40,23 @@ public:
     static Database& instance();
 
     // Open (and initialise) the SQLite file at `path`.
-    // Creates tables on first run.  Returns false on failure.
+    // Creates tables on first run, then upgrades the schema to the version of
+    // this app (see migrate()). Returns false on failure.
     bool    open(const QString& path);
+    // Closes the connection; open() can then open another file (tests).
+    void    close();
     [[nodiscard]] bool    isOpen() const;
     [[nodiscard]] QString lastError() const;
+
+    // ── Schema version (PRAGMA user_version) ─────────────────────────────────
+    // The schema version that this app writes. Each version after 0 is one
+    // ordered migration step in migrate().
+    static constexpr int kSchemaVersion = 2;
+    [[nodiscard]] int schemaVersion() const;
+    // Empty, unless the last open() upgraded an existing database: then one
+    // or two sentences for the user (old and new version, where the backup
+    // copy is, how many duplicate transactions were removed).
+    [[nodiscard]] QString upgradeReport() const { return m_upgradeReport; }
 
     // ── Table accessors (for future direct use by specialised services) ────────
     SnapshotsTable&         snapshots()             { return m_snapshots; }
@@ -137,8 +153,13 @@ public:
     // account fingerprint link (when `accountHash` is not empty and the
     // account does not have it yet) and the balance checkpoints. If one write
     // fails, nothing is written and lastError() tells which write failed.
+    // A row that the account already has (same fingerprint, see
+    // TransactionsTable) is skipped; `inserted`, when not null, receives the
+    // number of rows written.
     bool saveImport(int accountId, const QVector<Data::Transaction>& txs, const QString& accountHash,
-                    const QVector<Data::AccountBalanceCheckpoint>& checkpoints);
+                    const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted = nullptr);
+    // The fingerprints of the rows that `accountId` already has.
+    [[nodiscard]] QSet<QString> transactionFingerprints(int accountId) const;
     [[nodiscard]] QVector<Data::Transaction> transactionsForAccount(int accountId) const;
     [[nodiscard]] int  transactionCountForAccount(int accountId) const;
     // Edits an already-persisted row in place (by Data::Transaction::id) —
@@ -201,8 +222,18 @@ private:
 
     Database();
 
+    // Runs the migration steps from the file's PRAGMA user_version up to
+    // kSchemaVersion, one SQL transaction per step. Before the first step on
+    // a database that already existed, saves a copy next to it
+    // (VACUUM INTO). Refuses a file whose version is newer than this app.
+    bool migrate(const QString& path, bool existedBefore);
+    bool migrateTo1();                       // accounts: drop iban / bic / number
+    bool migrateTo2(int& removedDuplicates); // transactions: fingerprint + UNIQUE index
+    [[nodiscard]] QStringList columnsOf(const QString& table) const;
+
     QSqlDatabase            m_db;
     QString                 m_lastError;
+    QString                 m_upgradeReport;
     SnapshotsTable          m_snapshots;
     AssetEntriesTable       m_assetEntries;
     CategoriesTable         m_categoriesTable;

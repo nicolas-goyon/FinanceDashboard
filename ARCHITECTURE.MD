@@ -34,6 +34,11 @@ checkpoints; if one write fails, nothing is written. Bind the text of a `TEXT NO
 through `Sql::text()` (`src/db/tables/SqlText.h`), because Qt binds a null `QString` as SQL
 `NULL`.
 
+The schema has a version (`PRAGMA user_version`, `Database::kSchemaVersion`). `createTable()`
+keeps the base schema; each change after it is one migration step in `Database::migrate()`, with
+a test in `tests/db_migration_test.cpp`. Before the first step on an existing database, the app
+saves a copy next to it (`VACUUM INTO`).
+
 ## Where to look
 
 | Topic | Doc |

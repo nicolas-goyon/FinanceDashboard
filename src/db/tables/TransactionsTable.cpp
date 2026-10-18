@@ -2,15 +2,18 @@
 #include "SqlText.h"
 #include "models/Transaction.h"
 
+#include <QCryptographicHash>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QString>
+#include <QStringList>
 #include <QVariant>
 #include <QVector>
 #include <QDebug>
 #include <Qt>
 #include <QtLogging>
+#include <cmath>
 #include <utility>
 
 namespace {
@@ -120,14 +123,57 @@ bool TransactionsTable::ensureColumn(const QString& columnName, const QString& c
     return success;
 }
 
-bool TransactionsTable::insertBatch(int accountId, const QVector<Data::Transaction>& txs)
+QString TransactionsTable::fingerprint(const QString& operationDate, const QString& confirmationDate,
+                                       double debit, double credit, double balanceAfter,
+                                       const QString& description)
 {
+    // Amounts in cents, so that 19.99 parsed twice, or read back from the
+    // REAL column, gives the same text.
+    const auto cents = [](double amount) { return QString::number(std::llround(amount * 100.0)); };
+    // U+001F (unit separator) cannot occur in a date or a number, and
+    // separates the fields without ambiguity.
+    const QString canonical = QStringList{
+        Sql::text(operationDate), Sql::text(confirmationDate),
+        cents(debit), cents(credit), cents(balanceAfter),
+        Sql::text(description),
+    }.join(QChar(0x1F));
+    return QString::fromLatin1(
+        QCryptographicHash::hash(canonical.toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+
+QString TransactionsTable::fingerprint(const Data::Transaction& tx)
+{
+    return fingerprint(dateToDb(tx.operationDate), dateToDb(tx.confirmationDate),
+                       tx.debit, tx.credit, tx.balanceAfter, tx.description);
+}
+
+QSet<QString> TransactionsTable::fingerprintsForAccount(int accountId) const
+{
+    QSet<QString> result;
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("SELECT fingerprint FROM transactions WHERE account_id = ?;"));
+    query.addBindValue(accountId);
+    if (!query.exec()) {
+        qWarning() << "[TransactionsTable] fingerprintsForAccount error:" << query.lastError().text();
+        return result;
+    }
+    while (query.next()) {
+        result.insert(query.value(0).toString());
+    }
+    return result;
+}
+
+bool TransactionsTable::insertBatch(int accountId, const QVector<Data::Transaction>& txs, int* inserted)
+{
+    if (inserted != nullptr) {
+        *inserted = 0;
+    }
     QSqlQuery query(db());
     query.prepare(QStringLiteral(
-        "INSERT INTO transactions"
+        "INSERT OR IGNORE INTO transactions"
         " (account_id, confirmation_date, operation_date, name, description, debit,"
-        "  credit, balance_after, category, subcategory, source_template)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
+        "  credit, balance_after, category, subcategory, source_template, fingerprint)"
+        " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);"
     ));
 
     for (const Data::Transaction& transaction : txs) {
@@ -142,10 +188,14 @@ bool TransactionsTable::insertBatch(int accountId, const QVector<Data::Transacti
         query.addBindValue(Sql::text(transaction.category));
         query.addBindValue(Sql::text(transaction.subcategory));
         query.addBindValue(Sql::text(transaction.sourceTemplate));
+        query.addBindValue(fingerprint(transaction));
 
         if (!query.exec()) {
             qWarning() << "[TransactionsTable] insertBatch error:" << query.lastError().text();
             return false;
+        }
+        if (inserted != nullptr) {
+            *inserted += query.numRowsAffected(); // 0 when the row was ignored
         }
     }
     return true;

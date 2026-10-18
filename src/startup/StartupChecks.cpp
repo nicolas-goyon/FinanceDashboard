@@ -62,6 +62,18 @@ QList<StartupStep> StartupChecks::runInitialization(QString& dbPath)
     db.hint   = QStringLiteral("Check the data folder above; delete or restore a corrupted database file.");
     steps.append(db);
 
+    // ── Database upgrade ─────────────────────────────────────────────────────
+    // Only when open() upgraded an existing file: the report tells where the
+    // copy from before is. It goes to the log here; Main.qml shows it once.
+    const QString upgrade = Database::instance().upgradeReport();
+    if (db.ok && !upgrade.isEmpty()) {
+        StartupStep step;
+        step.name   = QStringLiteral("Database upgrade");
+        step.ok     = true;
+        step.detail = upgrade;
+        steps.append(step);
+    }
+
     return steps;
 }
 

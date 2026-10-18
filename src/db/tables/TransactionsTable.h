@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <QDate>
+#include <QSet>
 #include <QString>
 #include <QVector>
 #include <QSqlDatabase>
@@ -29,9 +30,22 @@
 //     balance_after     REAL    NOT NULL DEFAULT 0,
 //     category          TEXT    NOT NULL DEFAULT '',
 //     subcategory       TEXT    NOT NULL DEFAULT '',
-//     source_template   TEXT    NOT NULL DEFAULT ''
+//     source_template   TEXT    NOT NULL DEFAULT '',
+//     fingerprint       TEXT    NOT NULL DEFAULT ''   -- schema version 2, see below
 //   );
 //   CREATE INDEX idx_transactions_account ON transactions(account_id);
+//   CREATE UNIQUE INDEX idx_transactions_fingerprint
+//     ON transactions(account_id, fingerprint);        -- schema version 2
+//
+// **fingerprint** — the identity of a row as the bank exported it: a SHA-256
+// of the dates, the debit, credit and balance_after in cents, and the
+// description (see fingerprint()). With the UNIQUE index, the same statement
+// row can be saved only once per account, so a re-import or an overlapping
+// statement adds only the new rows (insertBatch() uses INSERT OR IGNORE).
+// updateById() keeps the fingerprint: after an edit, a re-import of the
+// original statement still finds the row. The column and the index are added
+// by schema migration 2 (Database::migrate()), not by createTable(), which
+// keeps the base schema.
 //
 // **No `confidence` column on purpose.** The (future) category-prediction
 // model's per-row confidence is a review-screen-only concept
@@ -69,8 +83,21 @@ public:
     // Appends every row in `txs` (does not replace/clear existing rows for
     // this account — this is not the "delete-then-insert" pattern
     // AssetEntriesTable uses, since multiple statement imports for the same
-    // account over time should accumulate, not overwrite).
-    bool insertBatch(int accountId, const QVector<Data::Transaction>& txs);
+    // account over time should accumulate, not overwrite). A row whose
+    // fingerprint the account already has is skipped (INSERT OR IGNORE);
+    // `inserted`, when not null, receives the number of rows written.
+    bool insertBatch(int accountId, const QVector<Data::Transaction>& txs, int* inserted = nullptr);
+
+    // The fingerprint of a row (see the schema comment above). Two rows with
+    // the same dates, amounts in cents, balance after and description have
+    // the same fingerprint.
+    [[nodiscard]] static QString fingerprint(const Data::Transaction& tx);
+    [[nodiscard]] static QString fingerprint(const QString& operationDate, const QString& confirmationDate,
+                                             double debit, double credit, double balanceAfter,
+                                             const QString& description);
+
+    // The fingerprints that `accountId` already has.
+    [[nodiscard]] QSet<QString> fingerprintsForAccount(int accountId) const;
 
     // Cascade helper for Database::removeAccount().
     bool removeForAccount(int accountId);

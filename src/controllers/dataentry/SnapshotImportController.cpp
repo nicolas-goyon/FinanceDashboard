@@ -569,19 +569,49 @@ void SnapshotImportController::save(int accountId, const QString& accountLabel)
     //
     // Rows, link and checkpoints go in one SQL transaction: a failure leaves
     // the database as it was, so a retry cannot store a row twice.
+    //
+    // A row that this account already has (same fingerprint — a re-import,
+    // or a statement that overlaps an earlier one) is not saved again (#18).
+    const QSet<QString> savedBefore = Database::instance().transactionFingerprints(accountId);
+    QSet<QString> seen;
+    QVector<Data::Transaction> newRows;
+    newRows.reserve(toSave.size());
+    int alreadySaved = 0;
+    for (const Data::Transaction& row : toSave) {
+        const QString fingerprint = TransactionsTable::fingerprint(row);
+        if (savedBefore.contains(fingerprint) || seen.contains(fingerprint)) {
+            ++alreadySaved;
+            continue;
+        }
+        seen.insert(fingerprint);
+        newRows.append(row);
+    }
+
     const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
-    if (!Database::instance().saveImport(accountId, toSave, hash, statementCheckpointsToAdd(accountId))) {
+    if (!Database::instance().saveImport(accountId, newRows, hash, statementCheckpointsToAdd(accountId))) {
         setStatus(QStringLiteral("⚠  Could not save the import. Nothing was saved — see application log"));
         return;
     }
 
-    buildImportReport(accountLabel, toSave, reconciliation);
+    buildImportReport(accountLabel, newRows, reconciliation);
+    m_lastImportReport.insert(QStringLiteral("alreadySavedCount"), alreadySaved);
     emit reportChanged();
 
-    setStatus(QString("✓  Saved %1 of %2 transaction(s) to \"%3\"")
-                   .arg(toSave.size())
-                   .arg(m_statement.transactions.size())
-                   .arg(accountLabel));
+    if (alreadySaved == 0) {
+        setStatus(QString("✓  Saved %1 of %2 transaction(s) to \"%3\"")
+                       .arg(newRows.size())
+                       .arg(m_statement.transactions.size())
+                       .arg(accountLabel));
+    } else if (newRows.isEmpty()) {
+        setStatus(QString("✓  Nothing new: the %1 transaction(s) of this statement are already saved in \"%2\"")
+                       .arg(alreadySaved)
+                       .arg(accountLabel));
+    } else {
+        setStatus(QString("✓  Saved %1 new transaction(s) to \"%2\" — %3 already saved, not added again")
+                       .arg(newRows.size())
+                       .arg(accountLabel)
+                       .arg(alreadySaved));
+    }
 }
 
 QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
@@ -642,6 +672,27 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
     result["endDiffText"]     = Fmt::money(endDiff, true);
     result["endDiffRaw"]      = endDiff;
     result["endOk"]           = std::abs(endDiff) < kReconciliationEpsilon;
+
+    // ── Rows of this statement that the account already has (#18) ─────────
+    // save() skips them; the review screen can tell the user before saving.
+    const QSet<QString> savedBefore = Database::instance().transactionFingerprints(accountId);
+    int alreadySaved = 0;
+    for (const Data::ImportedTransaction& transaction : m_statement.transactions) {
+        if (!transaction.included) {
+            continue;
+        }
+        Data::Transaction row;
+        row.confirmationDate = transaction.confirmationDate;
+        row.operationDate    = transaction.operationDate;
+        row.description      = transaction.description;
+        row.debit            = transaction.debit;
+        row.credit           = transaction.credit;
+        row.balanceAfter     = transaction.balanceAfter;
+        if (savedBefore.contains(TransactionsTable::fingerprint(row))) {
+            ++alreadySaved;
+        }
+    }
+    result["alreadySavedCount"] = alreadySaved;
 
     return result;
 }

@@ -7,6 +7,7 @@
 //   #16  rows with an empty category, subcategory or date are saved
 //        (a null QString used to be bound as SQL NULL in NOT NULL columns)
 //   #17  a failed save writes nothing, and a retry stores each row once
+//   #18  a re-import adds nothing, an overlapping statement adds only its new rows
 //   #29  the parser reads the statement this file writes
 
 #include "SnapshotImportController.h"
@@ -51,6 +52,25 @@ QByteArray marchStatement(const char* endBalance = "440.00")
     return csv;
 }
 
+// An April-style statement that overlaps the March one: it starts after the
+// first March row, repeats the last two March rows exactly, and adds one.
+QByteArray overlappingStatement()
+{
+    QByteArray csv;
+    csv += "IBAN,";
+    csv += kIban;
+    csv += "\nBIC,";
+    csv += kBic;
+    csv += "\nPeriod,From 03/04/2026 to 03/31/2026\n";
+    csv += "Account balance on 03/04/2026,480.00 \xE2\x82\xAC\n";
+    csv += "Account balance on 03/31/2026,40.00 \xE2\x82\xAC\n";
+    csv += "Confirmation date/ value,Operation date,Description and identifier,Debit (-),Credit (+),Balance\n";
+    csv += "03/05,03/05,\"Card payment 1234: SNCF\nInternal ref.: A2\",-30.00,,450.00\n";
+    csv += "03/09,03/09,\"Card payment 1234: BOULANGERIE\nInternal ref.: A3\",-10.00,,440.00\n";
+    csv += "03/15,03/15,\"Transfer: RENT MARCH\nInternal ref.: A4\",-400.00,,40.00\n";
+    return csv;
+}
+
 } // namespace
 
 class ImportSaveTest : public QObject
@@ -69,6 +89,8 @@ private slots:
     void clearedDateOnUpdate();
     void failedSaveWritesNothing();
     void retryAfterFailureStoresEachRowOnce();
+    void reimportAddsNothing();
+    void overlappingStatementAddsOnlyNewRows();
 
 private:
     void parse(SnapshotImportController& controller, const QByteArray& csv);
@@ -262,6 +284,41 @@ void ImportSaveTest::retryAfterFailureStoresEachRowOnce()
     QCOMPARE(transactionCount(), 3);
     QCOMPARE(checkpointCount(), 2);   // statement start and end
     QVERIFY(hashLinked());
+}
+
+void ImportSaveTest::reimportAddsNothing()
+{
+    {
+        SnapshotImportController controller;
+        parse(controller, marchStatement());
+        controller.save(m_account, QStringLiteral("Checking"));
+        QCOMPARE(transactionCount(), 3);
+    }
+    SnapshotImportController controller;
+    parse(controller, marchStatement());
+    QCOMPARE(controller.checkReconciliation(m_account).value(QStringLiteral("alreadySavedCount")).toInt(), 3);
+    controller.save(m_account, QStringLiteral("Checking"));
+    QCOMPARE(transactionCount(), 3);
+    QVERIFY2(controller.statusText().contains(QStringLiteral("already saved")), qPrintable(controller.statusText()));
+    QCOMPARE(controller.lastImportReport().value(QStringLiteral("alreadySavedCount")).toInt(), 3);
+    QCOMPARE(controller.lastImportReport().value(QStringLiteral("transactionCount")).toInt(), 0);
+}
+
+void ImportSaveTest::overlappingStatementAddsOnlyNewRows()
+{
+    {
+        SnapshotImportController controller;
+        parse(controller, marchStatement());
+        controller.save(m_account, QStringLiteral("Checking"));
+        QCOMPARE(transactionCount(), 3);
+    }
+    SnapshotImportController controller;
+    parse(controller, overlappingStatement());
+    QCOMPARE(controller.transactionRows().size(), qsizetype(3));
+    controller.save(m_account, QStringLiteral("Checking"));
+    QCOMPARE(transactionCount(), 4);  // 3 from March + the one new row
+    QCOMPARE(controller.lastImportReport().value(QStringLiteral("alreadySavedCount")).toInt(), 2);
+    QCOMPARE(controller.lastImportReport().value(QStringLiteral("transactionCount")).toInt(), 1);
 }
 
 QTEST_GUILESS_MAIN(ImportSaveTest)
