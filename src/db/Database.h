@@ -242,12 +242,23 @@ private:
     bool backUp(const QString& path, QString& backupPath);
     // createTable() of every table class: the base schema (version 0).
     bool createBaseTables();
+    // What the migration steps did, for the upgrade report.
+    struct UpgradeStats {
+        bool droppedAccountNumbers = false; // step 1 removed iban / bic / number
+        int  removedDuplicates = 0;         // step 2
+        int  removedWithOtherValues = 0;    // of those: another category, label, date…
+    };
+    // The iban / bic / number columns that the accounts table still has.
+    [[nodiscard]] QStringList accountNumberColumns() const;
+    // Empties those columns in the copy that backUp() made, and compacts it,
+    // so that the copy keeps no account number (maintainer decision).
+    bool clearAccountNumbersInCopy(const QString& backupPath, const QStringList& columns);
     // The migration steps from `from` + 1 up to kSchemaVersion, then
     // PRAGMA user_version. Runs in the caller's SQL transaction, so that the
     // file is either at kSchemaVersion or unchanged.
-    bool upgrade(int from, int& removedDuplicates);
-    bool migrateTo1();                       // accounts: drop iban / bic / number
-    bool migrateTo2(int& removedDuplicates); // transactions: fingerprint + UNIQUE index
+    bool upgrade(int from, UpgradeStats& stats);
+    bool migrateTo1(UpgradeStats& stats); // accounts: drop iban / bic / number
+    bool migrateTo2(UpgradeStats& stats); // transactions: fingerprint + UNIQUE index
     [[nodiscard]] QStringList columnsOf(const QString& table) const;
 
     QSqlDatabase            m_db;

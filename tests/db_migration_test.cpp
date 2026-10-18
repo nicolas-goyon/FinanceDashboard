@@ -6,8 +6,10 @@
 //   - a new file gets the latest schema, without a backup or a report;
 //   - an old file (user_version 0, accounts with iban / bic / number, the
 //     same statement rows saved twice) is upgraded: a backup copy first, the
-//     legacy columns dropped, the exact duplicates removed (the lowest id
-//     stays), fingerprints and the UNIQUE index added, and a report;
+//     legacy columns dropped (and their values gone from both files), the
+//     duplicates removed (the copy with a category stays, then the one with
+//     a subcategory, then the oldest; a bank reference and an amount make the
+//     identity of a row), fingerprints and the UNIQUE index added, a report;
 //   - an upgraded file is not upgraded again;
 //   - a file from a newer version of the app is refused, and closed;
 //   - a file that is not a database is refused with SQLite's message;
@@ -182,16 +184,25 @@ void DbMigrationTest::createOldDatabase(const QString& path)
                        "  'PSSTFRPP', '00012345678'),"
                        " ('Savings', 'Livret A', 'Savings', 'EUR', '', '', '', '');"),
         QString::fromLatin1(kTransactionsV0),
-        // Account 1: row A twice (a re-import), row B, and B' (same as B but
-        // another balance, so not a duplicate). Account 2: the same content
-        // as row A, which is not a duplicate in another account.
+        // Account 1, ids 1–4: row A twice (a re-import; the first copy has
+        // the category), row B, and B' (same as B but another balance, so not
+        // a duplicate). Account 2, id 5: the content of row A, which is not a
+        // duplicate in another account. Account 1 again, ids 6–10: row C twice
+        // (only the second copy has a category), row D twice with the same
+        // bank reference and amount but another confirmation date and balance
+        // (a later export), and an exact copy of row B.
         QStringLiteral("INSERT INTO transactions (account_id, confirmation_date, operation_date, name,"
-                       " description, debit, credit, balance_after, category) VALUES"
-                       " (1, '2026-03-02', '2026-03-02', 'CARREFOUR', 'Card payment: CARREFOUR ref A1', 20.0, 0, 480.0, 'Groceries'),"
-                       " (1, '2026-03-02', '2026-03-02', 'CARREFOUR', 'Card payment: CARREFOUR ref A1', 20.0, 0, 480.0, ''),"
-                       " (1, '2026-03-05', '2026-03-05', 'SNCF', 'Card payment: SNCF ref A2', 30.0, 0, 450.0, ''),"
-                       " (1, '2026-03-05', '2026-03-05', 'SNCF', 'Card payment: SNCF ref A2', 30.0, 0, 451.0, ''),"
-                       " (2, '2026-03-02', '2026-03-02', 'CARREFOUR', 'Card payment: CARREFOUR ref A1', 20.0, 0, 480.0, '');"),
+                       " description, debit, credit, balance_after, category, subcategory) VALUES"
+                       " (1, '2026-03-02', '2026-03-02', 'CARREFOUR', 'Card payment: CARREFOUR ref A1', 20.0, 0, 480.0, 'Groceries', ''),"
+                       " (1, '2026-03-02', '2026-03-02', 'CARREFOUR', 'Card payment: CARREFOUR ref A1', 20.0, 0, 480.0, '', ''),"
+                       " (1, '2026-03-05', '2026-03-05', 'SNCF', 'Card payment: SNCF ref A2', 30.0, 0, 450.0, '', ''),"
+                       " (1, '2026-03-05', '2026-03-05', 'SNCF', 'Card payment: SNCF ref A2', 30.0, 0, 451.0, '', ''),"
+                       " (2, '2026-03-02', '2026-03-02', 'CARREFOUR', 'Card payment: CARREFOUR ref A1', 20.0, 0, 480.0, '', ''),"
+                       " (1, '2026-03-07', '2026-03-07', 'BAKERY', 'Card payment: BAKERY ref A5', 5.0, 0, 445.0, '', ''),"
+                       " (1, '2026-03-07', '2026-03-07', 'BAKERY', 'Card payment: BAKERY ref A5', 5.0, 0, 445.0, 'Food', 'Bakery'),"
+                       " (1, '2026-03-10', '2026-03-09', 'CINEMA', 'Card payment 1234: CINEMA Internal ref.: R9', 12.0, 0, 433.0, '', ''),"
+                       " (1, '2026-03-11', '2026-03-09', 'CINEMA', 'Card payment 1234: CINEMA Internal ref.: R9', 12.0, 0, 421.0, '', ''),"
+                       " (1, '2026-03-05', '2026-03-05', 'SNCF', 'Card payment: SNCF ref A2', 30.0, 0, 450.0, '', '');"),
     });
 }
 
@@ -252,16 +263,23 @@ void DbMigrationTest::oldDatabaseIsUpgraded()
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM accounts WHERE id = 1 AND name = 'Checking'"
                                   " AND type = 'CCP' AND currency = 'EUR' AND notes = 'main';")), 1);
 
-    // Transactions: the one exact duplicate removed, the first copy kept.
-    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE account_id = 1;")), 3);
+    // Transactions: 4 duplicates removed (ids 2, 6, 9, 10). Of each row,
+    // the copy with a category stays (ids 1 and 7), else the oldest (ids 3, 8).
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE account_id = 1;")), 5);
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE account_id = 2;")), 1);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE id IN (1, 3, 4, 5, 7, 8);")), 6);
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE id = 1 AND category = 'Groceries';")), 1);
-    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE id = 2;")), 0);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE id = 7 AND category = 'Food'"
+                                  " AND subcategory = 'Bakery';")), 1);
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE fingerprint = '';")), 0);
 
-    QVERIFY2(db.upgradeReport().contains(QStringLiteral("from schema version 0 to %1").arg(Database::kSchemaVersion)),
-             qPrintable(db.upgradeReport()));
-    QVERIFY2(db.upgradeReport().contains(QStringLiteral("1 duplicate transaction")), qPrintable(db.upgradeReport()));
+    const QString report = db.upgradeReport();
+    QVERIFY2(report.contains(QStringLiteral("from schema version 0 to %1").arg(Database::kSchemaVersion)),
+             qPrintable(report));
+    QVERIFY2(report.contains(QStringLiteral("4 duplicate transaction")), qPrintable(report));
+    // Ids 2, 6 and 9 differ from the copy that stays; id 10 is an exact copy.
+    QVERIFY2(report.contains(QStringLiteral("3 of the removed copies")), qPrintable(report));
+    QVERIFY2(report.contains(QStringLiteral("IBAN, BIC and account numbers were removed")), qPrintable(report));
 
     // The backup is the database as it was before the upgrade.
     const QStringList copies = backups();
@@ -269,8 +287,22 @@ void DbMigrationTest::oldDatabaseIsUpgraded()
     QVERIFY2(db.upgradeReport().contains(copies.first()), qPrintable(db.upgradeReport()));
     const QString backup = m_dir->filePath(copies.first());
     QCOMPARE(countOn(backup, QStringLiteral("PRAGMA user_version;")), 0);
-    QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM transactions;")), 5);
-    QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM accounts WHERE iban != '';")), 1);
+    QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM transactions;")), 10);
+    QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM accounts;")), 2);
+    // No account number in the copy, and none left in either file.
+    QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM accounts"
+                                            " WHERE iban != '' OR bic != '' OR number != '';")), 0);
+    for (const QString& file : {backup, path, path + QStringLiteral("-wal")}) {
+        QFile bytes(file);
+        if (!bytes.exists()) {
+            continue;
+        }
+        QVERIFY(bytes.open(QIODevice::ReadOnly));
+        const QByteArray content = bytes.readAll();
+        QVERIFY2(!content.contains("FR7630006000011234567890189"), qPrintable(file));
+        QVERIFY2(!content.contains("PSSTFRPP"), qPrintable(file));
+        QVERIFY2(!content.contains("00012345678"), qPrintable(file));
+    }
 }
 
 void DbMigrationTest::upgradedDatabaseIsNotUpgradedAgain()

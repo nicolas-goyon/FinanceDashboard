@@ -4,6 +4,7 @@
 
 #include <QCryptographicHash>
 #include <QHash>
+#include <QRegularExpression>
 #include <QSqlDatabase>
 #include <QSqlQuery>
 #include <QSqlError>
@@ -131,11 +132,20 @@ QString TransactionsTable::fingerprint(const QString& operationDate, const QStri
     // Amounts in cents, so that 19.99 parsed twice, or read back from the
     // REAL column, gives the same text.
     const auto cents = [](double amount) { return QString::number(std::llround(amount * 100.0)); };
-    QStringList fields{
-        Sql::text(operationDate), Sql::text(confirmationDate),
-        cents(debit), cents(credit), cents(balanceAfter),
-        Sql::text(description),
-    };
+    // Maintainer decision (2026-10-18): a row with a bank reference is that
+    // reference and its amount. A later export that changes its value date or
+    // its running balance still finds it. Without a reference: every field.
+    const QString reference = bankReference(description);
+    QStringList fields;
+    if (!reference.isEmpty()) {
+        fields = {QStringLiteral("ref"), reference, cents(debit), cents(credit)};
+    } else {
+        fields = {
+            Sql::text(operationDate), Sql::text(confirmationDate),
+            cents(debit), cents(credit), cents(balanceAfter),
+            Sql::text(description),
+        };
+    }
     // The first occurrence keeps the plain form: schema migration 2 computed
     // the fingerprints of the rows that were already saved that way.
     if (occurrence > 1) {
@@ -146,6 +156,16 @@ QString TransactionsTable::fingerprint(const QString& operationDate, const QStri
     const QString canonical = fields.join(QChar(0x1F));
     return QString::fromLatin1(
         QCryptographicHash::hash(canonical.toUtf8(), QCryptographicHash::Sha256).toHex());
+}
+
+QString TransactionsTable::bankReference(const QString& description)
+{
+    // "Internal ref.: a1b2c3d4-…" — the description keeps the reference block
+    // of the statement (normalizeField() joins its lines).
+    static const QRegularExpression kInternalRef(
+        QStringLiteral("\\binternal\\s+ref\\s*\\.?\\s*:\\s*(\\S+)"), QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch match = kInternalRef.match(description);
+    return match.hasMatch() ? match.captured(1) : QString();
 }
 
 QString TransactionsTable::fingerprint(const Data::Transaction& tx, int occurrence)
