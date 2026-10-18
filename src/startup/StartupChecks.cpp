@@ -52,31 +52,31 @@ QList<StartupStep> StartupChecks::runInitialization(QString& dbPath)
     steps.append(folder);
 
     // ── Database ─────────────────────────────────────────────────────────────
-    // Fatal when this version cannot use the file: a newer version of the
-    // app saved it, or the upgrade failed. open() closed the connection, so
-    // the dashboard would only show empty pages. Other failures are not
-    // fatal, as before the start-up stage existed: the app starts without
-    // data.
+    // Fatal: after a failure open() has closed the connection, and the
+    // dashboard without its database would only show empty pages and hide
+    // the cause.
     StartupStep db;
     db.name   = QStringLiteral("Database");
+    db.fatal  = true;
     db.ok     = Database::instance().open(dbPath);
     db.detail = db.ok ? dbPath
                       : dbPath + QStringLiteral(" — ") + Database::instance().lastError();
     switch (Database::instance().openError()) {
     case Database::OpenError::NewerSchema:
-        db.fatal = true;
-        db.hint  = QStringLiteral("A newer version of the app saved this file. Install that version or a "
-                                  "later one. The file was not changed.");
+        db.hint = QStringLiteral("A newer version of the app saved this file. Install that version or a "
+                                 "later one. The file was not changed.");
         break;
     case Database::OpenError::UpgradeFailed:
-        db.fatal = true;
-        db.hint  = QStringLiteral("The file was not changed. If the disk is full, free some space, then "
-                                  "start the app again. If the upgrade fails again, send the application "
-                                  "log to the maintainer.");
+        db.hint = QStringLiteral("The file was not changed. If the disk is full, free some space, then "
+                                 "start the app again. If the upgrade fails again, send the application "
+                                 "log to the maintainer.");
         break;
     case Database::OpenError::None:
     case Database::OpenError::CannotOpen:
-        db.hint  = QStringLiteral("Check the data folder above; delete or restore a corrupted database file.");
+        db.hint = QStringLiteral("Check that the data folder above can be written to. If the file is "
+                                 "damaged, move it out of the folder (the app then starts with an empty "
+                                 "database), or put back a copy (finance_dashboard.backup-<date>.db, "
+                                 "renamed to finance_dashboard.db).");
         break;
     }
     steps.append(db);
