@@ -50,11 +50,11 @@ public:
     [[nodiscard]] bool    isOpen() const;
     [[nodiscard]] QString lastError() const;
 
-    // Why the last open() failed. NewerSchema and UpgradeFailed leave the file
-    // as it was; StartupChecks makes them a fatal step.
+    // Why the last open() failed, for the hint of the fatal start-up step
+    // (StartupChecks). NewerSchema and UpgradeFailed leave the file as it was.
     enum class OpenError {
         None,
-        CannotOpen,    // the file cannot be opened or created
+        CannotOpen,    // the file cannot be opened, read or created
         NewerSchema,   // a newer version of the app saved the file
         UpgradeFailed, // the copy or the upgrade failed; the file is unchanged
     };

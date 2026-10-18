@@ -73,10 +73,16 @@ bool Database::openFile(const QString& path)
         return failOpen(OpenError::CannotOpen, QStringLiteral("Cannot open: %1").arg(m_db.lastError().text()));
     }
 
-    const int from = schemaVersion();
-    if (from < 0) {
-        return failOpen(OpenError::CannotOpen,
-                        QStringLiteral("Cannot read the schema version: %1").arg(m_db.lastError().text()));
+    // The first read: a file that is not a database fails here, with
+    // SQLite's own message ("file is not a database").
+    int from = 0;
+    {
+        QSqlQuery version(m_db);
+        if (!version.exec(QStringLiteral("PRAGMA user_version;")) || !version.next()) {
+            return failOpen(OpenError::CannotOpen,
+                            QStringLiteral("Cannot read the database: %1").arg(version.lastError().text()));
+        }
+        from = version.value(0).toInt();
     }
     // A file from a newer version of the app: refuse it before any change.
     if (from > kSchemaVersion) {
@@ -105,7 +111,7 @@ bool Database::openFile(const QString& path)
         const QString detail = m_lastError.isEmpty() ? m_db.lastError().text() : m_lastError;
         m_db.rollback();
         if (!upgrading) {
-            return failOpen(OpenError::CannotOpen, QStringLiteral("Cannot create the tables: %1").arg(detail));
+            return failOpen(OpenError::CannotOpen, detail);
         }
         // The file is unchanged, so this copy is not needed: without this, each
         // failed start would leave one more copy.
@@ -161,23 +167,25 @@ void Database::close()
 
 bool Database::createBaseTables()
 {
-    // Each table class creates its own schema
-    if (!m_snapshots.createTable()             ||
-        !m_assetEntries.createTable()          ||
-        !m_categoriesTable.createTable()       ||
-        !m_subcategoriesTable.createTable()    ||
-        !m_accountCategoriesTable.createTable()||
-        !m_accountTypesTable.createTable()     ||
-        !m_accountsTable.createTable()         ||
-        !m_accountHashesTable.createTable()    ||
-        !m_transactionsTable.createTable()     ||
-        !m_balanceCheckpointsTable.createTable()||
-        !m_categoryRulesTable.createTable())
-    {
-        m_lastError = QStringLiteral("Failed to create tables (see the log).");
-        return false;
-    }
-    return true;
+    // Each table class creates its own schema, and logs the SQLite error.
+    const auto created = [this](bool ok, const char* table) {
+        if (!ok) {
+            m_lastError = QStringLiteral("Cannot create the table %1 (the application log has the SQLite "
+                                         "error).").arg(QLatin1String(table));
+        }
+        return ok;
+    };
+    return created(m_snapshots.createTable(), "snapshots") &&
+           created(m_assetEntries.createTable(), "asset_entries") &&
+           created(m_categoriesTable.createTable(), "categories") &&
+           created(m_subcategoriesTable.createTable(), "subcategories") &&
+           created(m_accountCategoriesTable.createTable(), "account_categories") &&
+           created(m_accountTypesTable.createTable(), "account_types") &&
+           created(m_accountsTable.createTable(), "accounts") &&
+           created(m_accountHashesTable.createTable(), "account_hashes") &&
+           created(m_transactionsTable.createTable(), "transactions") &&
+           created(m_balanceCheckpointsTable.createTable(), "account_balance_checkpoints") &&
+           created(m_categoryRulesTable.createTable(), "category_rules");
 }
 
 // A copy of the file before the first change. VACUUM INTO writes a

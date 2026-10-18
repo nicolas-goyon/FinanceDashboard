@@ -10,6 +10,7 @@
 //     stays), fingerprints and the UNIQUE index added, and a report;
 //   - an upgraded file is not upgraded again;
 //   - a file from a newer version of the app is refused, and closed;
+//   - a file that is not a database is refused with SQLite's message;
 //   - a failed upgrade leaves the file as it was (one SQL transaction for
 //     every step), closes it, and leaves no backup copy;
 //   - the backup copy is taken before any change to the file;
@@ -19,6 +20,7 @@
 #include "db/Database.h"
 
 #include <QDir>
+#include <QFile>
 #include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
@@ -106,6 +108,7 @@ private slots:
     void oldDatabaseIsUpgraded();
     void upgradedDatabaseIsNotUpgradedAgain();
     void newerSchemaIsRefused();
+    void corruptFileIsRefused();
     void failedUpgradeChangesNothing();
     void backupIsTakenBeforeAnyChange();
     void accountCounterIsKept();
@@ -305,6 +308,22 @@ void DbMigrationTest::newerSchemaIsRefused()
     QCOMPARE(countOn(path, QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type = 'table'"
                                           " AND name != 'sqlite_sequence';")),
              1);
+    QVERIFY(backups().isEmpty());
+}
+
+void DbMigrationTest::corruptFileIsRefused()
+{
+    const QString path = m_dir->filePath(QStringLiteral("corrupt.db"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(QByteArray(8192, 'x'));
+    file.close();
+
+    Database& db = Database::instance();
+    QVERIFY(!db.open(path));
+    QCOMPARE(db.openError(), Database::OpenError::CannotOpen);
+    QVERIFY2(db.lastError().contains(QStringLiteral("not a database")), qPrintable(db.lastError()));
+    QVERIFY(!db.isOpen());
     QVERIFY(backups().isEmpty());
 }
 

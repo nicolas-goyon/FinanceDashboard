@@ -39,8 +39,9 @@ is the base schema and does not change; each change after it is one migration st
 `Database::upgrade()`, written with its own SQL, with a test in `tests/db_migration_test.cpp`.
 Before it upgrades an existing database, the app saves a copy next to it (`VACUUM INTO`), before
 any change. The base tables and every step run in one SQL transaction, so the file is either
-upgraded or unchanged. A database from a newer version, or a failed upgrade, closes the
-connection and stops the app at start-up (a fatal step in `StartupChecks`).
+upgraded or unchanged. A database that does not open (it cannot be read, a newer version saved
+it, or the upgrade failed) closes the connection and stops the app at start-up, with the cause
+(a fatal step in `StartupChecks`).
 
 A transaction's `fingerprint` is its identity in the bank's statement
 (`TransactionsTable::fingerprints()`): a row that the account already has is not saved again.

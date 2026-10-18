@@ -251,6 +251,10 @@ pass in the same in-progress version.
   that breaks a `NOT NULL` column fails the save instead of being skipped. The upgrade to
   schema version 2 removes the duplicates that earlier re-imports saved (the first copy stays),
   after it saves a copy of the database.
+- **A database that does not open stops the app with the cause.** `Database::open()` used to
+  leave the connection open after a failure, so the app started on an empty dashboard and the
+  SQLite error went only to the log. It now closes the connection, and the start-up error
+  window shows the cause ("file is not a database", for example) and what to do.
 
 ### Docs
 - See `Added`/`Changed`/`Fixed` above.
