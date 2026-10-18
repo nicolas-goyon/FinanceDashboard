@@ -63,7 +63,7 @@ A version number is never typed twice, so it can never disagree with itself.
 | **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → setup `.exe` + portable `.zip` → setup test (install, update in place, uninstall, in both install modes). |
 | **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` install/remove check. |
 | **Package — source** | ubuntu-24.04 | yes | `git archive` → source `.tar.gz` and `.zip`. |
-| **Release** | ubuntu-24.04 | — | `main` pushes only, after every blocking job above. Collects every artifact, writes `SHA256SUMS.txt`, publishes the release and its tag, then opens the back-merge pull request into `develop`. |
+| **Release** | ubuntu-24.04 | — | `main` pushes only, after every blocking job above. Collects every artifact, writes `SHA256SUMS.txt`, publishes the release and its tag, then opens the back-merge pull request into `develop` and starts CI on its branch. Releases wait in a queue, one at a time. A re-run finishes what an earlier run started. |
 
 ---
 
@@ -169,14 +169,16 @@ holds released code only, and every merge into it publishes a release.
     ├─ 3. merge        merge commit into main → CI runs on main
     │
  main (CI, release job, after every blocking job is green):
-    ├─ 4. check        v0.2.1 has a date, and no release v0.2.1 exists yet
+    ├─ 4. check        v0.2.1 has a date; is v0.2.1 already published?
+    │                  (yes: skip 5–8; a draft is deleted and made again)
     ├─ 5. collect      download packages-windows / -linux / -source
     ├─ 6. checksums    sha256sum * > SHA256SUMS.txt
     ├─ 7. notes        version.py notes  +  .github/release-notes-footer.md
     ├─ 8. publish      gh release create v0.2.1 --target <sha> dist/*  (makes the tag)
     └─ 9. back-merge   branch chore/back-merge-v0.2.1 from main,
                        version.py bump patch → 0.2.2 opened,
-                       PR into develop
+                       PR into develop, CI started on the branch
+                       (each part skipped when it is already done)
 ```
 
 Nothing is committed to `main` by CI. After you merge the back-merge pull
@@ -190,10 +192,27 @@ the new version.
 
 **The back-merge pull request.** The release job opens it with `GITHUB_TOKEN`,
 so GitHub must allow GitHub Actions to create pull requests (Settings →
-Actions → General → Workflow permissions). If it cannot, the job still pushes
-the branch and prints a warning: open the pull request by hand. A pull request
-opened with `GITHUB_TOKEN` does not start a CI run of its own; it only contains
-`main` plus the new version, so this is safe.
+Actions → General → Workflow permissions). If it cannot, the release is
+published and the branch is pushed, but the job fails: change the setting,
+then re-run the job. A pull request opened with `GITHUB_TOKEN` does not start
+a CI run of its own, so the job starts one on the branch (`workflow_dispatch`,
+the one event that `GITHUB_TOKEN` can start): its checks show on the pull
+request, and a branch rule that asks for green CI can pass. Merge it with a
+**merge commit**, not a squash: `develop` must contain the release commit of
+`main`.
+
+**Re-running the release job.** A re-run (Actions → the run → Re-run failed
+jobs) finishes what the earlier run started, and does each part only once. A
+published release is not published again; a draft that a stopped upload left
+is deleted and published again. The back-merge is skipped when `develop`
+already contains the release commit, and the branch and the pull request are
+not made twice. If the tag `vX.Y.Z` exists on another commit, the job stops.
+
+**One release at a time.** Each run on `main` has a concurrency group of its
+own, so no run on `main` cancels another one. The release jobs share the
+`release` group with `queue: max`: they publish one at a time, in the order
+they arrive. With the default queue, a release job that waits would be
+cancelled when a third one arrives.
 
 **Minor and major releases.** The back-merge always opens a patch. To make the
 in-progress version a minor or a major one, run on `develop`:
