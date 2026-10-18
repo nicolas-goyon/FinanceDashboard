@@ -151,6 +151,8 @@ FinanceDashboard/
 
 - **`ARCHITECTURE.MD`** — start here for anything design-related.
 - **`CI-CD.md`** — the build/test/package/release pipeline, and how to change it.
+- **`CONTRIBUTING.md`** — gitflow branches, commit messages, labels, and what a pull request
+  needs before it is merged.
 - **`PROJECT.md`** — product spec: target pages, charts, features.
 - **`TODO.md`** — known limitations, bugs, and planned work.
 - **`version.md`** — changelog. Generated from `version.json`; edit that, or use

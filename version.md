@@ -166,6 +166,10 @@ pass in the same in-progress version.
   and database open, moved out of `main.cpp`, still non-fatal as before). A failed fatal step
   loads the new `qml/StartupErrorWindow.qml` (every step as met / not met + fix hint) instead
   of `Main.qml`.
+- `CONTRIBUTING.md`, a pull-request template and issue forms (bug, feature, chore): the gitflow
+  branch model (`main`, `develop`, `feature/*`, `bugfix/*`, `release/*`, `hotfix/*`),
+  Conventional Commits, the label set, the definition of done and the repository settings.
+  Dependabot pull requests now target `develop`.
 
 ### Changed
 - **Removed** all `docs` for pruning and reduce overhead.
