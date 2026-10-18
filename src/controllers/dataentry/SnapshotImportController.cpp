@@ -4,6 +4,7 @@
 #include "utils/Formatter.h"
 #include "utils/AccountHashing.h"
 #include "db/Database.h"
+#include "db/tables/TransactionsTable.h"
 #include "models/Account.h"
 #include "models/Category.h"
 #include "models/CategoryRule.h"
@@ -18,6 +19,8 @@
 #include <optional>
 #include <QDate>
 #include <QFileInfo>
+#include <QHash>
+#include <QLatin1String>
 #include <QMap>
 #include <QObject>
 #include <QSet>
@@ -38,6 +41,17 @@ constexpr int kStatusClearDelayMs = 4000; // how long a status message stays vis
 constexpr double kReconciliationEpsilon = 0.01;
 // Percent scale for the predictor's evaluation numbers (evaluatePredictor()).
 constexpr double kPercentScale = 100.0;
+
+// A row that has the bank reference and the amount of a saved transaction,
+// but another operation date. The identity by reference assumes one
+// reference per transaction; such a row says the bank may reuse them. It is
+// skipped like any saved row, and the import report links to the issue
+// (TransactionsTable::kReusedReferenceIssueUrl, maintainer decision of
+// 2026-10-18).
+bool hasReusedReference(const Data::Transaction& row, const QDate& savedOperationDate)
+{
+    return !TransactionsTable::bankReference(row.description).isEmpty() && savedOperationDate != row.operationDate;
+}
 
 // credit - debit, the signed amount the category predictor wants (see
 // Predict::CategoryPredictor::predict()). Both fields are magnitudes with the
@@ -575,13 +589,26 @@ void SnapshotImportController::save(int accountId, const QString& accountLabel)
     // The fingerprints come from the whole statement, before the filter: two
     // identical rows of it are two transactions (occurrence 1 and 2).
     const QStringList fingerprints = TransactionsTable::fingerprints(toSave);
-    const QSet<QString> savedBefore = Database::instance().transactionFingerprints(accountId);
+    const QHash<QString, QDate> savedBefore = Database::instance().transactionFingerprints(accountId);
     QVector<Data::Transaction> newRows;
     newRows.reserve(toSave.size());
     int alreadySaved = 0;
+    int reusedReferences = 0;
     for (qsizetype i = 0; i < toSave.size(); ++i) {
-        if (savedBefore.contains(fingerprints.at(i))) {
+        const auto saved = savedBefore.constFind(fingerprints.at(i));
+        if (saved != savedBefore.cend()) {
             ++alreadySaved;
+            if (hasReusedReference(toSave.at(i), saved.value())) {
+                ++reusedReferences;
+                qWarning().noquote()
+                    << QStringLiteral("[SnapshotImportController] row not saved: bank reference %1, amount %2, "
+                                      "operation date %3; the saved transaction has %4. See %5")
+                           .arg(TransactionsTable::bankReference(toSave.at(i).description))
+                           .arg(toSave.at(i).credit - toSave.at(i).debit, 0, 'f', 2)
+                           .arg(toSave.at(i).operationDate.toString(Qt::ISODate),
+                                saved.value().toString(Qt::ISODate),
+                                QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
+            }
             continue;
         }
         Data::Transaction row = toSave.at(i);
@@ -606,6 +633,9 @@ void SnapshotImportController::save(int accountId, const QString& accountLabel)
 
     buildImportReport(accountLabel, newRows, reconciliation);
     m_lastImportReport.insert(QStringLiteral("alreadySavedCount"), alreadySaved);
+    m_lastImportReport.insert(QStringLiteral("reusedReferenceCount"), reusedReferences);
+    m_lastImportReport.insert(QStringLiteral("reusedReferenceUrl"),
+                              QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
     emit reportChanged();
 
     if (alreadySaved == 0) {
@@ -701,14 +731,21 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
         row.balanceAfter     = transaction.balanceAfter;
         included.append(row);
     }
-    const QSet<QString> savedBefore = Database::instance().transactionFingerprints(accountId);
+    const QHash<QString, QDate> savedBefore = Database::instance().transactionFingerprints(accountId);
+    const QStringList fingerprints = TransactionsTable::fingerprints(included);
     int alreadySaved = 0;
-    for (const QString& fingerprint : TransactionsTable::fingerprints(included)) {
-        if (savedBefore.contains(fingerprint)) {
+    int reusedReferences = 0;
+    for (qsizetype i = 0; i < included.size(); ++i) {
+        const auto saved = savedBefore.constFind(fingerprints.at(i));
+        if (saved != savedBefore.cend()) {
             ++alreadySaved;
+            if (hasReusedReference(included.at(i), saved.value())) {
+                ++reusedReferences;
+            }
         }
     }
     result["alreadySavedCount"] = alreadySaved;
+    result["reusedReferenceCount"] = reusedReferences;
 
     return result;
 }

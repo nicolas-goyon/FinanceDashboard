@@ -160,12 +160,18 @@ QString TransactionsTable::fingerprint(const QString& operationDate, const QStri
 
 QString TransactionsTable::bankReference(const QString& description)
 {
-    // "Internal ref.: 06c60f6b-…" — the description keeps the reference block
-    // of the statement (normalizeField() joins its lines).
-    static const QRegularExpression kInternalRef(
-        QStringLiteral("\\binternal\\s+ref\\s*\\.?\\s*:\\s*(\\S+)"), QRegularExpression::CaseInsensitiveOption);
-    const QRegularExpressionMatch match = kInternalRef.match(description);
-    return match.hasMatch() ? match.captured(1) : QString();
+    // "Internal ref.: 06c60f6b-…" — the exact label of the bank, with its case.
+    // The last match wins: the bank's reference block ends the description,
+    // after the text that the sender of a transfer wrote, which can contain
+    // the same words. The id has letters, digits and hyphens only, so
+    // punctuation after it is not part of it.
+    static const QRegularExpression kInternalRef(QStringLiteral("\\bInternal ref\\.:\\s*([0-9A-Za-z-]+)"));
+    QString reference;
+    QRegularExpressionMatchIterator matches = kInternalRef.globalMatch(description);
+    while (matches.hasNext()) {
+        reference = matches.next().captured(1);
+    }
+    return reference;
 }
 
 QString TransactionsTable::fingerprint(const Data::Transaction& tx, int occurrence)
@@ -187,18 +193,18 @@ QStringList TransactionsTable::fingerprints(const QVector<Data::Transaction>& tx
     return result;
 }
 
-QSet<QString> TransactionsTable::fingerprintsForAccount(int accountId) const
+QHash<QString, QDate> TransactionsTable::operationDatesByFingerprint(int accountId) const
 {
-    QSet<QString> result;
+    QHash<QString, QDate> result;
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("SELECT fingerprint FROM transactions WHERE account_id = ?;"));
+    query.prepare(QStringLiteral("SELECT fingerprint, operation_date FROM transactions WHERE account_id = ?;"));
     query.addBindValue(accountId);
     if (!query.exec()) {
-        qWarning() << "[TransactionsTable] fingerprintsForAccount error:" << query.lastError().text();
+        qWarning() << "[TransactionsTable] operationDatesByFingerprint error:" << query.lastError().text();
         return result;
     }
     while (query.next()) {
-        result.insert(query.value(0).toString());
+        result.insert(query.value(0).toString(), QDate::fromString(query.value(1).toString(), Qt::ISODate));
     }
     return result;
 }

@@ -202,7 +202,17 @@ void DbMigrationTest::createOldDatabase(const QString& path)
                        " (1, '2026-03-07', '2026-03-07', 'BAKERY', 'Card payment: BAKERY ref A5', 5.0, 0, 445.0, 'Food', 'Bakery'),"
                        " (1, '2026-03-10', '2026-03-09', 'CINEMA', 'Card payment 1234: CINEMA Internal ref.: R9', 12.0, 0, 433.0, '', ''),"
                        " (1, '2026-03-11', '2026-03-09', 'CINEMA', 'Card payment 1234: CINEMA Internal ref.: R9', 12.0, 0, 421.0, '', ''),"
-                       " (1, '2026-03-05', '2026-03-05', 'SNCF', 'Card payment: SNCF ref A2', 30.0, 0, 450.0, '', '');"),
+                       " (1, '2026-03-05', '2026-03-05', 'SNCF', 'Card payment: SNCF ref A2', 30.0, 0, 450.0, '', ''),"
+                       // Ids 11–13: three monthly rent transfers. The sender's
+                       // label looks like a reference; each has its own bank
+                       // reference at the end, so none is a duplicate.
+                       " (1, '2026-01-05', '2026-01-05', 'LANDLORD', 'Transfer to LANDLORD Rent internal ref: APT12 Internal ref.: K1', 950.0, 0, 2050.0, '', ''),"
+                       " (1, '2026-02-05', '2026-02-05', 'LANDLORD', 'Transfer to LANDLORD Rent internal ref: APT12 Internal ref.: K2', 950.0, 0, 1100.0, '', ''),"
+                       " (1, '2026-03-05', '2026-03-05', 'LANDLORD', 'Transfer to LANDLORD Rent internal ref: APT12 Internal ref.: K3', 950.0, 0, 150.0, '', ''),"
+                       // Ids 14–15: the same bank reference and amount on two
+                       // operation dates (a reused reference, issue #126).
+                       " (1, '2026-02-10', '2026-02-10', 'POWER', 'Direct debit: POWER Internal ref.: M1', 60.0, 0, 1040.0, '', ''),"
+                       " (1, '2026-03-10', '2026-03-10', 'POWER', 'Direct debit: POWER Internal ref.: M1', 60.0, 0, 90.0, '', '');"),
     });
 }
 
@@ -263,11 +273,12 @@ void DbMigrationTest::oldDatabaseIsUpgraded()
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM accounts WHERE id = 1 AND name = 'Checking'"
                                   " AND type = 'CCP' AND currency = 'EUR' AND notes = 'main';")), 1);
 
-    // Transactions: 4 duplicates removed (ids 2, 6, 9, 10). Of each row,
-    // the copy with a category stays (ids 1 and 7), else the oldest (ids 3, 8).
-    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE account_id = 1;")), 5);
+    // Transactions: 5 duplicates removed (ids 2, 6, 9, 10, 15). Of each row,
+    // the copy with a category stays (ids 1 and 7), else the oldest (ids 3,
+    // 8, 14). The three rent transfers stay.
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE account_id = 1;")), 9);
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE account_id = 2;")), 1);
-    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE id IN (1, 3, 4, 5, 7, 8);")), 6);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE id IN (1, 3, 4, 5, 7, 8, 11, 12, 13, 14);")), 10);
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE id = 1 AND category = 'Groceries';")), 1);
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE id = 7 AND category = 'Food'"
                                   " AND subcategory = 'Bakery';")), 1);
@@ -276,9 +287,12 @@ void DbMigrationTest::oldDatabaseIsUpgraded()
     const QString report = db.upgradeReport();
     QVERIFY2(report.contains(QStringLiteral("from schema version 0 to %1").arg(Database::kSchemaVersion)),
              qPrintable(report));
-    QVERIFY2(report.contains(QStringLiteral("4 duplicate transaction")), qPrintable(report));
-    // Ids 2, 6 and 9 differ from the copy that stays; id 10 is an exact copy.
-    QVERIFY2(report.contains(QStringLiteral("3 of the removed copies")), qPrintable(report));
+    QVERIFY2(report.contains(QStringLiteral("5 duplicate transaction")), qPrintable(report));
+    // Ids 2, 6, 9 and 15 differ from the copy that stays; id 10 is an exact
+    // copy. Id 15 has the reference of id 14 with another operation date.
+    QVERIFY2(report.contains(QStringLiteral("4 of the removed copies had another")), qPrintable(report));
+    QVERIFY2(report.contains(QStringLiteral("Warning: 1 of the removed copies")), qPrintable(report));
+    QVERIFY2(report.contains(QLatin1String(TransactionsTable::kReusedReferenceIssueUrl)), qPrintable(report));
     QVERIFY2(report.contains(QStringLiteral("IBAN, BIC and account numbers were removed")), qPrintable(report));
 
     // The backup is the database as it was before the upgrade.
@@ -287,7 +301,7 @@ void DbMigrationTest::oldDatabaseIsUpgraded()
     QVERIFY2(db.upgradeReport().contains(copies.first()), qPrintable(db.upgradeReport()));
     const QString backup = m_dir->filePath(copies.first());
     QCOMPARE(countOn(backup, QStringLiteral("PRAGMA user_version;")), 0);
-    QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM transactions;")), 10);
+    QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM transactions;")), 15);
     QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM accounts;")), 2);
     // No account number in the copy, and none left in either file.
     QCOMPARE(countOn(backup, QStringLiteral("SELECT COUNT(*) FROM accounts"
