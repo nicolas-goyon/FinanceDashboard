@@ -268,11 +268,17 @@ pass in the same in-progress version.
   was dated a year too early, and a December row of a January statement eleven months later. It
   now gets the year that puts it in the statement period (from 31 days before its start to its
   end), and a statement without a readable "Period" line is refused instead of losing every row
-  (#30). A 29 February row is no longer skipped (#31).
+  (#30). When a period of 11 months or more lets a date fit two years, the later one is used,
+  with a warning; a row date that cannot be placed is logged. A 29 February row is no longer
+  skipped (#31). Rows that an earlier version saved with a wrong year are not corrected: a
+  re-import of their statement adds the row with the right date, and the old row must be
+  deleted by hand.
 - **Statement import — amounts.** Amounts grouped with spaces ("1 300.00", also with no-break
   spaces), with a decimal comma ("1 234,56 €") or with a thousands comma ("1,234") are read,
-  and "nan", "inf" or any text that is not a number are refused: a debit of "-1 300.00" used to
-  skip its row with only a warning (#32).
+  and "nan", "inf", garbled grouping ("1.2.3", "0,123") or any text that is not a number are
+  refused: a debit of "-1 300.00" used to skip its row with only a warning (#32). An amount
+  that an earlier version read wrong ("1,234" as 1.234) is not corrected: a re-import adds the
+  right row next to the old one.
 
 ### Docs
 - See `Added`/`Changed`/`Fixed` above.
