@@ -102,15 +102,22 @@ mapfile -d '' ELF_FILES < <(find "$APP_ROOT/bin" "$APP_ROOT/lib" "$APP_ROOT/qml"
         "$APP_ROOT/plugins"/wayland-* "$APP_ROOT/plugins/sqldrivers/libqsqlite.so" \
         -type f \( -name '*.so*' -o -name FinanceDashboard \) -print0 2>/dev/null || true)
 declare -A DEP_PACKAGES=()
+# Read once. awk reads all its input below (no early `exit`, no `head`): under
+# `set -o pipefail`, a reader that stops early makes the writer fail with
+# SIGPIPE, and the script would stop with no message.
+LDCONFIG_CACHE="$(ldconfig -p)"
 for elf in "${ELF_FILES[@]}"; do
     while read -r lib; do
         [ -e "$APP_ROOT/lib/$lib" ] && continue          # bundled
-        path="$(ldconfig -p | awk -v l="$lib" '$1 == l && /x86-64|AArch64/ {print $NF; exit}')"
+        path="$(awk -v l="$lib" '$1 == l && /x86-64|AArch64/ && path == "" {path = $NF} END {print path}' \
+                <<<"$LDCONFIG_CACHE")"
         if [ -z "$path" ]; then
             echo "error: ${elf#"$APP_ROOT/"} needs $lib, which is not on this machine" >&2
             exit 1
         fi
-        package="$(dpkg -S "$(readlink -f "$path")" 2>/dev/null | head -1 | cut -d: -f1)"
+        # dpkg -S fails when no package owns the file: `|| true`, so that the
+        # error message below is printed instead of a silent stop.
+        package="$(dpkg -S "$(readlink -f "$path")" 2>/dev/null | awk -F: 'NR == 1 {print $1}' || true)"
         if [ -z "$package" ]; then
             echo "error: no package owns $path (needed by ${elf#"$APP_ROOT/"})" >&2
             exit 1

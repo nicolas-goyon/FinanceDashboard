@@ -203,7 +203,8 @@ pass in the same in-progress version.
   the job. The `.deb` is installed and started in a clean `ubuntu:24.04` container
   (`packaging/linux/test-deb.sh`), which checks its `Depends` line: `make-deb.sh` now computes
   it from the `NEEDED` entries of the files the app loads (the system libraries that the
-  bundled Qt needs: X11/xcb, Wayland, OpenGL/EGL, fonts, D-Bus, GLib), so the package no longer
+  bundled Qt needs: X11/xcb, Wayland, OpenGL/EGL, fonts, D-Bus, GLib) and stops with an error
+  that names the library when one is missing or no package owns it, so the package no longer
   fails with "could not load the Qt platform plugin xcb" on a machine without them.
 - `cmake_minimum_required` 3.20 → 3.21 (Qt's CMake deployment API), and `main.cpp` takes its
   version from the `FD_VERSION_STRING` compile definition instead of a hard-coded `"0.2.0"`.
