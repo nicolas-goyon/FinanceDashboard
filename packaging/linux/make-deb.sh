@@ -20,19 +20,22 @@
 # would be built; if this ever goes to a real repository, that version links
 # against the distro's Qt instead.
 #
-# Qt's deployment leaves the system libraries out (glibc, X11/xcb, OpenGL/EGL,
-# fonts, D-Bus, GLib), so Depends must list them. The list below comes from the
-# NEEDED entries of the binary, the bundled libraries, the xcb platform plugin,
-# its GL integrations and the QML plugins, built on Ubuntu 24.04 (package names
-# of Ubuntu 24.04 and Debian 13). Optional plugins (other SQL drivers, the GTK
-# theme, eglfs) are left out: Qt skips a plugin whose libraries are missing.
-# packaging/linux/test-deb.sh checks the list in a clean container.
+# Qt's deployment leaves the system libraries out (glibc, X11/xcb, Wayland,
+# OpenGL/EGL, fonts, D-Bus, GLib), so Depends must list them. This script reads
+# the NEEDED entries of the files that the app loads at start-up (the binary,
+# the bundled libraries, the platform plugins and their integrations, the input
+# contexts, the image formats, the SQLite driver and the QML plugins), keeps the
+# libraries that are not bundled, and asks dpkg which package installed each
+# one on the build machine. Build on the oldest system the package is for (CI:
+# Ubuntu 24.04). Optional plugins (other SQL drivers, the GTK theme, eglfs) are
+# left out: Qt skips a plugin whose libraries are missing.
+# packaging/linux/test-deb.sh checks the result in a clean container.
 #
 # Why not CPack's DEB generator: it installs under a single prefix, so the
 # /opt payload plus the four /usr desktop-integration files would need two CPack
 # runs and a component split for what is twenty readable lines of shell here.
 #
-# Needs: dpkg-deb (Debian/Ubuntu), fakeroot optional.
+# Needs: dpkg-deb, dpkg and objdump (binutils) — Debian/Ubuntu; fakeroot optional.
 set -euo pipefail
 
 usage() { sed -n '2,30p' "$0" >&2; exit 2; }
@@ -90,19 +93,33 @@ install -m 644 "$REPO_ROOT/packaging/linux/io.github.nicolas_goyon.FinanceDashbo
 
 INSTALLED_SIZE_KB="$(du -sk "$ROOT" | cut -f1)"
 
-DEPENDS_LIST=(
-    libc6 libstdc++6 libgcc-s1 zlib1g libzstd1 libbrotli1
-    "libglib2.0-0t64 | libglib2.0-0" libdbus-1-3 libgssapi-krb5-2
-    libfontconfig1 libfreetype6
-    libgl1 libglx0 libopengl0 libegl1 libgbm1 libdrm2
-    libx11-6 libx11-xcb1 libxkbcommon0 libxkbcommon-x11-0
-    libxcb1 libxcb-cursor0 libxcb-glx0 libxcb-icccm4 libxcb-image0
-    libxcb-keysyms1 libxcb-randr0 libxcb-render0 libxcb-render-util0
-    libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-util1 libxcb-xfixes0
-    libxcb-xkb1
-)
-DEPENDS="$(printf '%s, ' "${DEPENDS_LIST[@]}")"
-DEPENDS="${DEPENDS%, }"
+echo "==> Finding the system libraries that the app needs"
+command -v objdump >/dev/null || { echo "error: objdump not found (binutils)" >&2; exit 1; }
+APP_ROOT="$ROOT/opt/FinanceDashboard"
+mapfile -d '' ELF_FILES < <(find "$APP_ROOT/bin" "$APP_ROOT/lib" "$APP_ROOT/qml" \
+        "$APP_ROOT/plugins/platforms" "$APP_ROOT/plugins/xcbglintegrations" \
+        "$APP_ROOT/plugins/platforminputcontexts" "$APP_ROOT/plugins/imageformats" \
+        "$APP_ROOT/plugins"/wayland-* "$APP_ROOT/plugins/sqldrivers/libqsqlite.so" \
+        -type f \( -name '*.so*' -o -name FinanceDashboard \) -print0 2>/dev/null || true)
+declare -A DEP_PACKAGES=()
+for elf in "${ELF_FILES[@]}"; do
+    while read -r lib; do
+        [ -e "$APP_ROOT/lib/$lib" ] && continue          # bundled
+        path="$(ldconfig -p | awk -v l="$lib" '$1 == l && /x86-64|AArch64/ {print $NF; exit}')"
+        if [ -z "$path" ]; then
+            echo "error: ${elf#"$APP_ROOT/"} needs $lib, which is not on this machine" >&2
+            exit 1
+        fi
+        package="$(dpkg -S "$(readlink -f "$path")" 2>/dev/null | head -1 | cut -d: -f1)"
+        if [ -z "$package" ]; then
+            echo "error: no package owns $path (needed by ${elf#"$APP_ROOT/"})" >&2
+            exit 1
+        fi
+        DEP_PACKAGES["$package"]=1
+    done < <(objdump -p "$elf" 2>/dev/null | awk '/NEEDED/ {print $2}')
+done
+DEPENDS="$(printf '%s\n' "${!DEP_PACKAGES[@]}" | sort | paste -sd, - | sed 's/,/, /g')"
+echo "    Depends: $DEPENDS"
 
 cat > "$ROOT/DEBIAN/control" <<EOF
 Package: finance-dashboard
