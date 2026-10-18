@@ -133,12 +133,14 @@ Note the `.deb` bundles Qt rather than depending on the distribution's. That is
 the plug-and-play trade-off, deliberately: it is *not* how a package accepted
 into Debian proper would be built.
 
-Qt's deployment leaves the system libraries out: glibc, X11/xcb, OpenGL/EGL,
-fonts, D-Bus and GLib. The `Depends` line of `make-deb.sh` lists their packages,
-taken from the `NEEDED` entries of the binary, the bundled libraries, the `xcb`
-platform plugin, its GL integrations and the QML plugins. Without them the
-package installs, then fails with *"could not load the Qt platform plugin xcb"*
-on a machine that does not have them.
+Qt's deployment leaves the system libraries out: glibc, X11/xcb, Wayland,
+OpenGL/EGL, fonts, D-Bus and GLib. `make-deb.sh` therefore computes the
+`Depends` line: it reads the `NEEDED` entries of the files that the app loads at
+start-up (binary, bundled libraries, platform plugins and their integrations,
+QML plugins, SQLite driver), keeps the libraries that are not bundled, and asks
+`dpkg -S` which package installed each one on the build machine. Without these
+packages, the `.deb` installs, then fails with *"could not load the Qt platform
+plugin xcb"* on a machine that does not have them.
 
 ### Step 3 — prove it actually starts
 
