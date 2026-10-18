@@ -15,7 +15,7 @@
 #    version, then commits both files back to `main`.
 #
 #  * The end products are meant to be plug and play. A user downloads one file:
-#      Windows  FinanceDashboard-<v>-windows-x64.msi   installer, shortcuts,
+#      Windows  FinanceDashboard-<v>-windows-x64.exe   setup, shortcuts,
 #                                                      uninstaller, Qt included
 #      Linux    FinanceDashboard-<v>-linux-x86_64.AppImage   chmod +x, run
 #      plus portable archives, a .deb, and the source, all with SHA-256 sums.
@@ -196,8 +196,10 @@ jobs:
           runner=$(command -v run-clang-tidy || ls /usr/bin/run-clang-tidy-* 2>/dev/null | head -1)
           test -n "$runner" || { echo "::error::run-clang-tidy not found"; exit 1; }
           "$runner" -p build -quiet "$(pwd)/src/.*\.cpp" 2>&1 | tee clang-tidy.log || true
-          warnings=$(grep -c "warning:" clang-tidy.log || echo 0)
-          errors=$(grep -c "error:" clang-tidy.log || echo 0)
+          # grep -c prints the count (also "0") and exits 1 when nothing
+          # matches, so ignore its exit code; "|| echo 0" would print a second 0.
+          warnings=$(grep -c "warning:" clang-tidy.log || true)
+          errors=$(grep -c "error:" clang-tidy.log || true)
           {
             echo "### clang-tidy"
             echo ""
@@ -225,7 +227,7 @@ jobs:
   # ────────────────────────────────────────────────────────────────────────────
 
   package-windows:
-    name: Package — Windows (MSI + portable)
+    name: Package — Windows (setup + portable)
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@v4
@@ -240,15 +242,18 @@ jobs:
           qt-version: ${{ env.QT_VERSION }}
           modules: ${{ env.QT_MODULES }}
 
-      # WiX 5 (the .NET tool), not the unmaintained WiX 3 candle/light pair —
-      # see CPACK_WIX_VERSION in CMakeLists.txt. The UI extension supplies the
-      # installer's licence/install-directory dialogs; CPack passes it to
-      # `wix build` automatically, but it has to be in the extension cache first.
-      - name: Install WiX toolset
+      # The windows-2025 image ships Inno Setup, and CPack finds ISCC on PATH or
+      # in its default folder. Image updates can change its version, so write
+      # the version that builds this setup to the log.
+      - name: Inno Setup version
+        shell: pwsh
         run: |
-          dotnet tool install --global wix || dotnet tool update --global wix
-          wix extension add -g WixToolset.UI.wixext
-          wix --version
+          $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
+          if (-not $iscc) { $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe" }
+          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found on PATH or in Program Files (x86)\Inno Setup 6" }
+          Write-Host "ISCC: $iscc"
+          & $iscc "/?" | Select-Object -First 2
+          $global:LASTEXITCODE = 0
 
       # No -G: let CMake pick the runner's Visual Studio generator rather than
       # naming a version that changes with the runner image.
@@ -268,6 +273,10 @@ jobs:
       # blank screen is exactly the failure this pipeline exists to prevent.
       # main.cpp exits -1 on objectCreationFailed, so "still alive after 15s"
       # means the whole QML tree loaded.
+      #
+      # The test uses the real "windows" platform plugin, the one users get.
+      # The deploy step ships only that plugin, so the "offscreen" plugin is not
+      # in the tree (the Linux tree has only "xcb" for the same reason).
       - name: Smoke test the deployed app
         shell: pwsh
         run: |
@@ -279,8 +288,12 @@ jobs:
           $env:QML2_IMPORT_PATH = ""
           $env:QML_IMPORT_PATH = ""
           $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -notmatch '(?i)\\Qt\\' }) -join ';'
-          $env:QT_QPA_PLATFORM = "offscreen"
-          $exe = "${{ github.workspace }}\stage\FinanceDashboard.exe"
+          $stage = "${{ github.workspace }}\stage"
+          Write-Host "Platform plugins in the deployed tree:"
+          Get-ChildItem -Path $stage -Recurse -Filter "q*.dll" |
+            Where-Object { $_.Directory.Name -eq "platforms" } |
+            ForEach-Object { Write-Host "  $($_.FullName.Substring($stage.Length + 1))" }
+          $exe = "$stage\FinanceDashboard.exe"
           if (-not (Test-Path $exe)) { throw "not found: $exe" }
           $p = Start-Process -FilePath $exe -PassThru
           Start-Sleep -Seconds 15
@@ -288,21 +301,63 @@ jobs:
             throw "FinanceDashboard.exe exited early with code $($p.ExitCode) — the deployed tree is incomplete"
           }
           Stop-Process -Id $p.Id -Force
-          Write-Host "OK — app stayed up for 15s on the offscreen platform"
+          Write-Host "OK — app stayed up for 15s on the windows platform plugin"
 
-      - name: Package (MSI + portable ZIP)
+      - name: Package (setup + portable ZIP)
         working-directory: build
         run: cpack -C Release -B "${{ github.workspace }}/dist"
 
       - name: List artifacts
         shell: bash
-        run: ls -la dist/*.msi dist/*.zip
+        run: ls -la dist/*.exe dist/*.zip
+
+      # Install, install again over it (what an update does), then uninstall,
+      # in both install modes. Silent mode; /CURRENTUSER and /ALLUSERS choose
+      # the mode that the dialog asks for in an interactive setup.
+      - name: Test the setup (install, update in place, uninstall)
+        shell: pwsh
+        run: |
+          $setup = (Get-ChildItem "${{ github.workspace }}\dist\*.exe" | Select-Object -First 1).FullName
+          $appId = "9F2B4E7C-3A61-4C0D-9E8B-5D7A1C46F0B3_is1"
+          $key = "Software\Microsoft\Windows\CurrentVersion\Uninstall\$appId"
+          $modes = @(
+            @{ Name = "for me only";   Flag = "/CURRENTUSER"; Dir = "$env:LOCALAPPDATA\Programs\FinanceDashboard"; Hive = "HKCU" },
+            @{ Name = "for all users"; Flag = "/ALLUSERS";    Dir = "$env:ProgramFiles\FinanceDashboard";           Hive = "HKLM" }
+          )
+          foreach ($m in $modes) {
+            foreach ($pass in 1, 2) {
+              $log = "${{ github.workspace }}\dist\setup-$($m.Hive)-$pass.log"
+              $p = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
+                "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", $m.Flag, "/LOG=`"$log`"")
+              if ($p.ExitCode -ne 0) { throw "$($m.Name), pass ${pass}: setup exit code $($p.ExitCode)" }
+              if (-not (Test-Path "$($m.Dir)\FinanceDashboard.exe")) { throw "$($m.Name), pass ${pass}: FinanceDashboard.exe is not in $($m.Dir)" }
+              if (-not (Test-Path "$($m.Hive):\$key")) { throw "$($m.Name), pass ${pass}: no uninstall key $($m.Hive)\$key" }
+            }
+            # An update in place appends to the same uninstall log: no unins001.
+            if (Test-Path "$($m.Dir)\unins001.exe") { throw "$($m.Name): the second setup made a second uninstaller" }
+            $p = Start-Process -FilePath "$($m.Dir)\unins000.exe" -Wait -PassThru -ArgumentList @(
+              "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")
+            if ($p.ExitCode -ne 0) { throw "$($m.Name): uninstaller exit code $($p.ExitCode)" }
+            # The uninstaller continues in a copy of itself, so wait for the files to go.
+            for ($i = 0; $i -lt 60 -and (Test-Path "$($m.Dir)\FinanceDashboard.exe"); $i++) { Start-Sleep -Seconds 1 }
+            if (Test-Path "$($m.Dir)\FinanceDashboard.exe") { throw "$($m.Name): FinanceDashboard.exe is still there after the uninstall" }
+            if (Test-Path "$($m.Hive):\$key") { throw "$($m.Name): the uninstall key is still there" }
+            Write-Host "OK — $($m.Name): install, update in place and uninstall"
+          }
+
+      - name: Upload the setup logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: setup-logs-windows
+          path: dist/setup-*.log
+          if-no-files-found: ignore
 
       - uses: actions/upload-artifact@v4
         with:
           name: packages-windows
           path: |
-            dist/*.msi
+            dist/*.exe
             dist/*.zip
           if-no-files-found: error
           retention-days: 30

@@ -58,7 +58,7 @@ A version number is never typed twice, so it can never disagree with itself.
 | **Tests (ctest)** | ubuntu-24.04 | yes | Configures with `-DFD_BUILD_TESTS=ON`, builds `predictor_selftest`, runs `ctest`. |
 | **qmllint** | ubuntu-24.04 | no | Builds the `FinanceDashboard_qmllint` target that `qt_add_qml_module()` generates — the same check `tools/run-static-analysis.ps1` runs locally. |
 | **clang-tidy** | ubuntu-24.04 | no | Full build (so AUTOMOC and the QML type-registration sources exist), then `run-clang-tidy` over `src/*.cpp` only, using the repo's `.clang-tidy`. Counts land in the run summary; the log is an artifact. |
-| **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → `.msi` + portable `.zip`. |
+| **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → setup `.exe` + portable `.zip` → setup test (install, update in place, uninstall, in both install modes). |
 | **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` install/remove check. |
 | **Package — source** | ubuntu-24.04 | yes | `git archive` → source `.tar.gz` and `.zip`. |
 | **Release** | ubuntu-24.04 | — | `main` pushes only. Collects every artifact, writes `SHA256SUMS.txt`, publishes the release, then stamps and bumps the version. |
@@ -97,7 +97,7 @@ Reference: <https://doc.qt.io/qt-6/cmake-deployment.html>
 
 | Output | Built by | Notes |
 |---|---|---|
-| `.msi` | CPack `WIX` generator | WiX 5 via the `wix` .NET tool (`CPACK_WIX_VERSION 4`). Start-menu + desktop shortcut, uninstaller, per-machine, upgrades in place. |
+| `-windows-x64.exe` (setup) | CPack `INNOSETUP` generator | Inno Setup 6, preinstalled on the `windows-2025` image; the job writes its version to the log. The setup asks "for me only" or "for all users", and makes a Start-menu shortcut, an optional desktop shortcut and an uninstaller. A newer setup updates an installed copy in place, because the `AppId` in `CMakeLists.txt` never changes. |
 | `-windows-x64.zip` | CPack `ZIP` generator | Same tree, one folder deep. |
 | `-linux-x86_64.tar.gz` | CPack `TGZ` generator | Run `bin/FinanceDashboard`. |
 | `.AppImage` | `packaging/linux/make-appimage.sh` | AppDir + `AppRun` + `appimagetool`. |
@@ -135,9 +135,13 @@ into Debian proper would be built.
 
 Both packaging jobs run the app before uploading anything:
 
-* **Windows** — launches the installed `.exe` on the `offscreen` platform and
-  requires it to still be alive after 15 s. `main.cpp` calls `exit(-1)` on
-  `objectCreationFailed`, so surviving means the whole QML tree loaded.
+* **Windows** — launches the installed `.exe` with the real `windows` platform
+  plugin and requires it to still be alive after 15 s. `main.cpp` calls
+  `exit(-1)` on `objectCreationFailed`, so surviving means the whole QML tree
+  loaded. The deploy step ships only the default platform plugin, so the
+  `offscreen` plugin is not in the tree. After `cpack`, the job runs the setup
+  silently twice (the second run is an update in place), then the uninstaller,
+  for "for me only" (`/CURRENTUSER`) and for "for all users" (`/ALLUSERS`).
 * **Linux** — runs the finished `.AppImage` under `Xvfb` with the real `xcb`
   platform plugin, same 20 s rule, then installs and removes the `.deb`.
 
@@ -268,7 +272,7 @@ and a first-run wall of warnings must not block releases. Once a tree is clean,
 delete that line from its job — nothing else changes.
 
 **Add macOS.** Copy `package-windows`, switch the runner to `macos-14`, drop the
-WiX step. `qt_generate_deploy_qml_app_script()` already handles `.app` bundles
+Inno Setup steps. `qt_generate_deploy_qml_app_script()` already handles `.app` bundles
 via `macdeployqt`, so CPack `DragNDrop` gives a `.dmg`. Nothing outside that new
 job needs to change — that is the independence rule paying off. (Unsigned macOS
 builds are refused by Gatekeeper, so read the code-signing note below first.)
@@ -299,11 +303,11 @@ bash packaging/linux/make-deb.sh      stage "$(python3 tools/version.py current)
 ```
 
 ```powershell
-# Windows (needs `dotnet tool install --global wix` once, and CMake >= 3.30 for the MSI)
+# Windows (the setup needs Inno Setup 6 and CMake >= 3.27)
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release --parallel
 cmake --install build --config Release --prefix stage
-cd build ; cpack -C Release                                    # .msi + .zip
+cd build ; cpack -C Release                                    # setup .exe + .zip
 ```
 
 `act` is not worth setting up for this pipeline — the jobs are mostly "install
@@ -328,5 +332,5 @@ packaging/
 tests/CMakeLists.txt                the ctest registration
 tools/version.py                    version.json ⇄ version.md, release notes
 version.json                        the version and the changelog
-LICENSE                             MIT — also becomes the MSI's licence page
+LICENSE                             MIT — also becomes the setup's licence page
 ```
