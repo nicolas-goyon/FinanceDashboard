@@ -248,12 +248,12 @@ jobs:
       - name: Inno Setup version
         shell: pwsh
         run: |
-          $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source
-          if (-not $iscc) { $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe" }
-          if (-not (Test-Path $iscc)) { throw "ISCC.exe not found on PATH or in Program Files (x86)\Inno Setup 6" }
-          Write-Host "ISCC: $iscc"
-          & $iscc "/?" | Select-Object -First 2
-          $global:LASTEXITCODE = 0
+          # The install folder first: on PATH there is only a Chocolatey shim,
+          # whose file version is not the version of Inno Setup.
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue).Source }
+          if (-not $iscc) { throw "ISCC.exe not found in Program Files (x86)\Inno Setup 6 or on PATH" }
+          Write-Host "Inno Setup $((Get-Item $iscc).VersionInfo.ProductVersion) — $iscc"
 
       # No -G: let CMake pick the runner's Visual Studio generator rather than
       # naming a version that changes with the runner image.
