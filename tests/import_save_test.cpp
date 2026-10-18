@@ -15,7 +15,8 @@
 //   #29  the parser reads the statement this file writes
 //   #30  a row date gets the year that puts it in the statement period
 //   #31  a 29 February row is read
-//   #32  grouped and comma amounts are read; "nan" and "inf" are refused
+//   #32  grouped and comma amounts are read; "nan", "inf" and garbled
+//        grouping are refused
 
 #include "SnapshotImportController.h"
 #include "db/Database.h"
@@ -174,6 +175,9 @@ private slots:
     void missingPeriodFailsTheParse();
     void groupedAndCommaAmountsAreRead();
     void nonFiniteAmountsAreRefused();
+    void malformedAmountsAreRefused();
+    void longPeriodGetsTheLaterYear();
+    void dateOutsideThePeriodIsLogged();
 
 private:
     void parse(SnapshotImportController& controller, const QByteArray& csv);
@@ -617,6 +621,59 @@ void ImportSaveTest::nonFiniteAmountsAreRefused()
         "03/04,03/04,\"Card payment 1234: ODDER\nInternal ref.: N2\",-inf,,480.00\n"));
     QCOMPARE(controller.transactionRows().size(), qsizetype(1)); // both rows skipped
     QVERIFY(controller.warningCount() >= 2);
+}
+
+void ImportSaveTest::malformedAmountsAreRefused()
+{
+    SnapshotImportController controller;
+    parse(controller, statement(
+        "From 03/01/2026 to 03/31/2026", "03/01/2026,500.00 \xE2\x82\xAC", "03/31/2026,480.00 \xE2\x82\xAC",
+        "03/02,03/02,\"Card payment 1234: CARREFOUR\nInternal ref.: A1\",-20.00,,480.00\n"
+        "03/03,03/03,\"Card payment 1234: ODD\nInternal ref.: N1\",-1.2.3,,480.00\n"
+        "03/04,03/04,\"Card payment 1234: ODDER\nInternal ref.: N2\",\"-1,,5\",,480.00\n"
+        "03/05,03/05,\"Card payment 1234: ODDEST\nInternal ref.: N3\",\"-0,123\",,480.00\n"));
+    QCOMPARE(controller.transactionRows().size(), qsizetype(1)); // the three garbled rows are skipped
+    QVERIFY(controller.warningCount() >= 3);
+}
+
+void ImportSaveTest::longPeriodGetsTheLaterYear()
+{
+    // A whole-year statement: 12/15 can be 2024-12-15 (in the 31 days before
+    // the start) or 2025-12-15 (in the period). The period wins, with a
+    // warning about the long period.
+    SnapshotImportController controller;
+    parse(controller, statement(
+        "From 01/01/2025 to 12/31/2025", "01/01/2025,100.00 \xE2\x82\xAC", "12/31/2025,90.00 \xE2\x82\xAC",
+        "12/15,12/15,\"Card payment 1234: GIFTS\nInternal ref.: W1\",-10.00,,90.00\n"));
+    bool warned = false;
+    for (const QVariant& entry : controller.logEntries()) {
+        warned = warned || entry.toMap().value(QStringLiteral("message")).toString().contains(QStringLiteral("11 months"));
+    }
+    QVERIFY(warned);
+    controller.save(m_account, QStringLiteral("Checking"));
+    const QVector<Data::Transaction> rows = Database::instance().transactionsForAccount(m_account);
+    QCOMPARE(rows.size(), qsizetype(1));
+    QCOMPARE(rows.at(0).operationDate, QDate(2025, 12, 15)); // not 2024-12-15
+}
+
+void ImportSaveTest::dateOutsideThePeriodIsLogged()
+{
+    // March statement: the operation date 01/20 is more than 31 days before
+    // the start, so the confirmation date is used, with a warning.
+    SnapshotImportController controller;
+    parse(controller, statement(
+        "From 03/01/2026 to 03/31/2026", "03/01/2026,500.00 \xE2\x82\xAC", "03/31/2026,480.00 \xE2\x82\xAC",
+        "03/02,01/20,\"Card payment 1234: CARREFOUR\nInternal ref.: A1\",-20.00,,480.00\n"));
+    bool warned = false;
+    for (const QVariant& entry : controller.logEntries()) {
+        warned = warned || entry.toMap().value(QStringLiteral("message")).toString().startsWith(
+                               QStringLiteral("The operation date of this row"));
+    }
+    QVERIFY(warned);
+    controller.save(m_account, QStringLiteral("Checking"));
+    const QVector<Data::Transaction> rows = Database::instance().transactionsForAccount(m_account);
+    QCOMPARE(rows.size(), qsizetype(1));
+    QCOMPARE(rows.at(0).operationDate, QDate(2026, 3, 2));
 }
 
 QTEST_GUILESS_MAIN(ImportSaveTest)
