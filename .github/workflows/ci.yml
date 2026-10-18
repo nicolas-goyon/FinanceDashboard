@@ -39,9 +39,13 @@ permissions:
   contents: read
 
 concurrency:
-  # One run per branch or pull request. On main, never cancel — a cancelled
-  # run could stop a release halfway between the tag and the back-merge PR.
-  group: ci-${{ github.ref }}
+  # One run per branch or pull request: a new push cancels the older run.
+  # On main, no run may be cancelled, because each merge into main is a
+  # release. A shared group is not enough for that: GitHub cancels a run that
+  # waits in a group when a newer one joins it, even when cancel-in-progress
+  # is false. So each main commit has a group of its own, and the release job
+  # queues the publishing itself (its own `concurrency`, below).
+  group: ci-${{ github.ref_name == 'main' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.ref_name != 'main' }}
 
 env:
@@ -501,14 +505,24 @@ jobs:
     needs: [changelog, tests, package-windows, package-linux, source-archive]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
+    # Releases publish one at a time, first in, first out. `queue: max` keeps
+    # every waiting release job; with the default queue, a third one would
+    # cancel the one that waits.
+    concurrency:
+      group: release
+      queue: max
     permissions:
       contents: write        # create the tag and the release, push the back-merge branch
       pull-requests: write   # open the back-merge pull request into develop
+      actions: write         # start CI on the back-merge branch (workflow_dispatch)
     steps:
       - uses: actions/checkout@v4
         with:
           # Keep the token so the back-merge branch can be pushed.
           persist-credentials: true
+          # The full history: the back-merge step checks whether develop
+          # already contains this commit.
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -538,22 +552,38 @@ jobs:
           print(f"v{data['current']} — {release['date']}")
           PY
 
-      # Defence in depth: if a run is replayed, stop rather than publishing a
-      # second v-same release.
-      - name: Skip if this version is already released
+      # A re-run finishes what an earlier run started. A published release is
+      # not published again, but the back-merge below still runs. A draft (a
+      # run that stopped while gh uploaded the packages) is deleted and
+      # published again.
+      - name: Find an existing release
         id: guard
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          if gh release view "${{ steps.version.outputs.tag }}" >/dev/null 2>&1; then
-            echo "already=true" >> "$GITHUB_OUTPUT"
-            echo "::warning::${{ steps.version.outputs.tag }} already exists — nothing to release."
-          else
-            echo "already=false" >> "$GITHUB_OUTPUT"
+          tag="${{ steps.version.outputs.tag }}"
+          published=false
+          if draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" = "true" ]; then
+              echo "::warning::$tag is a draft from an earlier run. It is deleted and published again."
+              gh release delete "$tag" --yes
+            else
+              echo "::notice::$tag is already published. Only the back-merge runs."
+              published=true
+            fi
           fi
+          # gh release create uses an existing tag as it is: stop if the tag
+          # is on another commit.
+          tagged=$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}" \
+                   | awk '/\^\{\}$/ {peeled = $1} !/\^\{\}$/ {plain = $1} END {print (peeled != "" ? peeled : plain)}')
+          if [ -n "$tagged" ] && [ "$tagged" != "$GITHUB_SHA" ]; then
+            echo "::error::Tag $tag is on $tagged, not on this commit ($GITHUB_SHA)."
+            exit 1
+          fi
+          echo "published=$published" >> "$GITHUB_OUTPUT"
 
       - name: Download every package
-        if: steps.guard.outputs.already == 'false'
+        if: steps.guard.outputs.published == 'false'
         uses: actions/download-artifact@v4
         with:
           pattern: packages-*
@@ -561,7 +591,7 @@ jobs:
           path: dist
 
       - name: Checksums
-        if: steps.guard.outputs.already == 'false'
+        if: steps.guard.outputs.published == 'false'
         working-directory: dist
         run: |
           # Written outside the directory first, so the sums file can never end
@@ -575,7 +605,7 @@ jobs:
       # install this" half is the same every time and lives in a file so it can
       # be edited without touching the workflow.
       - name: Build release notes
-        if: steps.guard.outputs.already == 'false'
+        if: steps.guard.outputs.published == 'false'
         run: |
           {
             python tools/version.py notes --version "${{ steps.version.outputs.version }}"
@@ -586,7 +616,8 @@ jobs:
 
       # `gh release create --target` also creates the tag vX.Y.Z on this commit.
       - name: Publish the GitHub release
-        if: steps.guard.outputs.already == 'false'
+        id: publish
+        if: steps.guard.outputs.published == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -601,13 +632,12 @@ jobs:
       # request merges it into develop: develop gets the dated release and the
       # new in-progress version in one merge. Nothing is committed to main.
       #
-      # GitHub can refuse the pull request if the repository does not allow
-      # GitHub Actions to create pull requests (Settings → Actions → General →
-      # Workflow permissions). The branch is pushed first, so the pull request
-      # can then be opened by hand. Note: a pull request opened with
-      # GITHUB_TOKEN does not start a CI run of its own.
+      # Each part is skipped when it is already done, so a re-run can finish a
+      # back-merge that failed. GitHub refuses the pull request when the
+      # repository does not allow GitHub Actions to create pull requests
+      # (Settings → Actions → General → Workflow permissions): the job then
+      # fails, and a re-run after the setting is changed opens it.
       - name: Open the back-merge pull request into develop
-        if: steps.guard.outputs.already == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -615,29 +645,61 @@ jobs:
           branch="chore/back-merge-v${version}"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$branch" "$GITHUB_SHA"
-          next=$(python tools/version.py bump patch)
-          python tools/version.py check
-          git add version.json version.md
-          git commit -m "chore(release): open v${next} after v${version}"
-          git push origin "$branch"
-          echo "next=$next" >> "$GITHUB_ENV"
-          if ! gh pr create --base develop --head "$branch" \
-              --title "chore(release): merge v${version} back into develop and open v${next}" \
-              --body "Merges \`main\` (release v${version}) back into \`develop\` and opens v${next} as the in-progress version. Opened by the release job. See CI-CD.md § The release flow."; then
-            echo "::warning::Could not open the pull request. Open it by hand from ${branch} into develop, or allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions)."
+
+          git fetch --no-tags origin develop
+          if git merge-base --is-ancestor "$GITHUB_SHA" FETCH_HEAD; then
+            echo "develop already contains $GITHUB_SHA: the back-merge is done."
+            echo "backmerge=done" >> "$GITHUB_ENV"
+            exit 0
           fi
+
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "$branch exists: an earlier run pushed it."
+            git fetch --no-tags origin "$branch"
+            next=$(git show FETCH_HEAD:version.json | python -c 'import json, sys; print(json.load(sys.stdin)["current"])')
+          else
+            git checkout -b "$branch" "$GITHUB_SHA"
+            next=$(python tools/version.py bump patch)
+            python tools/version.py check
+            git add version.json version.md
+            git commit -m "chore(release): open v${next} after v${version}"
+            git push origin "$branch"
+          fi
+          echo "next=$next" >> "$GITHUB_ENV"
+
+          if [ -z "$(gh pr list --head "$branch" --base develop --state open --json number --jq '.[].number')" ]; then
+            if ! gh pr create --base develop --head "$branch" \
+                --title "chore(release): merge v${version} back into develop and open v${next}" \
+                --body "Merges \`main\` (release v${version}) back into \`develop\` and opens v${next} as the in-progress version. Opened by the release job. Merge it with a merge commit, not a squash. See CI-CD.md § The release flow."; then
+              echo "::error::Could not open the pull request from ${branch} into develop. Allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions), then re-run this job. It does not publish the release again."
+              exit 1
+            fi
+          fi
+
+          # A pull request opened with GITHUB_TOKEN starts no CI run, so a
+          # branch rule that asks for green CI would block it. workflow_dispatch
+          # is an event that GITHUB_TOKEN can start: run CI on the branch, and
+          # its checks show on the pull request.
+          gh workflow run ci.yml --ref "$branch"
+          echo "backmerge=opened" >> "$GITHUB_ENV"
 
       - name: Summary
         if: always()
         run: |
+          tag="${{ steps.version.outputs.tag }}"
           {
             echo "### Release"
-            if [ "${{ steps.guard.outputs.already }}" = "true" ]; then
-              echo "Skipped — \`${{ steps.version.outputs.tag }}\` already exists."
+            if [ "${{ steps.guard.outputs.published }}" = "true" ]; then
+              echo "\`$tag\` was already published: not published again."
+            elif [ "${{ steps.publish.outcome }}" = "success" ]; then
+              echo "Published **$tag**: https://github.com/${{ github.repository }}/releases/tag/$tag"
             else
-              echo "Published **${{ steps.version.outputs.tag }}**. Back-merge into develop opens \`v${next:-?}\`."
-              echo ""
-              echo "https://github.com/${{ github.repository }}/releases/tag/${{ steps.version.outputs.tag }}"
+              echo "**$tag is not published.** See the failed step, then re-run this job."
             fi
+            echo ""
+            case "${backmerge:-}" in
+              opened) echo "Back-merge into develop: pull request open, next version \`v${next}\`. CI runs on its branch." ;;
+              done)   echo "Back-merge into develop: already done." ;;
+              *)      echo "**Back-merge into develop: not done.** See the failed step, then re-run this job." ;;
+            esac
           } >> "$GITHUB_STEP_SUMMARY"

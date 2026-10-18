@@ -96,11 +96,13 @@ pass in the same in-progress version.
   individually re-runnable jobs. The project follows gitflow: merging a `release/*` or
   `hotfix/*` branch into `main` publishes a GitHub release and its tag, once every blocking job
   (including Tests and Changelog) is green, and CI then opens a pull request that merges `main`
-  back into `develop` and opens the next version. CI never commits to `main`. Ships a Windows
-  setup (`.exe`, made with Inno Setup: it asks "for me only" or "for all users", and the setup
-  of a newer version updates an installed copy in place) and portable `.zip`, a Linux
-  `.AppImage`, `.deb` and portable `.tar.gz`, source archives and `SHA256SUMS.txt` — none of
-  which need Qt installed on the target machine.
+  back into `develop`, opens the next version and starts CI on that pull request. Releases wait
+  in a queue, one at a time, and a re-run of the release job finishes what an earlier run
+  started without publishing twice. CI never commits to `main`. Ships a Windows setup (`.exe`,
+  made with Inno Setup: it asks "for me only" or "for all users", and the setup of a newer
+  version updates an installed copy in place) and portable `.zip`, a Linux `.AppImage`, `.deb`
+  and portable `.tar.gz`, source archives and `SHA256SUMS.txt` — none of which need Qt
+  installed on the target machine.
 - `version.json` + `tools/version.py` — the version and the changelog are now one
   machine-readable file. `CMakeLists.txt` reads `current` straight into `project(... VERSION
   ...)`, so the build, the installer file names, the release tag and the app's own
