@@ -95,6 +95,10 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
+`ctest` runs `predictor_selftest` (category prediction) and `import_save_test` (the statement
+import, saved to a temporary database). `cmake --build build --target fd_tests` builds only the
+tests.
+
 ---
 
 ## Building with Docker (no local Qt / compiler needed)

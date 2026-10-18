@@ -70,7 +70,7 @@ pass in the same in-progress version.
   like X as Y" rules, the top rung of the cascade and the fastest-learning path in the system
   (one click, permanent). `src/db/tables/CategoryRulesTable.{h,cpp}` plus
   `Database::loadCategoryRules()` / `addCategoryRule()` (upsert, so re-teaching replaces rather
-  than stacks) / `removeCategoryRule()`.
+  than stacks) / `removeCategoryRule()`. A category-only rule (no subcategory) saves correctly.
 - **Import review screen — RULE column and confidence tooltips.** A `＋` per row teaches a rule
   from that row's merchant key and current category, then re-scores the whole statement so
   every other row for the same merchant snaps to it immediately. Hovering the CONFIDENCE badge
@@ -109,7 +109,11 @@ pass in the same in-progress version.
   so it no longer takes the path of the Linux executable, which made the Linux link fail.
 - `tests/CMakeLists.txt` — `tools/predictor_selftest.cpp` is now a CTest target (`cmake
   -DFD_BUILD_TESTS=ON`, then `ctest`) instead of a hand-run binary, and CI runs it on every
-  push. Partially clears `TODO.md`'s "no tests" item.
+  push. Partially clears `TODO.md`'s "no tests" item. `tests/import_save_test.cpp` (Qt Test)
+  runs the statement-import save path end to end on a temporary database: rows without a
+  category, subcategory or date, the reconciliation adjustment row, a category-only rule, a
+  failed save and its retry. The app and the tests compile the same core sources
+  (`FD_CORE_SOURCES`), and `cmake --build build --target fd_tests` builds every test.
 - **Docker build — build the app on any machine with only Docker installed.** `compose.yaml` +
   `.env` (options documented in `.env.example`: `TARGET` = `windows`/`linux`, `LINK_MODE` =
   `shared`/`static`, `BUILD_TYPE`, `QT_VERSION`, `LLVM_MINGW_VERSION`, job counts) +
@@ -198,6 +202,14 @@ pass in the same in-progress version.
   Transactions card's empty `sub` line made QtQuick Layouts exclude it from the card's
   implicit-height calculation (a hair shorter than its two neighbors, which both have a real
   sub line) — now shows "All time" instead of an empty string.
+- **Statement import — saving works for rows without a category, subcategory or date, and a
+  failed save writes nothing.** A null `QString` was bound as SQL `NULL` in `TEXT NOT NULL`
+  columns, so the save failed on a first import (no predicted category), a category without a
+  subcategory, the reconciliation adjustment row and a cleared date in the transaction editor;
+  text and dates are now bound as `''` (`Sql::text()`, `src/db/tables/SqlText.h`). The rows,
+  the account link and the balance checkpoints of an import now go in one SQL transaction
+  (`Database::saveImport()`). Before, the rows written before a failing one stayed in the
+  database, and each retry stored them again.
 
 ### Docs
 - See `Added`/`Changed`/`Fixed` above.

@@ -43,13 +43,11 @@ qt_policy(SET QTP0004 NEW)
 # https://doc.qt.io/qt-6/cmake-variable-qt-qml-output-directory.html
 set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml")
 
-# ── Executable — entry point + UI-independent C++ (db / models / utils) ───────
-qt_add_executable(FinanceDashboard
-    src/main.cpp
-    # Start-up stage: requirement checks + initialization, run before the main
-    # window loads (see docs/startup.md).
-    src/startup/StartupChecks.h
-    src/startup/StartupChecks.cpp
+# ── UI-independent C++ (db / models / utils / predict / import) ──────────────
+# The app below and the tests (tests/CMakeLists.txt) compile this same list, so
+# a file added here is in both. Absolute paths, because tests/ is another
+# source directory.
+set(FD_CORE_SOURCES
     src/models/AssetEntry.h
     src/models/AssetEntry.cpp
     src/models/ImportedStatement.h
@@ -80,6 +78,7 @@ qt_add_executable(FinanceDashboard
     src/db/tables/AccountBalanceCheckpointsTable.cpp
     src/db/tables/CategoryRulesTable.h
     src/db/tables/CategoryRulesTable.cpp
+    src/db/tables/SqlText.h
     src/db/Database.h
     src/db/Database.cpp
     src/utils/Formatter.h
@@ -98,6 +97,17 @@ qt_add_executable(FinanceDashboard
     src/import/ImportTemplateRegistry.cpp
     src/import/SumeriaCcpCsvExtractionTemplate.h
     src/import/SumeriaCcpCsvExtractionTemplate.cpp
+)
+list(TRANSFORM FD_CORE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
+
+# ── Executable — entry point + start-up stage + the core above ──────────────────
+qt_add_executable(FinanceDashboard
+    src/main.cpp
+    # Start-up stage: requirement checks + initialization, run before the main
+    # window loads (see docs/startup.md).
+    src/startup/StartupChecks.h
+    src/startup/StartupChecks.cpp
+    ${FD_CORE_SOURCES}
 )
 
 # NOTE — tools/predictor_selftest.cpp is deliberately NOT listed above. It has

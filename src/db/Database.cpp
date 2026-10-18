@@ -347,6 +347,41 @@ bool Database::insertTransactions(int accountId, const QVector<Data::Transaction
     return m_transactionsTable.insertBatch(accountId, txs);
 }
 
+bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, const QString& accountHash,
+                          const QVector<Data::AccountBalanceCheckpoint>& checkpoints)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+
+    if (!m_db.transaction()) {
+        m_lastError = QStringLiteral("Cannot start a transaction: %1").arg(m_db.lastError().text());
+        qWarning() << "[Database] saveImport:" << m_lastError;
+        return false;
+    }
+    const auto fail = [this](const QString& what) {
+        m_db.rollback();
+        m_lastError = what;
+        qWarning() << "[Database] saveImport:" << what << "— rolled back, nothing saved";
+        return false;
+    };
+
+    if (!m_transactionsTable.insertBatch(accountId, txs)) {
+        return fail(QStringLiteral("Could not save the transactions."));
+    }
+    if (!accountHash.isEmpty() && !m_accountHashesTable.existsForAccount(accountId, accountHash) &&
+        m_accountHashesTable.insert(accountId, accountHash, QStringLiteral("auto")) < 0) {
+        return fail(QStringLiteral("Could not link the account fingerprint."));
+    }
+    for (const Data::AccountBalanceCheckpoint& checkpoint : checkpoints) {
+        if (m_balanceCheckpointsTable.insert(accountId, checkpoint.date, checkpoint.balance, checkpoint.note) < 0) {
+            return fail(QStringLiteral("Could not save a balance checkpoint."));
+        }
+    }
+    if (!m_db.commit()) {
+        return fail(QStringLiteral("Could not commit the import: %1").arg(m_db.lastError().text()));
+    }
+    return true;
+}
+
 QVector<Data::Transaction> Database::transactionsForAccount(int accountId) const
 {
     if (!isOpen()) { return {}; }

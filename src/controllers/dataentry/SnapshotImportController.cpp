@@ -13,6 +13,7 @@
 #include "predict/CategoryPredictor.h"
 #include "predict/LabelNormalizer.h"
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <QDate>
@@ -554,30 +555,25 @@ void SnapshotImportController::save(int accountId, const QString& accountLabel)
         toSave.append(row);
     }
 
-    if (!Database::instance().insertTransactions(accountId, toSave)) {
-        setStatus(QStringLiteral("⚠  Failed to save transactions — see application log"));
-        return;
-    }
-
-    // Auto-link: if this statement has a computable fingerprint and the
-    // chosen account doesn't have it on file yet, store it now (source
-    // "auto") — future imports of the same account then auto-match (see §
-    // Statement Import / § Account Management in ARCHITECTURE.MD).
-    const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
-    if (!hash.isEmpty() && !Database::instance().accountHasHash(accountId, hash)) {
-        Database::instance().addAccountHash(accountId, hash, QStringLiteral("auto"));
-    }
-
+    // Auto-link: if this statement has a computable fingerprint, store it
+    // for the chosen account (source "auto") unless it is already there —
+    // future imports of the same account then auto-match (see § Statement
+    // Import / § Account Management in ARCHITECTURE.MD).
+    //
     // "Remember the start and end amount from the CSV" (product request) —
     // the statement's own declared balanceStart/balanceEnd become balance
     // checkpoints, same mechanism as manually-added ones (see § Balance
     // Checkpoints), so both this import's own reconciliation-check-1 next
     // time and the Account History line chart have a real anchor even
     // before the user ever opens Manage Accounts to add one by hand.
-    rememberStatementBalance(accountId, m_statement.balanceStartDate, m_statement.balanceStart,
-                              QStringLiteral("Auto — statement start (%1)").arg(m_sourceFileName));
-    rememberStatementBalance(accountId, m_statement.balanceEndDate, m_statement.balanceEnd,
-                              QStringLiteral("Auto — statement end (%1)").arg(m_sourceFileName));
+    //
+    // Rows, link and checkpoints go in one SQL transaction: a failure leaves
+    // the database as it was, so a retry cannot store a row twice.
+    const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
+    if (!Database::instance().saveImport(accountId, toSave, hash, statementCheckpointsToAdd(accountId))) {
+        setStatus(QStringLiteral("⚠  Could not save the import. Nothing was saved — see application log"));
+        return;
+    }
 
     buildImportReport(accountLabel, toSave, reconciliation);
     emit reportChanged();
@@ -704,18 +700,33 @@ void SnapshotImportController::ensureCategoryExists(const QString& name)
     Database::instance().addCategory(name, QStringLiteral("#6c7086"));
 }
 
-void SnapshotImportController::rememberStatementBalance(int accountId, const QDate& date, double balance, const QString& note)
+QVector<Data::AccountBalanceCheckpoint> SnapshotImportController::statementCheckpointsToAdd(int accountId) const
 {
-    if (!date.isValid()) {
-        return;
-    }
     const QVector<Data::AccountBalanceCheckpoint> existing = Database::instance().loadBalanceCheckpoints(accountId);
-    for (const Data::AccountBalanceCheckpoint& checkpoint : existing) {
-        if (checkpoint.date == date) {
+    QVector<Data::AccountBalanceCheckpoint> toAdd;
+    const auto plan = [&](const QDate& date, double balance, const QString& note) {
+        if (!date.isValid()) {
+            return;
+        }
+        const auto sameDate = [&date](const Data::AccountBalanceCheckpoint& checkpoint) {
+            return checkpoint.date == date;
+        };
+        if (std::any_of(existing.cbegin(), existing.cend(), sameDate) ||
+            std::any_of(toAdd.cbegin(), toAdd.cend(), sameDate)) {
             return; // already have a checkpoint for this exact date — never overwritten automatically
         }
-    }
-    Database::instance().addBalanceCheckpoint(accountId, date, balance, note);
+        Data::AccountBalanceCheckpoint checkpoint;
+        checkpoint.accountId = accountId;
+        checkpoint.date = date;
+        checkpoint.balance = balance;
+        checkpoint.note = note;
+        toAdd.append(checkpoint);
+    };
+    plan(m_statement.balanceStartDate, m_statement.balanceStart,
+         QStringLiteral("Auto — statement start (%1)").arg(m_sourceFileName));
+    plan(m_statement.balanceEndDate, m_statement.balanceEnd,
+         QStringLiteral("Auto — statement end (%1)").arg(m_sourceFileName));
+    return toAdd;
 }
 
 void SnapshotImportController::buildImportReport(const QString& accountLabel, const QVector<Data::Transaction>& saved,

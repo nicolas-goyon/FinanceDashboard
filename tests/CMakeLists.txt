@@ -40,3 +40,35 @@ set_tests_properties(predictor_selftest PROPERTIES
     # headless CI runner can never trip over a platform-plugin lookup.
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
+
+# import_save_test
+#   The statement-import save path, end to end: the real SnapshotImportController
+#   and the real Database on a temporary SQLite file (#16, #17, #29). Qt Test,
+#   no GUI (QTEST_GUILESS_MAIN). It compiles the same core sources as the app
+#   (FD_CORE_SOURCES in the top-level CMakeLists.txt) plus the controller.
+
+find_package(Qt6 REQUIRED COMPONENTS Test)
+
+qt_add_executable(import_save_test
+    import_save_test.cpp
+    ${FD_CORE_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/SnapshotImportController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/SnapshotImportController.cpp
+)
+target_include_directories(import_save_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry
+)
+# Qt6::Qml for the QML_ELEMENT macros in the controller header only.
+target_link_libraries(import_save_test PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Test)
+set_target_properties(import_save_test PROPERTIES WIN32_EXECUTABLE OFF)
+
+add_test(NAME import_save_test COMMAND import_save_test)
+set_tests_properties(import_save_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# Every test target, so that CI and a local build need one target name:
+#   cmake --build build --target fd_tests
+add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test)

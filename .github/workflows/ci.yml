@@ -118,7 +118,8 @@ jobs:
           -DFD_BUILD_TESTS=ON
 
       - name: Build test targets
-        run: cmake --build build --target predictor_selftest --parallel
+        # fd_tests (tests/CMakeLists.txt) depends on every test target.
+        run: cmake --build build --target fd_tests --parallel
 
       - name: Run ctest
         working-directory: build

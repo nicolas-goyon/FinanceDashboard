@@ -133,6 +133,12 @@ public:
     // Appends every transaction in the batch to `accountId` (does not clear
     // existing rows — see TransactionsTable::insertBatch()).
     bool insertTransactions(int accountId, const QVector<Data::Transaction>& txs);
+    // Saves an imported statement in one SQL transaction: the rows, the
+    // account fingerprint link (when `accountHash` is not empty and the
+    // account does not have it yet) and the balance checkpoints. If one write
+    // fails, nothing is written and lastError() tells which write failed.
+    bool saveImport(int accountId, const QVector<Data::Transaction>& txs, const QString& accountHash,
+                    const QVector<Data::AccountBalanceCheckpoint>& checkpoints);
     [[nodiscard]] QVector<Data::Transaction> transactionsForAccount(int accountId) const;
     [[nodiscard]] int  transactionCountForAccount(int accountId) const;
     // Edits an already-persisted row in place (by Data::Transaction::id) —
