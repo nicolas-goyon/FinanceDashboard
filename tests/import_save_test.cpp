@@ -29,6 +29,7 @@
 #include <QUrl>
 #include <QVariantMap>
 
+#include <algorithm>
 #include <limits>
 
 namespace {
@@ -96,6 +97,27 @@ QByteArray marchStatementLaterExport()
     return csv;
 }
 
+// A statement for the parser tests: the IBAN, BIC and `period` lines, the two
+// balance lines, the column header, then `rows`.
+QByteArray statement(const QByteArray& period, const QByteArray& start, const QByteArray& end,
+                     const QByteArray& rows)
+{
+    QByteArray csv;
+    csv += "IBAN,";
+    csv += kIban;
+    csv += "\nBIC,";
+    csv += kBic;
+    csv += "\n";
+    if (!period.isEmpty()) {
+        csv += "Period," + period + "\n";
+    }
+    csv += "Account balance on " + start + "\n";
+    csv += "Account balance on " + end + "\n";
+    csv += "Confirmation date/ value,Operation date,Description and identifier,Debit (-),Credit (+),Balance\n";
+    csv += rows;
+    return csv;
+}
+
 // A statement with the same row `copies` times: same dates, amount and
 // description, and an empty balance cell, so nothing in the file tells the
 // rows apart.
@@ -137,12 +159,17 @@ private slots:
     void reimportAddsNothing();
     void overlappingStatementAddsOnlyNewRows();
     void laterExportMatchesByBankReference();
+    void bankReferenceIsTheLastExactLabel();
+    void senderTextIsNotTheBankReference();
+    void reusedReferenceIsReported();
     void identicalRowsAreTwoTransactions();
     void oneMoreIdenticalRowIsAdded();
     void nullAmountFailsTheSave();
 
 private:
     void parse(SnapshotImportController& controller, const QByteArray& csv);
+    // Parses and saves `csv`, then returns the saved rows, oldest first.
+    QVector<Data::Transaction> parseAndSave(const QByteArray& csv);
     [[nodiscard]] int transactionCount() const;
     [[nodiscard]] int checkpointCount() const;
     [[nodiscard]] bool hashLinked() const;
@@ -180,6 +207,18 @@ void ImportSaveTest::parse(SnapshotImportController& controller, const QByteArra
     controller.parseFile(QUrl::fromLocalFile(path), QString::fromLatin1(kTemplate));
     QVERIFY(controller.hasParsed());
     QVERIFY(!controller.lastParseFailed());
+}
+
+QVector<Data::Transaction> ImportSaveTest::parseAndSave(const QByteArray& csv)
+{
+    SnapshotImportController controller;
+    parse(controller, csv);
+    controller.save(m_account, QStringLiteral("Checking"));
+    QVector<Data::Transaction> rows = Database::instance().transactionsForAccount(m_account);
+    std::sort(rows.begin(), rows.end(), [](const Data::Transaction& a, const Data::Transaction& b) {
+        return a.id < b.id;
+    });
+    return rows;
 }
 
 int ImportSaveTest::transactionCount() const
@@ -385,6 +424,56 @@ void ImportSaveTest::laterExportMatchesByBankReference()
     controller.save(m_account, QStringLiteral("Checking"));
     QCOMPARE(transactionCount(), 3);
     QCOMPARE(controller.lastImportReport().value(QStringLiteral("alreadySavedCount")).toInt(), 3);
+}
+
+void ImportSaveTest::bankReferenceIsTheLastExactLabel()
+{
+    QCOMPARE(TransactionsTable::bankReference(QStringLiteral("Card payment 1234: SHOP Internal ref.: 06c6-0f6b")),
+             QStringLiteral("06c6-0f6b"));
+    // The sender's text comes first; the bank's block is last.
+    QCOMPARE(TransactionsTable::bankReference(
+                 QStringLiteral("Transfer Rent Internal ref.: APT12 External ref.: 4861 Internal ref.: C8EE57")),
+             QStringLiteral("C8EE57"));
+    // Another case, no dot or no colon: not the bank's label.
+    QVERIFY(TransactionsTable::bankReference(QStringLiteral("Rent internal ref: APT12")).isEmpty());
+    QVERIFY(TransactionsTable::bankReference(QStringLiteral("Rent Internal ref: APT12")).isEmpty());
+    // Punctuation after the id is not part of it.
+    QCOMPARE(TransactionsTable::bankReference(QStringLiteral("Payment \"Internal ref.: ABC123\", thanks")),
+             QStringLiteral("ABC123"));
+}
+
+void ImportSaveTest::senderTextIsNotTheBankReference()
+{
+    // Two rent transfers of the same amount: the sender wrote a label that
+    // looks like a reference, the bank's own references differ.
+    const QVector<Data::Transaction> rows = parseAndSave(statement(
+        "From 03/01/2026 to 03/31/2026", "03/01/2026,2000.00 \xE2\x82\xAC", "03/31/2026,100.00 \xE2\x82\xAC",
+        "03/05,03/05,\"Transfer to LANDLORD\nRent internal ref: APT12\nInternal ref.: B1\",-950.00,,1050.00\n"
+        "03/06,03/06,\"Transfer to LANDLORD\nRent Internal ref.: APT12\nInternal ref.: B2\",-950.00,,100.00\n"));
+    QCOMPARE(rows.size(), qsizetype(2));
+}
+
+void ImportSaveTest::reusedReferenceIsReported()
+{
+    {
+        SnapshotImportController controller;
+        parse(controller, marchStatement());
+        controller.save(m_account, QStringLiteral("Checking"));
+        QCOMPARE(transactionCount(), 3);
+    }
+    // April: a debit with the reference and the amount of a March row (A1,
+    // 20.00), on another operation date.
+    SnapshotImportController controller;
+    parse(controller, statement(
+        "From 04/01/2026 to 04/30/2026", "04/01/2026,440.00 \xE2\x82\xAC", "04/30/2026,420.00 \xE2\x82\xAC",
+        "04/02,04/02,\"Card payment 1234: CARREFOUR\nInternal ref.: A1\",-20.00,,420.00\n"));
+    QCOMPARE(controller.checkReconciliation(m_account).value(QStringLiteral("reusedReferenceCount")).toInt(), 1);
+    controller.save(m_account, QStringLiteral("Checking"));
+    QCOMPARE(transactionCount(), 3); // skipped, as decided
+    QCOMPARE(controller.lastImportReport().value(QStringLiteral("alreadySavedCount")).toInt(), 1);
+    QCOMPARE(controller.lastImportReport().value(QStringLiteral("reusedReferenceCount")).toInt(), 1);
+    QCOMPARE(controller.lastImportReport().value(QStringLiteral("reusedReferenceUrl")).toString(),
+             QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
 }
 
 void ImportSaveTest::identicalRowsAreTwoTransactions()

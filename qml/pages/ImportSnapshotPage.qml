@@ -753,6 +753,25 @@ Item {
                             font.pixelSize: 13
                             color: "#f9e2af"
                         }
+
+                        // Of those, rows with the bank reference and the amount of
+                        // a saved transaction but another operation date: the bank
+                        // may reuse its references. The link opens the issue.
+                        Text {
+                            visible: (reportStep.report.reusedReferenceCount || 0) > 0
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            textFormat: Text.StyledText
+                            text: "⚠ " + (reportStep.report.reusedReferenceCount || 0)
+                                + " of these rows have the bank reference and the amount of a saved transaction,"
+                                + " but another operation date, so they were not saved. If they are different"
+                                + " transactions, the bank reuses its references: see <a href=\""
+                                + (reportStep.report.reusedReferenceUrl || "") + "\">this issue</a>."
+                            font.pixelSize: 13
+                            color: "#fab387"
+                            linkColor: "#89b4fa"
+                            onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+                        }
                     }
                 }
 

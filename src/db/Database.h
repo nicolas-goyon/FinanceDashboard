@@ -17,6 +17,7 @@
 #include "models/Account.h"
 #include "models/Transaction.h"
 
+#include <QHash>
 #include <QSet>
 #include <QStringList>
 
@@ -170,8 +171,9 @@ public:
     // number of rows written.
     bool saveImport(int accountId, const QVector<Data::Transaction>& txs, const QString& accountHash,
                     const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted = nullptr);
-    // The fingerprints of the rows that `accountId` already has.
-    [[nodiscard]] QSet<QString> transactionFingerprints(int accountId) const;
+    // The fingerprints of the rows that `accountId` already has, each with
+    // the operation date of its row (see TransactionsTable).
+    [[nodiscard]] QHash<QString, QDate> transactionFingerprints(int accountId) const;
     [[nodiscard]] QVector<Data::Transaction> transactionsForAccount(int accountId) const;
     [[nodiscard]] int  transactionCountForAccount(int accountId) const;
     // Edits an already-persisted row in place (by Data::Transaction::id) —
@@ -247,6 +249,7 @@ private:
         bool droppedAccountNumbers = false; // step 1 removed iban / bic / number
         int  removedDuplicates = 0;         // step 2
         int  removedWithOtherValues = 0;    // of those: another category, label, date…
+        int  reusedReferences = 0;          // of those: same bank reference, another operation date
     };
     // The iban / bic / number columns that the accounts table still has.
     [[nodiscard]] QStringList accountNumberColumns() const;

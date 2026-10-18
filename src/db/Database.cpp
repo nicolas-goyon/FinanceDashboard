@@ -21,6 +21,25 @@
 #include <array>
 #include <optional>
 
+namespace {
+
+// SQLite's own message. QSqlError::text() joins the database and driver texts
+// with a space ("file is not a database Unable to fetch row").
+QString sqlText(const QSqlError& error)
+{
+    const QString text = error.databaseText().isEmpty() ? error.text() : error.databaseText();
+    return text.trimmed();
+}
+
+// `text` as a sentence, for a message that adds another sentence after it.
+QString sentence(const QString& text)
+{
+    const QString trimmed = text.trimmed();
+    return trimmed.endsWith(QLatin1Char('.')) ? trimmed : trimmed + QLatin1Char('.');
+}
+
+} // namespace
+
 // ── Singleton ─────────────────────────────────────────────────────────────────
 
 Database::Database()
@@ -70,7 +89,7 @@ bool Database::openFile(const QString& path)
     m_db.setDatabaseName(path);
 
     if (!m_db.open()) {
-        return failOpen(OpenError::CannotOpen, QStringLiteral("Cannot open: %1").arg(m_db.lastError().text()));
+        return failOpen(OpenError::CannotOpen, QStringLiteral("Cannot open: %1").arg(sqlText(m_db.lastError())));
     }
 
     // The first read: a file that is not a database fails here, with
@@ -80,7 +99,7 @@ bool Database::openFile(const QString& path)
         QSqlQuery version(m_db);
         if (!version.exec(QStringLiteral("PRAGMA user_version;")) || !version.next()) {
             return failOpen(OpenError::CannotOpen,
-                            QStringLiteral("Cannot read the database: %1").arg(version.lastError().text()));
+                            QStringLiteral("Cannot read the database: %1").arg(sqlText(version.lastError())));
         }
         from = version.value(0).toInt();
     }
@@ -112,10 +131,20 @@ bool Database::openFile(const QString& path)
                 return failOpen(OpenError::UpgradeFailed,
                                 QStringLiteral("Could not remove the account numbers from the copy of the "
                                                "database, so it was not upgraded: %1 The file was not changed.")
-                                    .arg(detail));
+                                    .arg(sentence(detail)));
             }
             copyCleared = true;
         }
+    }
+
+    // The account numbers that step 1 removes: with secure_delete, SQLite
+    // writes zeros over the freed pages inside the upgrade transaction, so the
+    // old values are gone even when the VACUUM below does not run (a crash
+    // after the commit, a full disk).
+    if (copyCleared) {
+        QSqlQuery secureDelete(m_db);
+        secureDelete.exec(QStringLiteral("PRAGMA secure_delete = ON;"));
+        secureDelete.finish();
     }
 
     // The base tables and every migration step in one SQL transaction: if a
@@ -124,7 +153,7 @@ bool Database::openFile(const QString& path)
     m_lastError.clear();
     const bool done = m_db.transaction() && createBaseTables() && upgrade(from, stats) && m_db.commit();
     if (!done) {
-        const QString detail = m_lastError.isEmpty() ? m_db.lastError().text() : m_lastError;
+        const QString detail = m_lastError.isEmpty() ? sqlText(m_db.lastError()) : m_lastError;
         m_db.rollback();
         if (!upgrading) {
             return failOpen(OpenError::CannotOpen, detail);
@@ -137,17 +166,22 @@ bool Database::openFile(const QString& path)
                                        "The file was not changed.")
                             .arg(from)
                             .arg(kSchemaVersion)
-                            .arg(detail));
+                            .arg(sentence(detail)));
     }
 
-    // The account numbers that step 1 removed can stay in the free pages of
-    // the file: VACUUM writes the file again without them.
+    // VACUUM writes the file again without free pages (the zeroed ones of
+    // step 1 too); secure_delete goes back to SQLite's default.
     if (stats.droppedAccountNumbers) {
         QSqlQuery vacuum(m_db);
         if (!vacuum.exec(QStringLiteral("VACUUM;"))) {
-            qWarning() << "[Database] VACUUM after the upgrade failed:" << vacuum.lastError().text();
+            qWarning() << "[Database] VACUUM after the upgrade failed:" << sqlText(vacuum.lastError());
         }
         vacuum.finish();
+    }
+    if (copyCleared) {
+        QSqlQuery secureDelete(m_db);
+        secureDelete.exec(QStringLiteral("PRAGMA secure_delete = OFF;"));
+        secureDelete.finish();
     }
 
     // WAL mode: better read concurrency, faster writes. After the upgrade:
@@ -177,7 +211,8 @@ bool Database::openFile(const QString& path)
             m_upgradeReport += QStringLiteral("\n\n%1 duplicate transaction(s) were removed: the same "
                                               "statement rows had been saved more than once. Of each row, "
                                               "the copy with a category stays (then the one with a "
-                                              "subcategory, then the oldest one).")
+                                              "subcategory, then the oldest one). If a statement really had "
+                                              "the same row twice, import it again: the second row comes back.")
                                    .arg(stats.removedDuplicates);
         }
         if (stats.removedWithOtherValues > 0) {
@@ -185,6 +220,15 @@ bool Database::openFile(const QString& path)
                                               "subcategory, label, date or balance. The copy from before "
                                               "the upgrade keeps them, and the application log lists them.")
                                    .arg(stats.removedWithOtherValues);
+        }
+        if (stats.reusedReferences > 0) {
+            m_upgradeReport += QStringLiteral("\n\nWarning: %1 of the removed copies have the bank reference "
+                                              "and the amount of the copy that stays, but another operation "
+                                              "date. If they are different transactions, the bank reuses its "
+                                              "references, and the copy from before the upgrade keeps them. "
+                                              "See:\n%2")
+                                   .arg(stats.reusedReferences)
+                                   .arg(QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
         }
         qInfo().noquote() << "[Database]" << m_upgradeReport;
     }
@@ -248,13 +292,13 @@ bool Database::backUp(const QString& path, QString& backupPath)
     backup.prepare(QStringLiteral("VACUUM INTO ?;"));
     backup.addBindValue(QDir::toNativeSeparators(backupPath));
     if (!backup.exec()) {
-        const QString detail = backup.lastError().text();
+        const QString detail = sqlText(backup.lastError());
         backup.finish();
         QFile::remove(backupPath); // a partial copy, if any
         return failOpen(OpenError::UpgradeFailed,
                         QStringLiteral("Could not save a copy of the database before the upgrade, so it "
                                        "was not upgraded: %1 The file was not changed.")
-                            .arg(detail));
+                            .arg(sentence(detail)));
     }
     return true;
 }
@@ -297,7 +341,7 @@ bool Database::clearAccountNumbersInCopy(const QString& backupPath, const QStrin
             for (const QString& sql : statements) {
                 QSqlQuery query(copy);
                 if (!query.exec(sql)) {
-                    m_lastError = query.lastError().text();
+                    m_lastError = sqlText(query.lastError());
                     ok = false;
                     break;
                 }
@@ -305,7 +349,7 @@ bool Database::clearAccountNumbersInCopy(const QString& backupPath, const QStrin
             }
             copy.close();
         } else {
-            m_lastError = copy.lastError().text();
+            m_lastError = sqlText(copy.lastError());
         }
     }
     QSqlDatabase::removeDatabase(kCopyConnection);
@@ -365,7 +409,7 @@ bool Database::upgrade(int from, UpgradeStats& stats)
     QSqlQuery setVersion(m_db);
     const bool ok = setVersion.exec(QStringLiteral("PRAGMA user_version = %1;").arg(kSchemaVersion));
     if (!ok) {
-        m_lastError = setVersion.lastError().text();
+        m_lastError = sqlText(setVersion.lastError());
     }
     setVersion.finish();
     return ok;
@@ -410,7 +454,7 @@ bool Database::migrateTo1(UpgradeStats& stats)
             " AND NOT EXISTS (SELECT 1 FROM sqlite_sequence WHERE name = 'accounts');")) &&
         query.exec(QStringLiteral("DROP TABLE accounts_before_v1;"));
     if (!ok) {
-        m_lastError = query.lastError().text();
+        m_lastError = sqlText(query.lastError());
     }
     stats.droppedAccountNumbers = ok;
     return ok;
@@ -428,7 +472,7 @@ bool Database::migrateTo2(UpgradeStats& stats)
     QSqlQuery query(m_db);
     if (!columnsOf(QStringLiteral("transactions")).contains(QStringLiteral("fingerprint"), Qt::CaseInsensitive) &&
         !query.exec(QStringLiteral("ALTER TABLE transactions ADD COLUMN fingerprint TEXT NOT NULL DEFAULT '';"))) {
-        m_lastError = query.lastError().text();
+        m_lastError = sqlText(query.lastError());
         return false;
     }
 
@@ -439,7 +483,7 @@ bool Database::migrateTo2(UpgradeStats& stats)
         QSqlQuery select(m_db);
         if (!select.exec(QStringLiteral("SELECT id, operation_date, confirmation_date, debit, credit,"
                                         " balance_after, description FROM transactions;"))) {
-            m_lastError = select.lastError().text();
+            m_lastError = sqlText(select.lastError());
             return false;
         }
         while (select.next()) {
@@ -455,7 +499,7 @@ bool Database::migrateTo2(UpgradeStats& stats)
         update.addBindValue(row.fingerprint);
         update.addBindValue(row.id);
         if (!update.exec()) {
-            m_lastError = update.lastError().text();
+            m_lastError = sqlText(update.lastError());
             return false;
         }
     }
@@ -469,17 +513,23 @@ bool Database::migrateTo2(UpgradeStats& stats)
         QSqlQuery differ(m_db);
         if (!differ.exec(kRanked + QStringLiteral(
                 "SELECT r.id, k.id, r.operation_date, r.description, r.category, r.subcategory, r.name,"
-                " r.confirmation_date, r.balance_after"
+                " r.confirmation_date, r.balance_after, k.operation_date"
                 " FROM ranked r JOIN ranked k ON k.account_id = r.account_id AND k.fingerprint = r.fingerprint"
                 " AND k.copy_rank = 1"
                 " WHERE r.copy_rank > 1 AND (r.category IS NOT k.category OR r.subcategory IS NOT k.subcategory"
                 " OR r.name IS NOT k.name OR r.operation_date IS NOT k.operation_date"
                 " OR r.confirmation_date IS NOT k.confirmation_date OR r.balance_after IS NOT k.balance_after);"))) {
-            m_lastError = differ.lastError().text();
+            m_lastError = sqlText(differ.lastError());
             return false;
         }
         while (differ.next()) {
             ++stats.removedWithOtherValues;
+            // Same reference and amount, another operation date: see
+            // TransactionsTable::kReusedReferenceIssueUrl.
+            if (!TransactionsTable::bankReference(differ.value(3).toString()).isEmpty() &&
+                differ.value(2).toString() != differ.value(9).toString()) {
+                ++stats.reusedReferences;
+            }
             qInfo().noquote() << QStringLiteral("[Database] duplicate transaction %1 removed (transaction %2 "
                                                 "stays): %3 \"%4\", category \"%5\", subcategory \"%6\", "
                                                 "label \"%7\", confirmation date %8, balance after %9")
@@ -493,14 +543,14 @@ bool Database::migrateTo2(UpgradeStats& stats)
 
     if (!query.exec(kRanked + QStringLiteral(
             "DELETE FROM transactions WHERE id IN (SELECT id FROM ranked WHERE copy_rank > 1);"))) {
-        m_lastError = query.lastError().text();
+        m_lastError = sqlText(query.lastError());
         return false;
     }
     stats.removedDuplicates = query.numRowsAffected();
 
     if (!query.exec(QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_fingerprint"
                                    " ON transactions(account_id, fingerprint);"))) {
-        m_lastError = query.lastError().text();
+        m_lastError = sqlText(query.lastError());
         return false;
     }
     return true;
@@ -812,10 +862,10 @@ bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, 
     return true;
 }
 
-QSet<QString> Database::transactionFingerprints(int accountId) const
+QHash<QString, QDate> Database::transactionFingerprints(int accountId) const
 {
     if (!isOpen()) { return {}; }
-    return m_transactionsTable.fingerprintsForAccount(accountId);
+    return m_transactionsTable.operationDatesByFingerprint(accountId);
 }
 
 QVector<Data::Transaction> Database::transactionsForAccount(int accountId) const

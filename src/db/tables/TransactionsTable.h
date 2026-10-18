@@ -5,6 +5,7 @@
 
 #include <optional>
 #include <QDate>
+#include <QHash>
 #include <QSet>
 #include <QString>
 #include <QStringList>
@@ -113,9 +114,16 @@ public:
     // "Internal ref." of the Sumeria export (the only template so far), or ""
     // when there is none. A template with another kind of id adds it here.
     [[nodiscard]] static QString bankReference(const QString& description);
+    // The identity by reference assumes that the bank gives each transaction
+    // its own reference. A saved row with the same reference and amount but
+    // another operation date breaks that assumption: the import and the
+    // upgrade count such rows and link to this issue.
+    static constexpr const char* kReusedReferenceIssueUrl =
+        "https://github.com/nicolas-goyon/FinanceDashboard/issues/126";
 
-    // The fingerprints that `accountId` already has.
-    [[nodiscard]] QSet<QString> fingerprintsForAccount(int accountId) const;
+    // The fingerprints that `accountId` already has, each with the operation
+    // date of its row (invalid when the row has none).
+    [[nodiscard]] QHash<QString, QDate> operationDatesByFingerprint(int accountId) const;
 
     // Cascade helper for Database::removeAccount().
     bool removeForAccount(int accountId);

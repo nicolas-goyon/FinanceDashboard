@@ -39,7 +39,8 @@ network service of any kind:
 - Linux — `~/.local/share/DataAnalysis/FinanceDashboard/finance_dashboard.db`
 
 When a new version changes the database format, the app first saves a copy
-next to it (`finance_dashboard.backup-<date>.db`) and tells you.
+next to it (`finance_dashboard.backup-<date>.db`) and tells you. If the upgrade
+fails, the app does not start, tells you why, and leaves the file as it was.
 
 Uninstalling does not delete it. Back that one file up and you have backed up
 everything.

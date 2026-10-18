@@ -47,7 +47,10 @@ A transaction's `fingerprint` is its identity in the bank's statement
 (`TransactionsTable::fingerprints()`): the bank's reference and the amount when the row has a
 reference (`bankReference()`), else every field. A row that the account already has is not saved
 again. Compute the fingerprints of a statement on all its rows, before you filter them: the
-second identical row of a statement has occurrence 2 in its fingerprint.
+second identical row of a statement has occurrence 2 in its fingerprint. A skipped row with the
+reference and amount of a saved row but another operation date is reported, with a link to the
+issue in `TransactionsTable::kReusedReferenceIssueUrl`: the identity assumes one reference per
+transaction.
 
 ## Where to look
 
