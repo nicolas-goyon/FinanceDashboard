@@ -92,9 +92,10 @@ pass in the same in-progress version.
 - Full CI/CD pipeline on GitHub Actions (`.github/workflows/ci.yml`, documented in `CI-CD.md`).
   Every push builds and packages the app on Windows and Linux and runs the tests and linters as
   independent, individually re-runnable jobs; every push to `main` publishes a GitHub release.
-  Ships a Windows `.msi` installer and portable `.zip`, a Linux `.AppImage`, `.deb` and
-  portable `.tar.gz`, source archives and `SHA256SUMS.txt` — none of which need Qt installed on
-  the target machine.
+  Ships a Windows setup (`.exe`, made with Inno Setup: it asks "for me only" or "for all
+  users", and the setup of a newer version updates an installed copy in place) and portable
+  `.zip`, a Linux `.AppImage`, `.deb` and portable `.tar.gz`, source archives and
+  `SHA256SUMS.txt` — none of which need Qt installed on the target machine.
 - `version.json` + `tools/version.py` — the version and the changelog are now one
   machine-readable file. `CMakeLists.txt` reads `current` straight into `project(... VERSION
   ...)`, so the build, the installer file names, the release tag and the app's own
@@ -103,8 +104,9 @@ pass in the same in-progress version.
 - Self-contained deployment via `qt_generate_deploy_qml_app_script()` — `cmake --install` now
   produces a directory that runs on a machine with no Qt, and every package is cut from that
   one tree. Plus `packaging/` (generated app icon, `.desktop` entry, AppStream metadata,
-  AppImage and `.deb` build scripts) and `LICENSE` (MIT), which doubles as the MSI's licence
-  page.
+  AppImage and `.deb` build scripts) and `LICENSE` (MIT), which doubles as the setup's licence
+  page. The QML module builds into `<build>/qml/FinanceDashboard/` (`QT_QML_OUTPUT_DIRECTORY`),
+  so it no longer takes the path of the Linux executable, which made the Linux link fail.
 - `tests/CMakeLists.txt` — `tools/predictor_selftest.cpp` is now a CTest target (`cmake
   -DFD_BUILD_TESTS=ON`, then `ctest`) instead of a hand-run binary, and CI runs it on every
   push. Partially clears `TODO.md`'s "no tests" item.
@@ -180,9 +182,11 @@ pass in the same in-progress version.
   explaining where the suggested category came from, shown as a tooltip on the confidence
   badge. Review-screen-only and never persisted, same status as `confidence`.
 - Both packaging jobs smoke-test the app before publishing: the Windows build is launched from
-  its install tree on the `offscreen` platform, the Linux `.AppImage` under Xvfb with the real
-  `xcb` plugin, each with the builder's own Qt removed from the environment so a package that
-  only works on the build machine fails the job.
+  its install tree with the real `windows` platform plugin (the tree has no `offscreen` plugin)
+  and its setup is installed, installed again over itself and uninstalled in both install
+  modes, the Linux `.AppImage` under Xvfb with the real `xcb` plugin, each with the builder's
+  own Qt removed from the environment so a package that only works on the build machine fails
+  the job.
 - `cmake_minimum_required` 3.20 → 3.21 (Qt's CMake deployment API), and `main.cpp` takes its
   version from the `FD_VERSION_STRING` compile definition instead of a hard-coded `"0.2.0"`.
 

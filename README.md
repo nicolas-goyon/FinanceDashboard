@@ -19,11 +19,16 @@ one file. Qt travels inside every package — nothing else to install.
 
 | Platform | File | What you do |
 |---|---|---|
-| Windows | `FinanceDashboard-<version>-windows-x64.msi` | Double-click. Start-menu shortcut and uninstaller included. |
+| Windows | `FinanceDashboard-<version>-windows-x64.exe` | Setup. Double-click, then choose "for me only" or "for all users". Start-menu shortcut and uninstaller included. |
 | Windows (portable) | `…-windows-x64.zip` | Unzip, run `FinanceDashboard.exe`. |
 | Linux | `FinanceDashboard-<version>-linux-x86_64.AppImage` | `chmod +x`, run. |
 | Linux (Debian/Ubuntu) | `finance-dashboard_<version>_amd64.deb` | `sudo apt install ./…deb` |
 | Linux (portable) | `…-linux-x86_64.tar.gz` | Extract, run `bin/FinanceDashboard`. |
+
+The Windows setup installs "for me only" in `%LOCALAPPDATA%\Programs\FinanceDashboard` (no
+administrator rights) or "for all users" in `C:\Program Files\FinanceDashboard` (administrator
+rights). To update, run the setup of the new version. It keeps the install mode, the shortcuts
+and your data.
 
 Releases are cut automatically from `main` — see `CI-CD.md`. Linux builds need glibc 2.39+
 (Ubuntu 24.04+, Debian 13+, Fedora 40+); on anything older, build from source below.
@@ -39,7 +44,7 @@ Your data lives in one local SQLite file and never leaves the machine:
 | Tool | Version |
 |---|---|
 | Qt | 6.8+ (developed against **6.11**) — include the **Qt Graphs** and **Qt Quick** modules |
-| CMake | 3.21+ (3.30+ only if you want to build the Windows `.msi` yourself) |
+| CMake | 3.21+ (3.27+ and [Inno Setup](https://jrsoftware.org/isinfo.php) 6+ only if you want to build the Windows setup yourself) |
 | C++ compiler | MSVC 2022 (recommended on Windows) or MinGW 13+ |
 
 Qt Charts and Qt Widgets are not required.
