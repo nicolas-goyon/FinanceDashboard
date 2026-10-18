@@ -61,7 +61,7 @@ A version number is never typed twice, so it can never disagree with itself.
 | **qmllint** | ubuntu-24.04 | no | Builds the `FinanceDashboard_qmllint` target that `qt_add_qml_module()` generates — the same check `tools/run-static-analysis.ps1` runs locally. |
 | **clang-tidy** | ubuntu-24.04 | no | Full build (so AUTOMOC and the QML type-registration sources exist), then `run-clang-tidy` over `src/*.cpp` only, using the repo's `.clang-tidy`. Counts land in the run summary; the log is an artifact. |
 | **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → setup `.exe` + portable `.zip` → setup test (install, update in place, uninstall, in both install modes). |
-| **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` install/remove check. |
+| **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` test in a clean `ubuntu:24.04` container. |
 | **Package — source** | ubuntu-24.04 | yes | `git archive` → source `.tar.gz` and `.zip`. |
 | **Release** | ubuntu-24.04 | — | `main` pushes only, after every blocking job above. Collects every artifact, writes `SHA256SUMS.txt`, publishes the release and its tag, then opens the back-merge pull request into `develop` and starts CI on its branch. Releases wait in a queue, one at a time. A re-run finishes what an earlier run started. |
 
@@ -133,6 +133,13 @@ Note the `.deb` bundles Qt rather than depending on the distribution's. That is
 the plug-and-play trade-off, deliberately: it is *not* how a package accepted
 into Debian proper would be built.
 
+Qt's deployment leaves the system libraries out: glibc, X11/xcb, OpenGL/EGL,
+fonts, D-Bus and GLib. The `Depends` line of `make-deb.sh` lists their packages,
+taken from the `NEEDED` entries of the binary, the bundled libraries, the `xcb`
+platform plugin, its GL integrations and the QML plugins. Without them the
+package installs, then fails with *"could not load the Qt platform plugin xcb"*
+on a machine that does not have them.
+
 ### Step 3 — prove it actually starts
 
 Both packaging jobs run the app before uploading anything:
@@ -145,7 +152,12 @@ Both packaging jobs run the app before uploading anything:
   silently twice (the second run is an update in place), then the uninstaller,
   for "for me only" (`/CURRENTUSER`) and for "for all users" (`/ALLUSERS`).
 * **Linux** — runs the finished `.AppImage` under `Xvfb` with the real `xcb`
-  platform plugin, same 20 s rule, then installs and removes the `.deb`.
+  platform plugin, same 20 s rule. Then `packaging/linux/test-deb.sh` installs
+  the `.deb` in a clean `ubuntu:24.04` container, where only the package and its
+  `Depends` are present: each library the app loads at start-up must be found,
+  the app must stay up 20 s under `Xvfb`, and the package must remove cleanly.
+  The runner itself cannot show a missing `Depends` entry, because the
+  `setup-qt` action installed every X11 and GL library on it.
 
 Both steps blank out `QT_PLUGIN_PATH`, `QML2_IMPORT_PATH` and the Qt entries in
 `PATH`/`LD_LIBRARY_PATH` first. Without that the app would happily borrow a DLL
@@ -341,6 +353,8 @@ cmake --install build --prefix stage
 ( cd build && cpack )                                          # .tar.gz
 bash packaging/linux/make-appimage.sh stage "$(python3 tools/version.py current)" dist
 bash packaging/linux/make-deb.sh      stage "$(python3 tools/version.py current)" dist
+deb=$(ls dist/*.deb); docker run --rm -v "$PWD:/src:ro" ubuntu:24.04 \
+    bash /src/packaging/linux/test-deb.sh "/src/$deb"      # clean-system test
 ```
 
 ```powershell
@@ -369,7 +383,8 @@ packaging/
 ├── linux/finance-dashboard.desktop
 ├── linux/*.metainfo.xml            AppStream metadata
 ├── linux/make-appimage.sh
-└── linux/make-deb.sh
+├── linux/make-deb.sh
+└── linux/test-deb.sh             installs and starts the .deb in a clean container
 tests/CMakeLists.txt                the ctest registration
 tools/version.py                    version.json ⇄ version.md, release notes
 version.json                        the version and the changelog

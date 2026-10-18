@@ -439,14 +439,15 @@ jobs:
           fi
           echo "OK — AppImage stayed up for 20s under Xvfb"
 
-      - name: Verify the .deb
+      # Not on the runner: the setup-qt action installed every X11 and GL
+      # library there, so a missing Depends entry would not show. A clean
+      # ubuntu:24.04 container gets only the package and its Depends.
+      - name: Test the .deb in a clean ubuntu:24.04 container
         run: |
           deb=$(ls dist/*.deb)
-          dpkg-deb --contents "$deb" | head -20
-          sudo apt-get install -y "./$deb"
-          test -x /opt/FinanceDashboard/bin/FinanceDashboard
-          test -L /usr/bin/finance-dashboard
-          sudo apt-get remove -y finance-dashboard
+          dpkg-deb --field "$deb" Depends
+          docker run --rm -v "$PWD:/src:ro" ubuntu:24.04 \
+            bash /src/packaging/linux/test-deb.sh "/src/$deb"
 
       - name: List artifacts
         run: ls -la dist/
