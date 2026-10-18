@@ -26,6 +26,14 @@ logic; the `.qml` file only renders what the controller hands it. See `docs/back
 full pattern and `docs/build-and-tooling.md` for the checklist to follow when adding a new
 page.
 
+## Data rule
+
+Writes that belong together go in one SQL transaction, in one `Database` method. Example:
+`Database::saveImport()` writes the rows of a statement, the account link and the balance
+checkpoints; if one write fails, nothing is written. Bind the text of a `TEXT NOT NULL` column
+through `Sql::text()` (`src/db/tables/SqlText.h`), because Qt binds a null `QString` as SQL
+`NULL`.
+
 ## Where to look
 
 | Topic | Doc |
@@ -51,6 +59,7 @@ page.
 | Automated documentation generation | [`docs/automated-docs.md`](docs/automated-docs.md) |
 | Auto-generated file listing (regenerate, don't hand-edit) | [`docs/generated/source-tree.md`](docs/generated/source-tree.md) |
 | Build, test, package and release pipeline | [`CI-CD.md`](CI-CD.md) |
+| Tests (`ctest`): category predictor, statement-import save path | `tests/CMakeLists.txt`; the app and the tests share `FD_CORE_SOURCES` in `CMakeLists.txt` |
 | Version number & changelog (single source of truth) | [`CI-CD.md`](CI-CD.md) § Working with the changelog |
 
 ## Other top-level docs

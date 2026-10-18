@@ -1,4 +1,5 @@
 #include "TransactionsTable.h"
+#include "SqlText.h"
 #include "models/Transaction.h"
 
 #include <QSqlDatabase>
@@ -13,9 +14,11 @@
 #include <utility>
 
 namespace {
+// An invalid date is stored as '', not as NULL: the date columns are
+// TEXT NOT NULL (see SqlText.h).
 QString dateToDb(const QDate& date)
 {
-    return date.isValid() ? date.toString(Qt::ISODate) : QString();
+    return date.isValid() ? date.toString(Qt::ISODate) : QStringLiteral("");
 }
 
 QDate dateFromDb(const QString& dateStr)
@@ -131,14 +134,14 @@ bool TransactionsTable::insertBatch(int accountId, const QVector<Data::Transacti
         query.addBindValue(accountId);
         query.addBindValue(dateToDb(transaction.confirmationDate));
         query.addBindValue(dateToDb(transaction.operationDate));
-        query.addBindValue(transaction.name);
-        query.addBindValue(transaction.description);
+        query.addBindValue(Sql::text(transaction.name));
+        query.addBindValue(Sql::text(transaction.description));
         query.addBindValue(transaction.debit);
         query.addBindValue(transaction.credit);
         query.addBindValue(transaction.balanceAfter);
-        query.addBindValue(transaction.category);
-        query.addBindValue(transaction.subcategory);
-        query.addBindValue(transaction.sourceTemplate);
+        query.addBindValue(Sql::text(transaction.category));
+        query.addBindValue(Sql::text(transaction.subcategory));
+        query.addBindValue(Sql::text(transaction.sourceTemplate));
 
         if (!query.exec()) {
             qWarning() << "[TransactionsTable] insertBatch error:" << query.lastError().text();
@@ -252,12 +255,12 @@ bool TransactionsTable::updateById(const Data::Transaction& tx)
     ));
     query.addBindValue(dateToDb(tx.confirmationDate));
     query.addBindValue(dateToDb(tx.operationDate));
-    query.addBindValue(tx.name);
-    query.addBindValue(tx.description);
+    query.addBindValue(Sql::text(tx.name));
+    query.addBindValue(Sql::text(tx.description));
     query.addBindValue(tx.debit);
     query.addBindValue(tx.credit);
-    query.addBindValue(tx.category);
-    query.addBindValue(tx.subcategory);
+    query.addBindValue(Sql::text(tx.category));
+    query.addBindValue(Sql::text(tx.subcategory));
     query.addBindValue(tx.id);
 
     const bool success = query.exec();
