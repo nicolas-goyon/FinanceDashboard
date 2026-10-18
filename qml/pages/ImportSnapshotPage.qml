@@ -740,6 +740,19 @@ Item {
                             Text { text: reportStep.report.totalExpenseText ? reportStep.report.totalExpenseText : "—"; font.pixelSize: 18; font.bold: true; color: "#f38ba8" }
                             Text { text: reportStep.report.netChangeText ? reportStep.report.netChangeText : "—"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
                         }
+
+                        // Rows that this account already had (a re-import, or a
+                        // statement that overlaps an earlier one): save() skips
+                        // them, and this line tells the user why the count is lower.
+                        Text {
+                            visible: (reportStep.report.alreadySavedCount || 0) > 0
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            text: (reportStep.report.alreadySavedCount || 0)
+                                + " transaction(s) of this statement were already saved, so they were not added again."
+                            font.pixelSize: 13
+                            color: "#f9e2af"
+                        }
                     }
                 }
 

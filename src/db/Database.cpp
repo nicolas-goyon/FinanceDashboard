@@ -6,6 +6,9 @@
 #include "models/Transaction.h"
 
 #include <QDate>
+#include <QDateTime>
+#include <QDir>
+#include <QFileInfo>
 #include <QLatin1String>
 #include <QSqlQuery>
 #include <QSqlError>
@@ -13,6 +16,7 @@
 #include <QVector>
 #include <QDebug>
 #include <QtLogging>
+#include <algorithm>
 #include <array>
 #include <optional>
 
@@ -42,6 +46,11 @@ Database& Database::instance()
 
 bool Database::open(const QString& path)
 {
+    m_upgradeReport.clear();
+    // Read before the open: QSqlDatabase::open() creates the file.
+    const QFileInfo fileBefore(path);
+    const bool existedBefore = fileBefore.exists() && fileBefore.size() > 0;
+
     m_db = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"),
                                       QLatin1String(kConnection));
     m_db.setDatabaseName(path);
@@ -55,6 +64,19 @@ bool Database::open(const QString& path)
     // WAL mode: better read concurrency, faster writes
     QSqlQuery pragma(m_db);
     pragma.exec(QStringLiteral("PRAGMA journal_mode = WAL;"));
+    // The PRAGMA returns a row; finish() releases the statement, else the
+    // first commit() below fails with "SQL statements in progress".
+    pragma.finish();
+
+    // A file from a newer version of the app: refuse it before any change.
+    if (schemaVersion() > kSchemaVersion) {
+        m_lastError = QStringLiteral("This database uses schema version %1. This version of the app "
+                                     "knows schema version %2 at most: use a newer version of the app.")
+                          .arg(schemaVersion())
+                          .arg(kSchemaVersion);
+        qWarning() << "[Database]" << m_lastError;
+        return false;
+    }
 
     // Each table class creates its own schema
     if (!m_snapshots.createTable()             ||
@@ -73,6 +95,214 @@ bool Database::open(const QString& path)
         return false;
     }
 
+    return migrate(path, existedBefore);
+}
+
+void Database::close()
+{
+    if (m_db.isValid()) {
+        m_db.close();
+    }
+    m_db = QSqlDatabase();
+    QSqlDatabase::removeDatabase(QLatin1String(kConnection));
+}
+
+// ── Schema migrations ─────────────────────────────────────────────────────────
+//
+// createTable() in each table class keeps the base schema (version 0, the
+// schema before versioning). Every later change is one step here, so a new
+// database and an old one go through the same steps and end with the same
+// schema. Add a step: write migrateToN(), add its case below, raise
+// kSchemaVersion, and add a test in tests/db_migration_test.cpp.
+
+int Database::schemaVersion() const
+{
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("PRAGMA user_version;")) || !query.next()) {
+        return -1;
+    }
+    return query.value(0).toInt();
+}
+
+QStringList Database::columnsOf(const QString& table) const
+{
+    QStringList columns;
+    QSqlQuery query(m_db);
+    if (query.exec(QStringLiteral("PRAGMA table_info(%1);").arg(table))) {
+        while (query.next()) {
+            columns.append(query.value(1).toString()); // cid, name, type, notnull, dflt_value, pk
+        }
+    }
+    return columns;
+}
+
+bool Database::migrate(const QString& path, bool existedBefore)
+{
+    const int from = schemaVersion();
+    if (from < 0) {
+        m_lastError = QStringLiteral("Cannot read the schema version: %1").arg(m_db.lastError().text());
+        return false;
+    }
+    if (from > kSchemaVersion) {
+        m_lastError = QStringLiteral("This database uses schema version %1. This version of the app "
+                                     "knows schema version %2 at most: use a newer version of the app.")
+                          .arg(from)
+                          .arg(kSchemaVersion);
+        return false;
+    }
+    if (from == kSchemaVersion) {
+        return true;
+    }
+
+    // A copy of the file before the first change. VACUUM INTO writes a
+    // consistent copy that includes what is still in the WAL file; it must
+    // run outside a transaction, and the target must not exist yet.
+    QString backupPath;
+    if (existedBefore) {
+        const QFileInfo info(path);
+        const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
+        backupPath = info.dir().filePath(
+            QStringLiteral("%1.backup-%2.%3").arg(info.completeBaseName(), stamp, info.suffix()));
+        for (int n = 2; QFileInfo::exists(backupPath); ++n) {
+            backupPath = info.dir().filePath(
+                QStringLiteral("%1.backup-%2-%3.%4").arg(info.completeBaseName(), stamp).arg(n).arg(info.suffix()));
+        }
+        QSqlQuery backup(m_db);
+        backup.prepare(QStringLiteral("VACUUM INTO ?;"));
+        backup.addBindValue(QDir::toNativeSeparators(backupPath));
+        if (!backup.exec()) {
+            m_lastError = QStringLiteral("Could not save a copy of the database before the upgrade: %1")
+                              .arg(backup.lastError().text());
+            qWarning() << "[Database]" << m_lastError;
+            return false;
+        }
+    }
+
+    int removedDuplicates = 0;
+    for (int step = from + 1; step <= kSchemaVersion; ++step) {
+        if (!m_db.transaction()) {
+            m_lastError = QStringLiteral("Cannot start a transaction: %1").arg(m_db.lastError().text());
+            return false;
+        }
+        bool ok = false;
+        switch (step) {
+        case 1: ok = migrateTo1(); break;
+        case 2: ok = migrateTo2(removedDuplicates); break;
+        default: break;
+        }
+        QSqlQuery setVersion(m_db);
+        ok = ok && setVersion.exec(QStringLiteral("PRAGMA user_version = %1;").arg(step));
+        setVersion.finish();
+        if (!ok || !m_db.commit()) {
+            const QString detail = ok ? m_db.lastError().text() : m_lastError;
+            m_db.rollback();
+            m_lastError = QStringLiteral("Could not upgrade the database to schema version %1: %2")
+                              .arg(step)
+                              .arg(detail);
+            qWarning() << "[Database]" << m_lastError;
+            return false;
+        }
+        qInfo() << "[Database] schema version" << step;
+    }
+
+    if (existedBefore) {
+        m_upgradeReport = QStringLiteral("The database was upgraded from schema version %1 to %2.\n\n"
+                                         "A copy from before the upgrade is in:\n%3")
+                              .arg(from)
+                              .arg(kSchemaVersion)
+                              .arg(QDir::toNativeSeparators(backupPath));
+        if (removedDuplicates > 0) {
+            m_upgradeReport += QStringLiteral("\n\n%1 duplicate transaction(s) were removed: the same "
+                                              "statement rows had been saved more than once.")
+                                   .arg(removedDuplicates);
+        }
+        qInfo().noquote() << "[Database]" << m_upgradeReport;
+    }
+    return true;
+}
+
+// Version 1 — an accounts table from before the "no IBAN / BIC / account
+// number" decision (version.md, v0.2.0) can still have those columns and their
+// plain-text values. Rebuild the table without them (SQLite's procedure for a
+// schema change that ALTER TABLE cannot always do: new table, copy, drop,
+// rename). No-op when the columns are not there.
+bool Database::migrateTo1()
+{
+    const QStringList columns = columnsOf(QStringLiteral("accounts"));
+    const QStringList legacy = {QStringLiteral("iban"), QStringLiteral("bic"), QStringLiteral("number")};
+    const bool hasLegacy = std::any_of(legacy.cbegin(), legacy.cend(), [&columns](const QString& column) {
+        return columns.contains(column, Qt::CaseInsensitive);
+    });
+    if (!hasLegacy) {
+        return true;
+    }
+
+    const QStringList keep = {QStringLiteral("id"), QStringLiteral("name"), QStringLiteral("type"),
+                              QStringLiteral("category"), QStringLiteral("currency"), QStringLiteral("notes")};
+    QStringList copied;
+    for (const QString& column : keep) {
+        if (columns.contains(column, Qt::CaseInsensitive)) {
+            copied.append(column);
+        }
+    }
+    QSqlQuery query(m_db);
+    const bool ok =
+        query.exec(QStringLiteral("ALTER TABLE accounts RENAME TO accounts_before_v1;")) &&
+        m_accountsTable.createTable() &&
+        query.exec(QStringLiteral("INSERT INTO accounts (%1) SELECT %1 FROM accounts_before_v1;")
+                       .arg(copied.join(QStringLiteral(", ")))) &&
+        query.exec(QStringLiteral("DROP TABLE accounts_before_v1;"));
+    if (!ok) {
+        m_lastError = query.lastError().text();
+    }
+    return ok;
+}
+
+// Version 2 — one fingerprint per transaction (TransactionsTable), unique
+// per account, so that a statement row is saved only once. Existing rows get
+// their fingerprint from their stored values. Exact duplicates that a
+// re-import saved before this version are removed: the row with the lowest
+// id stays (maintainer decision, 2026-10-18; open() saved a copy first).
+bool Database::migrateTo2(int& removedDuplicates)
+{
+    QSqlQuery query(m_db);
+    if (!columnsOf(QStringLiteral("transactions")).contains(QStringLiteral("fingerprint"), Qt::CaseInsensitive) &&
+        !query.exec(QStringLiteral("ALTER TABLE transactions ADD COLUMN fingerprint TEXT NOT NULL DEFAULT '';"))) {
+        m_lastError = query.lastError().text();
+        return false;
+    }
+
+    QSqlQuery rows(m_db);
+    if (!rows.exec(QStringLiteral("SELECT id, operation_date, confirmation_date, debit, credit, balance_after,"
+                                  " description FROM transactions;"))) {
+        m_lastError = rows.lastError().text();
+        return false;
+    }
+    QSqlQuery update(m_db);
+    update.prepare(QStringLiteral("UPDATE transactions SET fingerprint = ? WHERE id = ?;"));
+    while (rows.next()) {
+        update.addBindValue(TransactionsTable::fingerprint(rows.value(1).toString(), rows.value(2).toString(),
+                                                           rows.value(3).toDouble(), rows.value(4).toDouble(),
+                                                           rows.value(5).toDouble(), rows.value(6).toString()));
+        update.addBindValue(rows.value(0).toInt());
+        if (!update.exec()) {
+            m_lastError = update.lastError().text();
+            return false;
+        }
+    }
+
+    if (!query.exec(QStringLiteral("DELETE FROM transactions WHERE id NOT IN"
+                                   " (SELECT MIN(id) FROM transactions GROUP BY account_id, fingerprint);"))) {
+        m_lastError = query.lastError().text();
+        return false;
+    }
+    removedDuplicates = query.numRowsAffected();
+
+    if (!query.exec(QStringLiteral("CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_fingerprint"
+                                   " ON transactions(account_id, fingerprint);"))) {
+        m_lastError = query.lastError().text();
+        return false;
+    }
     return true;
 }
 
@@ -348,7 +578,7 @@ bool Database::insertTransactions(int accountId, const QVector<Data::Transaction
 }
 
 bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, const QString& accountHash,
-                          const QVector<Data::AccountBalanceCheckpoint>& checkpoints)
+                          const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
 
@@ -364,7 +594,7 @@ bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, 
         return false;
     };
 
-    if (!m_transactionsTable.insertBatch(accountId, txs)) {
+    if (!m_transactionsTable.insertBatch(accountId, txs, inserted)) {
         return fail(QStringLiteral("Could not save the transactions."));
     }
     if (!accountHash.isEmpty() && !m_accountHashesTable.existsForAccount(accountId, accountHash) &&
@@ -380,6 +610,12 @@ bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, 
         return fail(QStringLiteral("Could not commit the import: %1").arg(m_db.lastError().text()));
     }
     return true;
+}
+
+QSet<QString> Database::transactionFingerprints(int accountId) const
+{
+    if (!isOpen()) { return {}; }
+    return m_transactionsTable.fingerprintsForAccount(accountId);
 }
 
 QVector<Data::Transaction> Database::transactionsForAccount(int accountId) const
@@ -539,6 +775,18 @@ bool Database::resetAll()
         return false;
     }
 
-    m_db.commit();
-    return true;
+    // The tables now have the base schema again: start the migration steps
+    // from version 0. No copy first: the tables are empty.
+    if (!query.exec(QStringLiteral("PRAGMA user_version = 0;"))) {
+        m_db.rollback();
+        m_lastError = QStringLiteral("Failed to reset the schema version: %1").arg(query.lastError().text());
+        return false;
+    }
+
+    if (!m_db.commit()) {
+        m_lastError = QStringLiteral("Failed to commit the reset: %1").arg(m_db.lastError().text());
+        m_db.rollback();
+        return false;
+    }
+    return migrate(QString(), false);
 }

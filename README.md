@@ -36,7 +36,9 @@ from source below.
 
 Your data lives in one local SQLite file and never leaves the machine:
 `%APPDATA%\DataAnalysis\FinanceDashboard\` on Windows,
-`~/.local/share/DataAnalysis/FinanceDashboard/` on Linux.
+`~/.local/share/DataAnalysis/FinanceDashboard/` on Linux. When a new version changes the
+database format, the app first saves a copy next to it (`finance_dashboard.backup-<date>.db`) and
+tells you.
 
 ---
 

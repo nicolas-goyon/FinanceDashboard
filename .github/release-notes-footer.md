@@ -38,5 +38,8 @@ network service of any kind:
 - Windows — `%APPDATA%\DataAnalysis\FinanceDashboard\finance_dashboard.db`
 - Linux — `~/.local/share/DataAnalysis/FinanceDashboard/finance_dashboard.db`
 
+When a new version changes the database format, the app first saves a copy
+next to it (`finance_dashboard.backup-<date>.db`) and tells you.
+
 Uninstalling does not delete it. Back that one file up and you have backed up
 everything.

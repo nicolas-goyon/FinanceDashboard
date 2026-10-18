@@ -69,6 +69,24 @@ set_tests_properties(import_save_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# db_migration_test
+#   Schema versioning (PRAGMA user_version) and each migration step, on
+#   databases built the way older versions of the app left them (#20, #18).
+
+qt_add_executable(db_migration_test
+    db_migration_test.cpp
+    ${FD_CORE_SOURCES}
+)
+target_include_directories(db_migration_test PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_link_libraries(db_migration_test PRIVATE Qt6::Core Qt6::Sql Qt6::Test)
+set_target_properties(db_migration_test PROPERTIES WIN32_EXECUTABLE OFF)
+
+add_test(NAME db_migration_test COMMAND db_migration_test)
+set_tests_properties(db_migration_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Every test target, so that CI and a local build need one target name:
 #   cmake --build build --target fd_tests
-add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test)
+add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test)

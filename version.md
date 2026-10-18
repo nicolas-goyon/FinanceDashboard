@@ -124,6 +124,8 @@ pass in the same in-progress version.
   category, subcategory or date, the reconciliation adjustment row, a category-only rule, a
   failed save and its retry. The app and the tests compile the same core sources
   (`FD_CORE_SOURCES`), and `cmake --build build --target fd_tests` builds every test.
+  `tests/db_migration_test.cpp` (Qt Test) opens databases built the way older versions left
+  them and checks each migration step.
 - **Docker build — build the app on any machine with only Docker installed.** `compose.yaml` +
   `.env` (options documented in `.env.example`: `TARGET` = `windows`/`linux`, `LINK_MODE` =
   `shared`/`static`, `BUILD_TYPE`, `QT_VERSION`, `LLVM_MINGW_VERSION`, job counts) +
@@ -171,6 +173,14 @@ pass in the same in-progress version.
   pull requests (each one based on the one before it, merged from the bottom up), Conventional
   Commits, the label set, the definition of done and the repository settings. Dependabot pull
   requests now target `develop`.
+- **Database schema versioning.** `PRAGMA user_version` and ordered migration steps in
+  `Database::migrate()`, one SQL transaction each, run when the app opens the database. Before
+  it upgrades an existing database, the app saves a copy next to it
+  (`finance_dashboard.backup-<date>.db`, made with `VACUUM INTO`), and a dialog at start-up
+  says what changed. A database from a newer version of the app is refused before any change.
+  Migration 1 drops the `iban`, `bic` and `number` columns of an old `accounts` table;
+  migration 2 adds the transaction fingerprints. `resetAll()` runs the steps again on the empty
+  tables.
 
 ### Changed
 - **Removed** all `docs` for pruning and reduce overhead.
@@ -230,6 +240,13 @@ pass in the same in-progress version.
   the account link and the balance checkpoints of an import now go in one SQL transaction
   (`Database::saveImport()`). Before, the rows written before a failing one stayed in the
   database, and each retry stored them again.
+- **Statement import — a statement row is saved only once.** Re-importing a statement, or
+  importing one that overlaps an earlier one, saved every row again while the reconciliation
+  stayed green. Each row now has a fingerprint (dates, debit, credit and balance after in
+  cents, description), unique per account: rows that the account already has are skipped, and
+  the status line and the import report say how many. The upgrade to schema version 2 removes
+  the duplicates that earlier re-imports saved (the first copy stays), after it saves a copy of
+  the database.
 
 ### Docs
 - See `Added`/`Changed`/`Fixed` above.
