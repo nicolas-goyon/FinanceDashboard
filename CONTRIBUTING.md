@@ -84,7 +84,9 @@ A pull request is ready when:
 
 ## Releases
 
-See `CI-CD.md` § The release flow.
+See `CI-CD.md` § The release flow. After a release, CI opens a pull request that merges `main`
+back into `develop`, and starts CI on it. Merge it with a merge commit, not a squash: `develop`
+must contain the release commit.
 
 ---
 
@@ -99,4 +101,5 @@ These settings are not in a file. The maintainer sets them once:
   approve pull requests". The release job needs it to open the back-merge pull request.
 - Branch rules for `main` and `develop` (pull requests only, CI green before merge). On a
   private repository, rulesets need GitHub Pro or Team. Without them, follow the rule by
-  convention.
+  convention. The back-merge pull request can pass the rule too: the release job starts its CI
+  run.
