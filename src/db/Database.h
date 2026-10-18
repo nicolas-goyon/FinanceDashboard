@@ -41,16 +41,28 @@ public:
 
     // Open (and initialise) the SQLite file at `path`.
     // Creates tables on first run, then upgrades the schema to the version of
-    // this app (see migrate()). Returns false on failure.
+    // this app (see upgrade()). Returns false on failure. After a failure the
+    // connection is closed (isOpen() is false), so nothing writes to a file
+    // that this version of the app cannot use; openError() tells why.
     bool    open(const QString& path);
     // Closes the connection; open() can then open another file (tests).
     void    close();
     [[nodiscard]] bool    isOpen() const;
     [[nodiscard]] QString lastError() const;
 
+    // Why the last open() failed. NewerSchema and UpgradeFailed leave the file
+    // as it was; StartupChecks makes them a fatal step.
+    enum class OpenError {
+        None,
+        CannotOpen,    // the file cannot be opened or created
+        NewerSchema,   // a newer version of the app saved the file
+        UpgradeFailed, // the copy or the upgrade failed; the file is unchanged
+    };
+    [[nodiscard]] OpenError openError() const { return m_openError; }
+
     // ── Schema version (PRAGMA user_version) ─────────────────────────────────
     // The schema version that this app writes. Each version after 0 is one
-    // ordered migration step in migrate().
+    // ordered migration step in upgrade().
     static constexpr int kSchemaVersion = 2;
     [[nodiscard]] int schemaVersion() const;
     // Empty, unless the last open() upgraded an existing database: then one
@@ -222,11 +234,18 @@ private:
 
     Database();
 
-    // Runs the migration steps from the file's PRAGMA user_version up to
-    // kSchemaVersion, one SQL transaction per step. Before the first step on
-    // a database that already existed, saves a copy next to it
-    // (VACUUM INTO). Refuses a file whose version is newer than this app.
-    bool migrate(const QString& path, bool existedBefore);
+    // open() without the close() on failure.
+    bool openFile(const QString& path);
+    // Sets m_openError and m_lastError, logs, returns false.
+    bool failOpen(OpenError error, const QString& message);
+    // A copy of the open file next to it (VACUUM INTO), before an upgrade.
+    bool backUp(const QString& path, QString& backupPath);
+    // createTable() of every table class: the base schema (version 0).
+    bool createBaseTables();
+    // The migration steps from `from` + 1 up to kSchemaVersion, then
+    // PRAGMA user_version. Runs in the caller's SQL transaction, so that the
+    // file is either at kSchemaVersion or unchanged.
+    bool upgrade(int from, int& removedDuplicates);
     bool migrateTo1();                       // accounts: drop iban / bic / number
     bool migrateTo2(int& removedDuplicates); // transactions: fingerprint + UNIQUE index
     [[nodiscard]] QStringList columnsOf(const QString& table) const;
@@ -234,6 +253,7 @@ private:
     QSqlDatabase            m_db;
     QString                 m_lastError;
     QString                 m_upgradeReport;
+    OpenError               m_openError = OpenError::None;
     SnapshotsTable          m_snapshots;
     AssetEntriesTable       m_assetEntries;
     CategoriesTable         m_categoriesTable;
