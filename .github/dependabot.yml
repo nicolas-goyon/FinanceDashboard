@@ -10,9 +10,13 @@ version: 2
 updates:
   - package-ecosystem: github-actions
     directory: "/"
+    # Gitflow: dependency updates are changes like any other, so they go
+    # into develop and ship with the next release.
+    target-branch: "develop"
     schedule:
       interval: monthly
     commit-message:
       prefix: "ci"
     labels:
-      - ci
+      - "type: chore"
+      - "area: ci"

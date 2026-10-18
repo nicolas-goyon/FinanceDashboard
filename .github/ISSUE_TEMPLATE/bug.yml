@@ -1,0 +1,47 @@
+name: Bug
+description: Something does not work as intended.
+labels: ["type: bug"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What happens, and what should happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open …
+        2. Click …
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version and OS
+      placeholder: "v0.2.1, Windows 11 (setup, for me only)"
+  - type: textarea
+    id: where
+    attributes:
+      label: Where in the code
+      description: Files and lines, if you know them.
+  - type: dropdown
+    id: priority
+    attributes:
+      label: Priority
+      options:
+        - "P0: data loss or corruption, or the release is blocked"
+        - "P1: a feature is broken or gives a wrong result"
+        - "P2: edge case, robustness or misleading behaviour"
+        - "P3: cosmetic or cleanup"
+  - type: textarea
+    id: accept
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ] …
+        - [ ] Regression test added

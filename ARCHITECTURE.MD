@@ -67,6 +67,8 @@ through `Sql::text()` (`src/db/tables/SqlText.h`), because Qt binds a null `QStr
 - `README.md` — what the app is, where to download it, and how to build/run it.
 - `CI-CD.md` — how the app is built, tested, packaged and released. Read this before touching
   `.github/`, `packaging/`, `version.json` or the install/CPack half of `CMakeLists.txt`.
+- `CONTRIBUTING.md` — gitflow branches, commit messages, labels and the definition of done.
+  Read it before you create a branch or a pull request.
 - `PROJECT.md` — product spec (target pages, charts, features). Check before adding features.
 - `TODO.md` — backlog: known limitations, bugs, cleanups.
 - `version.md` — changelog (current version + every previous one). **Generated** from
