@@ -91,8 +91,9 @@ set_tests_properties(db_migration_test PROPERTIES
 #   The writes of the table classes: a null optional text, and the empty required
 #   values that the Database refuses (#125); renames that reach every row that
 #   uses the name, with the duplicate checks of the controllers (#34); the
-#   default data written once per database (#37) and the mock data (#38). It
-#   compiles the core sources plus three controllers.
+#   default data written once per database (#37), the mock data (#38) and the
+#   order of the balance history (#36). It compiles the core sources plus three
+#   controllers.
 
 qt_add_executable(db_write_test
     db_write_test.cpp

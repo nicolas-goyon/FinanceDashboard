@@ -12,6 +12,8 @@
 //         after "Reset Database", across restarts too; all or nothing, and a
 //         write that fails is tried again at the next start
 //   #38   "Reset to Mock Data" writes the sample transactions
+//   #36   the balance history replays the rows in booking order (the
+//         confirmation date), the order of the bank's own balance
 
 #include "AccountController.h"
 #include "CategoryController.h"
@@ -116,6 +118,7 @@ private slots:
     void defaultsAreWrittenOncePerDatabase();
     void defaultsAreAllOrNothing();
     void mockDataHasTheSampleTransactions();
+    void balanceHistoryFollowsTheBookingOrder();
 
 private:
     QTemporaryDir m_dir;
@@ -466,6 +469,46 @@ void DbWriteTest::mockDataHasTheSampleTransactions()
     QCOMPARE(accounts.size(), qsizetype(6));
     QCOMPARE(accounts.at(0).name, QStringLiteral("Checking — Bank A"));
     QCOMPARE(Database::instance().transactionCountForAccount(accounts.at(0).id), 6);
+}
+
+void DbWriteTest::balanceHistoryFollowsTheBookingOrder()
+{
+    // Opening balance 1 000 on 03/01; a transfer of -100 booked on 03/01
+    // (bank balance 900); a card payment of -50 made on 02/27 and booked on
+    // 03/02 (bank balance 850). Before #36, the replay started from the card
+    // row (the oldest operation date): 900, 850, then 750.
+    Database& db = Database::instance();
+    QVERIFY(db.addAccountType(QStringLiteral("CCP")) >= 0);
+    const int withStart = db.addAccount(QStringLiteral("With start"), QStringLiteral("CCP"), QStringLiteral(""),
+                                        QStringLiteral("EUR"), QStringLiteral(""));
+    const int withoutStart = db.addAccount(QStringLiteral("Without start"), QStringLiteral("CCP"), QStringLiteral(""),
+                                           QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(db.addBalanceCheckpoint(withStart, QDate(2026, 3, 1), 1000.0, QStringLiteral("Statement start")) >= 0);
+    Data::Transaction transfer = transaction(QStringLiteral("TRANSFER"), QStringLiteral(""), QStringLiteral(""));
+    transfer.operationDate = QDate(2026, 3, 1);
+    transfer.confirmationDate = QDate(2026, 3, 1);
+    transfer.debit = 100.0;
+    transfer.balanceAfter = 900.0;
+    Data::Transaction card = transaction(QStringLiteral("CARD"), QStringLiteral(""), QStringLiteral(""));
+    card.operationDate = QDate(2026, 2, 27);
+    card.confirmationDate = QDate(2026, 3, 2);
+    card.debit = 50.0;
+    card.balanceAfter = 850.0;
+    QVERIFY(db.insertTransactions(withStart, {transfer, card}));
+    QVERIFY(db.insertTransactions(withoutStart, {transfer, card}));
+
+    AccountController controller;
+    for (const QString& name : {QStringLiteral("With start"), QStringLiteral("Without start")}) {
+        const int index = indexOfName(controller.accounts(), name);
+        QVERIFY(index >= 0);
+        QCOMPARE(controller.accountBalanceSummary(index).value(QStringLiteral("currentBalanceRaw")).toDouble(), 850.0);
+        const QVariantList history = controller.accountBalanceHistory(index);
+        QCOMPARE(history.size(), qsizetype(2));
+        QCOMPARE(history.at(0).toMap().value(QStringLiteral("dateIso")).toString(), QStringLiteral("2026-03-01"));
+        QCOMPARE(history.at(0).toMap().value(QStringLiteral("balance")).toDouble(), 900.0);
+        QCOMPARE(history.at(1).toMap().value(QStringLiteral("dateIso")).toString(), QStringLiteral("2026-03-02"));
+        QCOMPARE(history.at(1).toMap().value(QStringLiteral("balance")).toDouble(), 850.0);
+    }
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)
