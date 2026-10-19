@@ -792,7 +792,9 @@ Item {
                                 pillHeight: 22
                                 variant: !reportStep.reconciliation.hasStartReference ? "neutral"
                                     : (reportStep.reconciliation.startOk ? "success" : "warning")
-                                text: !reportStep.reconciliation.hasStartReference ? "Start balance — no prior record"
+                                // A start line that could not be read (#44): not checked.
+                                text: reportStep.reconciliation.hasDeclaredStart === false ? "Start balance — not in the file"
+                                    : !reportStep.reconciliation.hasStartReference ? "Start balance — no prior record"
                                     : (reportStep.reconciliation.startOk ? "Start balance OK" : "Start balance mismatch")
                             }
                             Text {
@@ -811,10 +813,14 @@ Item {
                             spacing: 10
                             StatusBadge {
                                 pillHeight: 22
-                                variant: reportStep.reconciliation.endOk ? "success" : "danger"
-                                text: reportStep.reconciliation.endOk ? "End balance OK" : "End balance mismatch"
+                                // A balance line that could not be read (#44): not checked.
+                                variant: reportStep.reconciliation.endAvailable === false ? "neutral"
+                                    : (reportStep.reconciliation.endOk ? "success" : "danger")
+                                text: reportStep.reconciliation.endAvailable === false ? "End balance — not checked"
+                                    : (reportStep.reconciliation.endOk ? "End balance OK" : "End balance mismatch")
                             }
                             Text {
+                                visible: reportStep.reconciliation.endAvailable !== false
                                 text: "computed " + (reportStep.reconciliation.endComputedText || "—")
                                     + " vs. declared " + (reportStep.reconciliation.endDeclaredText || "—")
                                     + " — diff " + (reportStep.reconciliation.endDiffText || "—")

@@ -24,7 +24,7 @@ here so the architecture doc stays a design record, not a task tracker).
 - [ ] Centralize the Catppuccin palette in a `Theme.qml` singleton (currently hardcoded hex literals per file).
 - [ ] No `.qrc` resource file — icons and fonts should be added under `resources/` when needed.
 - [ ] No tests — add a `tests/` directory with Qt Test when data logic grows.
-- [ ] `SumeriaCcpCsvExtractionTemplate` assumes UTF-8 and `MM/dd/yyyy` dates, per the spec as given — neither was verified against a real exported file yet.
+- [ ] `SumeriaCcpCsvExtractionTemplate` reads UTF-8, or Windows-1252 when the file is not valid UTF-8 (#45), and assumes `MM/dd/yyyy` dates, per the spec as given — the dates were not verified against a real exported file yet.
 - [ ] PDF statement templates are not implemented — `ImportTemplate` supports them by design, but no PDF library is linked yet.
 - [ ] `ImportSnapshotPage.qml`/`CategoriesManagePage.qml`/`AccountsManagePage.qml` import `QtQuick.Dialogs` with no explicit `find_package`/`target_link_libraries` in `CMakeLists.txt` — relies on `qt_add_qml_module`'s automatic import scanning. Add `QuickDialogs2` explicitly if a build ever fails to find the plugin.
 - [ ] Most sidebar action placeholders on the first 5 (`PROJECT.md`) categories are still inert — only a handful of actions are wired (see `docs/navigation.md`).
