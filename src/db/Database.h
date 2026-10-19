@@ -12,6 +12,7 @@
 #include "db/tables/TransactionsTable.h"
 #include "db/tables/AccountBalanceCheckpointsTable.h"
 #include "db/tables/CategoryRulesTable.h"
+#include "db/tables/SettingsTable.h"
 #include "models/Category.h"
 #include "models/CategoryRule.h"
 #include "models/Account.h"
@@ -21,6 +22,7 @@
 #include <QSet>
 #include <QStringList>
 
+#include <cstdint>
 #include <functional>
 #include <optional>
 #include <QString>
@@ -69,7 +71,7 @@ public:
     // ── Schema version (PRAGMA user_version) ─────────────────────────────────
     // The schema version that this app writes. Each version after 0 is one
     // ordered migration step in upgrade().
-    static constexpr int kSchemaVersion = 2;
+    static constexpr int kSchemaVersion = 3;
     [[nodiscard]] int schemaVersion() const;
     // Empty, unless the last open() upgraded an existing database: then one
     // or two sentences for the user (old and new version, where the backup
@@ -228,12 +230,27 @@ public:
     // AccountBalanceCheckpointsTable::latestOnOrBefore().
     [[nodiscard]] std::optional<Data::AccountBalanceCheckpoint> latestCheckpointOnOrBefore(int accountId, const QDate& date) const;
 
+    // ── Default data (#37) ─────────────────────────────────────────────────────
+    // The controllers write their default data the first time that a database
+    // is used, and the settings table records it, so that an empty table is
+    // not taken for a first run: after "Reset Database", the lists stay empty,
+    // across restarts too.
+    enum class Defaults : std::uint8_t { Categories, Accounts };
+    [[nodiscard]] bool defaultsWritten(Defaults set) const;
+    // Runs `write` (the add*() calls of the defaults of `set`; false when one
+    // fails) and records the defaults as written, in one SQL transaction. If a
+    // write fails, nothing is written or recorded, and the next start tries
+    // again. Returns false then (lastError() tells why).
+    bool writeDefaults(Defaults set, const std::function<bool()>& write);
+
     // ── Whole-database reset (see ARCHITECTURE.MD § Database Management) ────────
     // Drops every table this app owns and recreates them empty, in one
     // transaction. Intended for DatabaseManagementController — lets the
     // developer/user wipe the SQLite file back to a blank slate without
     // deleting the file itself (useful whenever the schema changes during
-    // development, and as a user-facing "start over" action).
+    // development, and as a user-facing "start over" action). The settings
+    // table stays, and records that the defaults were written: the
+    // controllers do not write them again (#37).
     bool resetAll();
 
 private:
@@ -267,6 +284,10 @@ private:
     bool upgrade(int from, UpgradeStats& stats);
     bool migrateTo1(UpgradeStats& stats); // accounts: drop iban / bic / number
     bool migrateTo2(UpgradeStats& stats); // transactions: fingerprint + UNIQUE index
+    bool migrateTo3();                    // settings table, with the defaults already written
+    // Records in the settings table that the defaults of `set` are written.
+    // In the SQL transaction of writeDefaults() or resetAll().
+    bool recordDefaults(Defaults set);
     [[nodiscard]] QStringList columnsOf(const QString& table) const;
     // Runs `steps` in one SQL transaction: commit when they return true, roll
     // back otherwise. `what` names the operation in m_lastError and the log.
@@ -287,6 +308,7 @@ private:
     TransactionsTable       m_transactionsTable;
     AccountBalanceCheckpointsTable m_balanceCheckpointsTable;
     CategoryRulesTable      m_categoryRulesTable;
+    SettingsTable           m_settingsTable;
 };
 
 #endif // FINANCEDASHBOARD_DB_DATABASE_H

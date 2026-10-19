@@ -55,6 +55,7 @@ Database::Database()
     , m_transactionsTable(kConnection)
     , m_balanceCheckpointsTable(kConnection)
     , m_categoryRulesTable(kConnection)
+    , m_settingsTable(kConnection)
 {}
 
 Database& Database::instance()
@@ -396,6 +397,7 @@ bool Database::upgrade(int from, UpgradeStats& stats)
         switch (step) {
         case 1: ok = migrateTo1(stats); break;
         case 2: ok = migrateTo2(stats); break;
+        case 3: ok = migrateTo3(); break;
         default: m_lastError = QStringLiteral("there is no migration step %1.").arg(step); break;
         }
         if (!ok) {
@@ -553,6 +555,38 @@ bool Database::migrateTo2(UpgradeStats& stats)
                                    " ON transactions(account_id, fingerprint);"))) {
         m_lastError = sqlText(query.lastError());
         return false;
+    }
+    return true;
+}
+
+// Version 3 — a settings table (key, value) for the state of the app that
+// belongs to the database file (#37). Before it, the controllers took an
+// empty table for a first run and wrote their default data again: after
+// "Reset Database", at the next start. A database that already has data was
+// already given its defaults (or its own data): record it, so that they do
+// not come back once its tables are emptied. A new database (all tables
+// empty) gets no record: the controllers write the defaults on its first run.
+// resetAll() runs every step again on its new empty tables, and keeps this
+// table: IF NOT EXISTS, and the records stay.
+bool Database::migrateTo3()
+{
+    QSqlQuery query(m_db);
+    const std::array<QString, 3> statements = {
+        QStringLiteral("CREATE TABLE IF NOT EXISTS settings ("
+                       "  key   TEXT NOT NULL PRIMARY KEY,"
+                       "  value TEXT NOT NULL"
+                       ");"),
+        QStringLiteral("INSERT OR IGNORE INTO settings (key, value)"
+                       " SELECT 'seeded.categories', '1' WHERE EXISTS (SELECT 1 FROM categories);"),
+        QStringLiteral("INSERT OR IGNORE INTO settings (key, value)"
+                       " SELECT 'seeded.accounts', '1' WHERE EXISTS (SELECT 1 FROM accounts)"
+                       " OR EXISTS (SELECT 1 FROM account_types) OR EXISTS (SELECT 1 FROM account_categories);"),
+    };
+    for (const QString& statement : statements) {
+        if (!query.exec(statement)) {
+            m_lastError = sqlText(query.lastError());
+            return false;
+        }
     }
     return true;
 }
@@ -1087,6 +1121,33 @@ std::optional<Data::AccountBalanceCheckpoint> Database::latestCheckpointOnOrBefo
 
 // ── Whole-database reset ──────────────────────────────────────────────────────
 
+namespace {
+QString defaultsKey(Database::Defaults set)
+{
+    return set == Database::Defaults::Categories ? QStringLiteral("seeded.categories")
+                                                 : QStringLiteral("seeded.accounts");
+}
+} // namespace
+
+bool Database::defaultsWritten(Defaults set) const
+{
+    if (!isOpen()) { return false; }
+    return m_settingsTable.value(defaultsKey(set)) == QStringLiteral("1");
+}
+
+bool Database::writeDefaults(Defaults set, const std::function<bool()>& write)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return inTransaction(QStringLiteral("Writing the default data"), [this, set, &write]() {
+        return write() && recordDefaults(set);
+    });
+}
+
+bool Database::recordDefaults(Defaults set)
+{
+    return m_settingsTable.setValue(defaultsKey(set), QStringLiteral("1"));
+}
+
 bool Database::resetAll()
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
@@ -1096,7 +1157,8 @@ bool Database::resetAll()
     // Drop every table this app owns (children before parents doesn't
     // actually matter here — no FK constraints are declared anywhere in
     // this schema — but listed in roughly the same order tables were
-    // introduced for readability).
+    // introduced for readability). Not the settings table: it records that
+    // the defaults were written, so that they do not come back (#37).
     static const std::array<const char*, 11> kTables = {
         "asset_entries", "snapshots",
         "subcategories", "categories",
@@ -1125,6 +1187,12 @@ bool Database::resetAll()
         const QString detail = m_lastError;
         m_db.rollback();
         m_lastError = QStringLiteral("Failed to recreate the tables after the reset: %1").arg(detail);
+        return false;
+    }
+    // The user asked for an empty database: no default data at the next start.
+    if (!recordDefaults(Defaults::Categories) || !recordDefaults(Defaults::Accounts)) {
+        m_db.rollback();
+        m_lastError = QStringLiteral("Failed to record the reset in the settings table.");
         return false;
     }
 

@@ -4,10 +4,11 @@
 #include "models/Transaction.h"
 
 #include <QDate>
-#include <QLatin1String>
+#include <QDebug>
 #include <QObject>
 #include <QString>
 #include <QVector>
+#include <QtLogging>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
 
 namespace {
@@ -35,7 +36,12 @@ void DatabaseManagementController::resetToMock()
         setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Reset failed — see application log"));
         return;
     }
-    seedMockData();
+    if (!seedMockData()) {
+        // The reset is done: the pages reload what was written.
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not write all the mock data — see application log"));
+        emit databaseReset();
+        return;
+    }
     setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Database reset to mock data"));
     emit databaseReset();
 }
@@ -53,9 +59,18 @@ bool DatabaseManagementController::clearTransactionsForAccount(int accountId)
     return true;
 }
 
-void DatabaseManagementController::seedMockData() // static, see header
+bool DatabaseManagementController::seedMockData() // static, see header
 {
     Database& database = Database::instance();
+    bool written = true;
+    // Each write that fails makes the whole seed fail, and is logged.
+    const auto check = [&written](bool ok, const char* what) {
+        if (!ok) {
+            qWarning() << "[DatabaseManagementController] mock data: could not write" << what;
+            written = false;
+        }
+        return ok;
+    };
 
     // Same default category/subcategory list as
     // CategoryController::seedDefaults() (duplicated here deliberately —
@@ -88,11 +103,11 @@ void DatabaseManagementController::seedMockData() // static, see header
     };
     for (const SeedCat& seedCat : kCategorySeed) {
         const int catId = database.addCategory(seedCat.name, seedCat.color);
-        if (catId < 0) {
+        if (!check(catId >= 0, "a category")) {
             continue;
         }
         for (const SeedSub& seedSub : seedCat.subs) {
-            database.addSubcategory(catId, seedSub.name, seedSub.color);
+            check(database.addSubcategory(catId, seedSub.name, seedSub.color) >= 0, "a subcategory");
         }
     }
 
@@ -105,14 +120,14 @@ void DatabaseManagementController::seedMockData() // static, see header
         { "Urgent savings", "#f9e2af" },
     };
     for (const SeedAccCat& seedAccCat : kAccountCategorySeed) {
-        database.addAccountCategory(seedAccCat.name, seedAccCat.color);
+        check(database.addAccountCategory(seedAccCat.name, seedAccCat.color) >= 0, "an account category");
     }
 
     static const QVector<QString> kAccountTypeSeed = {
         "CCP", "Livret A", "LDDS", "PEL", "Assurance Vie", "PEA", "CTO", "Other",
     };
     for (const QString& name : kAccountTypeSeed) {
-        database.addAccountType(name);
+        check(database.addAccountType(name) >= 0, "an account type");
     }
 
     struct SeedAcc { QString name, type, category, currency, notes; };
@@ -124,10 +139,16 @@ void DatabaseManagementController::seedMockData() // static, see header
         { "Assurance Vie",     "Assurance Vie", "Investments", "EUR", "" },
         { "Trading account",  "CTO",           "Investments", "EUR", "" },
     };
+    // The sample transactions go to the first demo account. Found by its
+    // place, not by its name: QLatin1String("Checking — Bank A") read the
+    // UTF-8 bytes of the em dash as three Latin-1 characters, so the name
+    // never matched and no transaction was written (#38).
     int checkingBankAId = -1;
-    for (const SeedAcc& seedAcc : kAccountSeed) {
+    for (qsizetype i = 0; i < kAccountSeed.size(); ++i) {
+        const SeedAcc& seedAcc = kAccountSeed.at(i);
         const int accountId = database.addAccount(seedAcc.name, seedAcc.type, seedAcc.category, seedAcc.currency, seedAcc.notes);
-        if (seedAcc.name == QLatin1String("Checking — Bank A")) {
+        check(accountId >= 0, "an account");
+        if (i == 0) {
             checkingBankAId = accountId;
         }
     }
@@ -173,8 +194,9 @@ void DatabaseManagementController::seedMockData() // static, see header
             transaction.sourceTemplate    = QStringLiteral("mock-seed");
             txs.append(transaction);
         }
-        database.insertTransactions(checkingBankAId, txs);
+        check(database.insertTransactions(checkingBankAId, txs), "the sample transactions");
     }
+    return written;
 }
 
 void DatabaseManagementController::setStatus(StatusMessage::Level level, const QString& msg)

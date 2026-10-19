@@ -17,7 +17,12 @@
 //     every step), closes it, and leaves no backup copy;
 //   - the backup copy is taken before any change to the file;
 //   - the accounts rebuild keeps the AUTOINCREMENT counter;
-//   - resetAll() keeps the latest schema.
+//   - resetAll() keeps the latest schema;
+//   - step 3 adds the settings table: an old file with accounts records that
+//     the account defaults were written, a new file records nothing, and
+//     resetAll() records both (#37);
+//   - a file from v0.2.1 (schema version 2) gets only step 3: with data, its
+//     defaults count as written; emptied by a reset, it records nothing (#37).
 
 #include "db/Database.h"
 
@@ -115,6 +120,7 @@ private slots:
     void backupIsTakenBeforeAnyChange();
     void accountCounterIsKept();
     void resetKeepsTheLatestSchema();
+    void version2DatabaseIsUpgraded();
 
 private:
     // Runs SQL on `path` through its own connection, then closes it.
@@ -252,6 +258,12 @@ void DbMigrationTest::newDatabaseGetsTheLatestSchema()
     QVERIFY(columns(QStringLiteral("transactions")).contains(QStringLiteral("fingerprint")));
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index'"
                                   " AND name = 'idx_transactions_fingerprint';")), 1);
+    // Step 3: the settings table, with no record. The first run writes the
+    // defaults.
+    QVERIFY(columns(QStringLiteral("settings")).contains(QStringLiteral("value")));
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM settings;")), 0);
+    QVERIFY(!db.defaultsWritten(Database::Defaults::Categories));
+    QVERIFY(!db.defaultsWritten(Database::Defaults::Accounts));
 }
 
 void DbMigrationTest::oldDatabaseIsUpgraded()
@@ -294,6 +306,10 @@ void DbMigrationTest::oldDatabaseIsUpgraded()
     QVERIFY2(report.contains(QStringLiteral("Warning: 1 of the removed copies")), qPrintable(report));
     QVERIFY2(report.contains(QLatin1String(TransactionsTable::kReusedReferenceIssueUrl)), qPrintable(report));
     QVERIFY2(report.contains(QStringLiteral("IBAN, BIC and account numbers were removed")), qPrintable(report));
+    // Step 3: the file has accounts, so their defaults count as written; it has
+    // no category, so the default categories come on the next start.
+    QVERIFY(db.defaultsWritten(Database::Defaults::Accounts));
+    QVERIFY(!db.defaultsWritten(Database::Defaults::Categories));
 
     // The backup is the database as it was before the upgrade.
     const QStringList copies = backups();
@@ -461,6 +477,49 @@ void DbMigrationTest::resetKeepsTheLatestSchema()
     QVERIFY2(db.resetAll(), qPrintable(db.lastError()));
     QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
     QVERIFY(columns(QStringLiteral("transactions")).contains(QStringLiteral("fingerprint")));
+    // After a reset, no default data comes back (#37).
+    QVERIFY(db.defaultsWritten(Database::Defaults::Categories));
+    QVERIFY(db.defaultsWritten(Database::Defaults::Accounts));
+}
+
+void DbMigrationTest::version2DatabaseIsUpgraded()
+{
+    // Two files as v0.2.1 left them: schema version 2, that is the latest
+    // schema without the settings table. One has data, and "Reset Database"
+    // of v0.2.1 emptied the other one.
+    Database& db = Database::instance();
+    const QString used = m_dir->filePath(QStringLiteral("used-v2.db"));
+    const QString emptied = m_dir->filePath(QStringLiteral("emptied-v2.db"));
+    for (const QString& path : {used, emptied}) {
+        QVERIFY2(db.open(path), qPrintable(db.lastError()));
+        db.close();
+        execOn(path, {QStringLiteral("DROP TABLE settings;"), QStringLiteral("PRAGMA user_version = 2;")});
+    }
+    execOn(used, {
+        QStringLiteral("INSERT INTO categories (name, color) VALUES ('Groceries', '#a6e3a1');"),
+        QStringLiteral("INSERT INTO account_types (name) VALUES ('CCP');"),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    QVERIFY2(db.open(used), qPrintable(db.lastError()));
+    QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
+    QVERIFY2(db.upgradeReport().contains(QStringLiteral("from schema version 2 to %1").arg(Database::kSchemaVersion)),
+             qPrintable(db.upgradeReport()));
+    QCOMPARE(backups().size(), qsizetype(1));
+    // It has data: its defaults count as written, and its data stays.
+    QVERIFY(db.defaultsWritten(Database::Defaults::Categories));
+    QVERIFY(db.defaultsWritten(Database::Defaults::Accounts));
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM categories;")), 1);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM account_types;")), 1);
+    db.close();
+
+    // Empty: step 3 cannot tell it from a new file, so it records nothing.
+    // The defaults come one more time, at the first start after the upgrade
+    // (the changelog says it).
+    QVERIFY2(db.open(emptied), qPrintable(db.lastError()));
+    QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
+    QVERIFY(!db.defaultsWritten(Database::Defaults::Categories));
+    QVERIFY(!db.defaultsWritten(Database::Defaults::Accounts));
 }
 
 QTEST_GUILESS_MAIN(DbMigrationTest)
