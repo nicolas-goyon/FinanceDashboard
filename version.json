@@ -3,7 +3,7 @@
   "releases": [
     {
       "version": "0.2.1",
-      "date": null,
+      "date": "2026-10-19",
       "title": "Stabilization",
       "summary": "Stabilization release. A statement import is saved once and in one SQL transaction, the database has schema versions with a copy before each upgrade, and CI builds and publishes the app again: a Windows setup and portable ZIP, a Linux AppImage, .deb and archive. Also includes the Account Details pages and the documentation pass that started this version.",
       "sections": [
