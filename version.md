@@ -27,7 +27,7 @@ version as the new in-progress one. See `CI-CD.md`.
 
 ---
 
-## v0.2.1 — Stabilization
+## v0.2.1 — 2026-10-19 — Stabilization
 
 Stabilization release. A statement import is saved once and in one SQL transaction, the
 database has schema versions with a copy before each upgrade, and CI builds and publishes the
