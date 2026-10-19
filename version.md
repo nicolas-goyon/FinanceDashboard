@@ -27,6 +27,12 @@ version as the new in-progress one. See `CI-CD.md`.
 
 ---
 
+## v0.2.2 (current)
+
+_No changes logged yet — add one with `python tools/version.py add <Section> "<text>"`._
+
+---
+
 ## v0.2.1 — 2026-10-19 — Stabilization
 
 Stabilization release. A statement import is saved once and in one SQL transaction, the

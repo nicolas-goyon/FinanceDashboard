@@ -1,6 +1,13 @@
 {
-  "current": "0.2.1",
+  "current": "0.2.2",
   "releases": [
+    {
+      "version": "0.2.2",
+      "date": null,
+      "title": null,
+      "summary": "",
+      "sections": []
+    },
     {
       "version": "0.2.1",
       "date": "2026-10-19",
