@@ -1,4 +1,5 @@
 #include "AccountBalanceCheckpointsTable.h"
+#include "SqlText.h"
 #include "models/Account.h"
 
 #include <QDate>
@@ -66,9 +67,9 @@ int AccountBalanceCheckpointsTable::insert(int accountId, const QDate& date, dou
         "INSERT INTO account_balance_checkpoints (account_id, date, balance, note) VALUES (?, ?, ?, ?);"
     ));
     query.addBindValue(accountId);
-    query.addBindValue(dateToDb(date));
+    query.addBindValue(dateToDb(date));          // required: NULL for an invalid date fails
     query.addBindValue(balance);
-    query.addBindValue(note);
+    query.addBindValue(Sql::text(note));         // optional (DEFAULT ''), see SqlText.h
 
     if (!query.exec()) {
         qWarning() << "[AccountBalanceCheckpointsTable] insert error:" << query.lastError().text();

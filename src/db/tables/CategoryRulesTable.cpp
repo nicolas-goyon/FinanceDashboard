@@ -104,6 +104,35 @@ bool CategoryRulesTable::remove(int ruleId)
     return success;
 }
 
+bool CategoryRulesTable::renameCategory(const QString& oldName, const QString& newName)
+{
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("UPDATE category_rules SET category = ? WHERE category = ?;"));
+    query.addBindValue(newName);
+    query.addBindValue(oldName);
+
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[CategoryRulesTable] renameCategory error:" << query.lastError().text();
+    }
+    return success;
+}
+
+bool CategoryRulesTable::renameSubcategory(const QString& category, const QString& oldName, const QString& newName)
+{
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("UPDATE category_rules SET subcategory = ? WHERE category = ? AND subcategory = ?;"));
+    query.addBindValue(newName);
+    query.addBindValue(category);
+    query.addBindValue(oldName);
+
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[CategoryRulesTable] renameSubcategory error:" << query.lastError().text();
+    }
+    return success;
+}
+
 // ── Read ──────────────────────────────────────────────────────────────────────
 
 QVector<Data::CategoryRule> CategoryRulesTable::all() const

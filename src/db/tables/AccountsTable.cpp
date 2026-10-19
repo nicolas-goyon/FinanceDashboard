@@ -1,4 +1,5 @@
 #include "AccountsTable.h"
+#include "SqlText.h"
 #include "models/Account.h"
 
 #include <QSqlDatabase>
@@ -60,11 +61,14 @@ int AccountsTable::insert(const QString& name, const QString& type, const QStrin
         "INSERT INTO accounts (name, type, category, currency, notes)"
         " VALUES (?, ?, ?, ?, ?);"
     ));
+    // type, category and notes are optional (DEFAULT ''): a null QString is
+    // written as '' (#125). The name and the currency are required:
+    // Database::addAccount() refuses an empty one.
     query.addBindValue(name);
-    query.addBindValue(type);
-    query.addBindValue(category);
+    query.addBindValue(Sql::text(type));
+    query.addBindValue(Sql::text(category));
     query.addBindValue(currency);
-    query.addBindValue(notes);
+    query.addBindValue(Sql::text(notes));
 
     if (!query.exec()) {
         qWarning() << "[AccountsTable] insert error:" << query.lastError().text();
@@ -85,10 +89,10 @@ bool AccountsTable::update(int accountId, const QString& name, const QString& ty
         " currency = ?, notes = ? WHERE id = ?;"
     ));
     query.addBindValue(name);
-    query.addBindValue(type);
-    query.addBindValue(category);
+    query.addBindValue(Sql::text(type));
+    query.addBindValue(Sql::text(category));
     query.addBindValue(currency);
-    query.addBindValue(notes);
+    query.addBindValue(Sql::text(notes));
     query.addBindValue(accountId);
 
     const bool success = query.exec();
@@ -107,6 +111,34 @@ bool AccountsTable::remove(int accountId)
     const bool success = query.exec();
     if (!success) {
         qWarning() << "[AccountsTable] remove error:" << query.lastError().text();
+    }
+    return success;
+}
+
+bool AccountsTable::renameType(const QString& oldName, const QString& newName)
+{
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("UPDATE accounts SET type = ? WHERE type = ?;"));
+    query.addBindValue(newName);
+    query.addBindValue(oldName);
+
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[AccountsTable] renameType error:" << query.lastError().text();
+    }
+    return success;
+}
+
+bool AccountsTable::renameCategory(const QString& oldName, const QString& newName)
+{
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("UPDATE accounts SET category = ? WHERE category = ?;"));
+    query.addBindValue(newName);
+    query.addBindValue(oldName);
+
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[AccountsTable] renameCategory error:" << query.lastError().text();
     }
     return success;
 }

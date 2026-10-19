@@ -19,6 +19,7 @@
 #include <QtLogging>
 #include <algorithm>
 #include <array>
+#include <functional>
 #include <optional>
 
 namespace {
@@ -638,16 +639,47 @@ QVector<Data::Category> Database::loadCategories() const
     return cats;
 }
 
+namespace {
+// A name (of a category, a subcategory, an account, an account type or an
+// account category), the currency of an account, an account hash and its
+// source, and a checkpoint date are required. An empty one is refused before
+// any write, with a message in lastError(): a null QString would fail the
+// write, and an empty name would be written, or a rename would empty every row
+// that uses the name (#34, #125).
+bool hasText(const QString& value)
+{
+    return !value.trimmed().isEmpty();
+}
+} // namespace
+
 int Database::addCategory(const QString& name, const QString& color)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return -1; }
     return m_categoriesTable.insert(name, color);
 }
 
+// A rename reaches every row that uses the name (#34): transactions and
+// category rules keep the category and subcategory names as text, accounts
+// keep their type and category names as text. Each rename runs in one SQL
+// transaction: all the rows change, or none.
 bool Database::renameCategory(int categoryId, const QString& newName)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
-    return m_categoriesTable.rename(categoryId, newName);
+    if (!hasText(newName)) { m_lastError = QStringLiteral("The name is empty."); return false; }
+    const QVector<Data::Category> categories = loadCategories();
+    const auto category = std::find_if(categories.cbegin(), categories.cend(),
+                                       [categoryId](const Data::Category& c) { return c.id == categoryId; });
+    if (category == categories.cend()) {
+        m_lastError = QStringLiteral("No category with id %1.").arg(categoryId);
+        return false;
+    }
+    const QString oldName = category->name;
+    return inTransaction(QStringLiteral("renameCategory"), [&]() {
+        return m_categoriesTable.rename(categoryId, newName)
+            && m_transactionsTable.renameCategory(oldName, newName)
+            && m_categoryRulesTable.renameCategory(oldName, newName);
+    });
 }
 
 bool Database::setCategoryColor(int categoryId, const QString& color)
@@ -677,13 +709,35 @@ bool Database::removeCategory(int categoryId)
 int Database::addSubcategory(int categoryId, const QString& name, const QString& color)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return -1; }
     return m_subcategoriesTable.insert(categoryId, name, color);
 }
 
 bool Database::renameSubcategory(int subcategoryId, const QString& newName)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
-    return m_subcategoriesTable.rename(subcategoryId, newName);
+    if (!hasText(newName)) { m_lastError = QStringLiteral("The name is empty."); return false; }
+    QString categoryName;
+    QString oldName;
+    bool found = false;
+    for (const Data::Category& category : loadCategories()) {
+        for (const Data::Subcategory& subcategory : category.subcategories) {
+            if (subcategory.id == subcategoryId) {
+                categoryName = category.name;
+                oldName = subcategory.name;
+                found = true;
+            }
+        }
+    }
+    if (!found) {
+        m_lastError = QStringLiteral("No subcategory with id %1.").arg(subcategoryId);
+        return false;
+    }
+    return inTransaction(QStringLiteral("renameSubcategory"), [&]() {
+        return m_subcategoriesTable.rename(subcategoryId, newName)
+            && m_transactionsTable.renameSubcategory(categoryName, oldName, newName)
+            && m_categoryRulesTable.renameSubcategory(categoryName, oldName, newName);
+    });
 }
 
 bool Database::setSubcategoryColor(int subcategoryId, const QString& color)
@@ -713,6 +767,8 @@ int Database::addAccount(const QString& name, const QString& type, const QString
                           const QString& currency, const QString& notes)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return -1; }
+    if (!hasText(currency)) { m_lastError = QStringLiteral("The currency is empty."); return -1; }
     return m_accountsTable.insert(name, type, category, currency, notes);
 }
 
@@ -720,6 +776,8 @@ bool Database::updateAccount(int accountId, const QString& name, const QString& 
                               const QString& currency, const QString& notes)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return false; }
+    if (!hasText(currency)) { m_lastError = QStringLiteral("The currency is empty."); return false; }
     return m_accountsTable.update(accountId, name, type, category, currency, notes);
 }
 
@@ -748,6 +806,8 @@ bool Database::removeAccount(int accountId)
 int Database::addAccountHash(int accountId, const QString& hash, const QString& source)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    if (!hasText(hash)) { m_lastError = QStringLiteral("The account hash is empty."); return -1; }
+    if (!hasText(source)) { m_lastError = QStringLiteral("The source of the account hash is empty."); return -1; }
     return m_accountHashesTable.insert(accountId, hash, source);
 }
 
@@ -773,13 +833,26 @@ QVector<Data::AccountCategory> Database::loadAccountCategories() const
 int Database::addAccountCategory(const QString& name, const QString& color)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return -1; }
     return m_accountCategoriesTable.insert(name, color);
 }
 
 bool Database::renameAccountCategory(int accountCategoryId, const QString& newName)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
-    return m_accountCategoriesTable.rename(accountCategoryId, newName);
+    if (!hasText(newName)) { m_lastError = QStringLiteral("The name is empty."); return false; }
+    const QVector<Data::AccountCategory> categories = loadAccountCategories();
+    const auto category = std::find_if(categories.cbegin(), categories.cend(),
+        [accountCategoryId](const Data::AccountCategory& c) { return c.id == accountCategoryId; });
+    if (category == categories.cend()) {
+        m_lastError = QStringLiteral("No account category with id %1.").arg(accountCategoryId);
+        return false;
+    }
+    const QString oldName = category->name;
+    return inTransaction(QStringLiteral("renameAccountCategory"), [&]() {
+        return m_accountCategoriesTable.rename(accountCategoryId, newName)
+            && m_accountsTable.renameCategory(oldName, newName);
+    });
 }
 
 bool Database::setAccountCategoryColor(int accountCategoryId, const QString& color)
@@ -804,13 +877,48 @@ QVector<Data::AccountType> Database::loadAccountTypes() const
 int Database::addAccountType(const QString& name)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return -1; }
     return m_accountTypesTable.insert(name);
 }
 
 bool Database::renameAccountType(int typeId, const QString& newName)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
-    return m_accountTypesTable.rename(typeId, newName);
+    if (!hasText(newName)) { m_lastError = QStringLiteral("The name is empty."); return false; }
+    const QVector<Data::AccountType> types = loadAccountTypes();
+    const auto type = std::find_if(types.cbegin(), types.cend(),
+                                   [typeId](const Data::AccountType& t) { return t.id == typeId; });
+    if (type == types.cend()) {
+        m_lastError = QStringLiteral("No account type with id %1.").arg(typeId);
+        return false;
+    }
+    const QString oldName = type->name;
+    return inTransaction(QStringLiteral("renameAccountType"), [&]() {
+        return m_accountTypesTable.rename(typeId, newName)
+            && m_accountsTable.renameType(oldName, newName);
+    });
+}
+
+bool Database::inTransaction(const QString& what, const std::function<bool()>& steps)
+{
+    if (!m_db.transaction()) {
+        m_lastError = QStringLiteral("%1: cannot start a transaction: %2").arg(what, m_db.lastError().text());
+        qWarning() << "[Database]" << m_lastError;
+        return false;
+    }
+    if (!steps()) {
+        m_db.rollback();
+        m_lastError = QStringLiteral("%1 failed: rolled back, nothing changed.").arg(what);
+        qWarning() << "[Database]" << m_lastError;
+        return false;
+    }
+    if (!m_db.commit()) {
+        m_lastError = QStringLiteral("%1: cannot commit: %2").arg(what, m_db.lastError().text());
+        m_db.rollback();
+        qWarning() << "[Database]" << m_lastError;
+        return false;
+    }
+    return true;
 }
 
 bool Database::removeAccountType(int typeId)
@@ -961,6 +1069,7 @@ QVector<Data::AccountBalanceCheckpoint> Database::loadBalanceCheckpoints(int acc
 int Database::addBalanceCheckpoint(int accountId, const QDate& date, double balance, const QString& note)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
+    if (!date.isValid()) { m_lastError = QStringLiteral("The date of the checkpoint is not valid."); return -1; }
     return m_balanceCheckpointsTable.insert(accountId, date, balance, note);
 }
 

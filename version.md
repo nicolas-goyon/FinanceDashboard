@@ -70,6 +70,16 @@ builds, source archives). Then CI opens a pull request that merges the release b
   another file" no longer shows the report of the earlier import (#39).
 - Import: "Auto-filled N of M" counts only the rows whose category the predictor filled, not
   the categories picked by hand. A subcategory picked by hand keeps the row in the count (#53).
+- A rename of a category, a subcategory, an account type or an account category now reaches the
+  transactions, the category rules and the accounts that use the name, in one SQL transaction.
+  Before, they kept the old name and lost their colour, and the predictor kept the old name. A
+  rename to a name that exists (in any case) is refused with a message, and the Account Types &
+  Categories page now shows the status messages (#34).
+- A null text from C++ in an optional column (the type, the category and the notes of an
+  account, the note of a balance checkpoint) is now written as an empty string. Before, it
+  failed the write with "NOT NULL constraint failed". The database now refuses an empty name,
+  currency, account hash or hash source, and an invalid checkpoint date, before any write, with
+  a message (#125).
 
 ---
 

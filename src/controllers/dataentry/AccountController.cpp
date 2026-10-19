@@ -293,16 +293,33 @@ void AccountController::renameAccountCategory(int index, const QString& newName)
         return;
     }
     const QString trimmed = newName.trimmed();
-    if (trimmed.isEmpty() || trimmed == m_accountCategories.at(index).name) {
+    const QString oldName = m_accountCategories.at(index).name;
+    if (trimmed.isEmpty() || trimmed == oldName) {
         return;
     }
+    // Same check as addAccountCategory() (#34). A change of case only is a rename.
+    for (qsizetype i = 0; i < m_accountCategories.size(); ++i) {
+        if (i != index && m_accountCategories.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  An account category with this name already exists"));
+            return;
+        }
+    }
+    // The rename also reaches the accounts in this category.
     if (!Database::instance().renameAccountCategory(m_accountCategories.at(index).id, trimmed)) {
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the account category"));
         return;
     }
     // index bounds-checked above; QList's at() is const-only, so mutating
     // through operator[] is genuinely required here.
     m_accountCategories[index].name = trimmed; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (Data::Account& account : m_accounts) {
+        if (account.category == oldName) {
+            account.category = trimmed;
+        }
+    }
     emit accountCategoriesChanged();
+    emit accountsChanged();
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account category renamed"));
 }
 
 void AccountController::setAccountCategoryColor(int index, const QString& color)
@@ -364,16 +381,33 @@ void AccountController::renameAccountType(int index, const QString& newName)
         return;
     }
     const QString trimmed = newName.trimmed();
-    if (trimmed.isEmpty() || trimmed == m_accountTypes.at(index).name) {
+    const QString oldName = m_accountTypes.at(index).name;
+    if (trimmed.isEmpty() || trimmed == oldName) {
         return;
     }
+    // Same check as addAccountType() (#34). A change of case only is a rename.
+    for (qsizetype i = 0; i < m_accountTypes.size(); ++i) {
+        if (i != index && m_accountTypes.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  An account type with this name already exists"));
+            return;
+        }
+    }
+    // The rename also reaches the accounts of this type.
     if (!Database::instance().renameAccountType(m_accountTypes.at(index).id, trimmed)) {
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the account type"));
         return;
     }
     // index bounds-checked above; QList's at() is const-only, so mutating
     // through operator[] is genuinely required here.
     m_accountTypes[index].name = trimmed; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (Data::Account& account : m_accounts) {
+        if (account.type == oldName) {
+            account.type = trimmed;
+        }
+    }
     emit accountTypesChanged();
+    emit accountsChanged();
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account type renamed"));
 }
 
 void AccountController::removeAccountType(int index)

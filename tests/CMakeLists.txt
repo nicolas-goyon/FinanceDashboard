@@ -87,6 +87,35 @@ set_tests_properties(db_migration_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# db_write_test
+#   The writes of the table classes: a null optional text, and the empty required
+#   values that the Database refuses (#125); renames that reach every row that
+#   uses the name, with the duplicate checks of the controllers (#34). It
+#   compiles the core sources plus the two controllers.
+
+qt_add_executable(db_write_test
+    db_write_test.cpp
+    ${FD_CORE_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/AccountController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/AccountController.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/CategoryController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/CategoryController.cpp
+)
+target_include_directories(db_write_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry
+)
+# Qt6::Qml for the QML_ELEMENT macros in the controller headers; Qt6::Gui for
+# QColor in CategoryController.
+target_link_libraries(db_write_test PRIVATE Qt6::Core Qt6::Gui Qt6::Sql Qt6::Qml Qt6::Test)
+set_target_properties(db_write_test PROPERTIES WIN32_EXECUTABLE OFF)
+
+add_test(NAME db_write_test COMMAND db_write_test)
+set_tests_properties(db_write_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Every test target, so that CI and a local build need one target name:
 #   cmake --build build --target fd_tests
-add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test)
+add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test)

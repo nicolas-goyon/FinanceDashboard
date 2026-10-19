@@ -372,6 +372,35 @@ bool TransactionsTable::updateById(const Data::Transaction& tx)
     return success;
 }
 
+bool TransactionsTable::renameCategory(const QString& oldName, const QString& newName)
+{
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("UPDATE transactions SET category = ? WHERE category = ?;"));
+    query.addBindValue(newName);
+    query.addBindValue(oldName);
+
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[TransactionsTable] renameCategory error:" << query.lastError().text();
+    }
+    return success;
+}
+
+bool TransactionsTable::renameSubcategory(const QString& category, const QString& oldName, const QString& newName)
+{
+    QSqlQuery query(db());
+    query.prepare(QStringLiteral("UPDATE transactions SET subcategory = ? WHERE category = ? AND subcategory = ?;"));
+    query.addBindValue(newName);
+    query.addBindValue(category);
+    query.addBindValue(oldName);
+
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[TransactionsTable] renameSubcategory error:" << query.lastError().text();
+    }
+    return success;
+}
+
 std::optional<Data::Transaction> TransactionsTable::latestOnOrBefore(int accountId, const QDate& date) const
 {
     QSqlQuery query(db());

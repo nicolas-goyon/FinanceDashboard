@@ -21,6 +21,7 @@
 #include <QSet>
 #include <QStringList>
 
+#include <functional>
 #include <optional>
 #include <QString>
 #include <QDate>
@@ -49,6 +50,10 @@ public:
     // Closes the connection; open() can then open another file (tests).
     void    close();
     [[nodiscard]] bool    isOpen() const;
+    // A message for the last failure, when the method sets one. The write
+    // methods refuse an empty name, currency, account hash or hash source, and
+    // an invalid checkpoint date, before any write, with a message here (#34,
+    // #125).
     [[nodiscard]] QString lastError() const;
 
     // Why the last open() failed, for the hint of the fatal start-up step
@@ -263,6 +268,9 @@ private:
     bool migrateTo1(UpgradeStats& stats); // accounts: drop iban / bic / number
     bool migrateTo2(UpgradeStats& stats); // transactions: fingerprint + UNIQUE index
     [[nodiscard]] QStringList columnsOf(const QString& table) const;
+    // Runs `steps` in one SQL transaction: commit when they return true, roll
+    // back otherwise. `what` names the operation in m_lastError and the log.
+    bool inTransaction(const QString& what, const std::function<bool()>& steps);
 
     QSqlDatabase            m_db;
     QString                 m_lastError;

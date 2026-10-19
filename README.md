@@ -100,9 +100,11 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-`ctest` runs `predictor_selftest` (category prediction) and `import_save_test` (the statement
-import, saved to a temporary database). `cmake --build build --target fd_tests` builds only the
-tests.
+`ctest` runs `predictor_selftest` (category prediction), `import_save_test` (the statement
+import, saved to a temporary database), `db_migration_test` (the schema upgrades) and
+`db_write_test` (the writes of the table classes and the renames).
+`cmake --build build --target fd_tests` builds only the tests. The release tools have their own
+tests: `python -m unittest discover -s tools -p "test_*.py"`.
 
 ---
 

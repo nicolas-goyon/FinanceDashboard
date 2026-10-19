@@ -30,9 +30,18 @@ page.
 
 Writes that belong together go in one SQL transaction, in one `Database` method. Example:
 `Database::saveImport()` writes the rows of a statement, the account link and the balance
-checkpoints; if one write fails, nothing is written. Bind the text of a `TEXT NOT NULL` column
-through `Sql::text()` (`src/db/tables/SqlText.h`), because Qt binds a null `QString` as SQL
-`NULL`.
+checkpoints; if one write fails, nothing is written. Qt binds a null `QString` as SQL `NULL`, and
+the `DEFAULT` of a column does not apply to an explicit `NULL`. So bind the text of an optional
+column (`TEXT NOT NULL DEFAULT ''`) through `Sql::text()` (`src/db/tables/SqlText.h`), which
+writes `''`. A required value (a name, a currency, an account hash, a date) is not changed: the
+`Database` method refuses an empty one before any write, with a message in `lastError()`
+(`tests/db_write_test.cpp`).
+
+Transactions and category rules keep the category and subcategory names as text, and accounts
+keep their type and category names as text, not ids. So a rename changes those rows too, in the
+same SQL transaction (`Database::renameCategory()`, `renameSubcategory()`, `renameAccountType()`,
+`renameAccountCategory()`). A subcategory rename changes only the rows of its own category. The
+controllers refuse a rename to a name that exists, in any case, as `add` does.
 
 The schema has a version (`PRAGMA user_version`, `Database::kSchemaVersion`). `createTable()`
 is the base schema and does not change; each change after it is one migration step in
@@ -77,7 +86,7 @@ transaction.
 | Automated documentation generation | [`docs/automated-docs.md`](docs/automated-docs.md) |
 | Auto-generated file listing (regenerate, don't hand-edit) | [`docs/generated/source-tree.md`](docs/generated/source-tree.md) |
 | Build, test, package and release pipeline | [`CI-CD.md`](CI-CD.md) |
-| Tests (`ctest`): category predictor, statement-import save path | `tests/CMakeLists.txt`; the app and the tests share `FD_CORE_SOURCES` in `CMakeLists.txt` |
+| Tests (`ctest`): category predictor, statement-import save path, schema upgrades, database writes | `tests/CMakeLists.txt` (one comment for each test); the app and the tests share `FD_CORE_SOURCES` in `CMakeLists.txt` |
 | Version number & changelog (single source of truth) | [`CI-CD.md`](CI-CD.md) § Working with the changelog |
 
 ## Other top-level docs

@@ -240,6 +240,14 @@ void CategoryController::renameCategory(int index, const QString& newName)
     if (trimmed.isEmpty() || trimmed == m_categories.at(index).name) {
         return;
     }
+    // Same check as addCategory() (#34). A change of case only is a rename.
+    for (qsizetype i = 0; i < m_categories.size(); ++i) {
+        if (i != index && m_categories.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  A category with this name already exists"));
+            return;
+        }
+    }
+    // The rename also reaches the transactions and the rules that use the name.
     if (!Database::instance().renameCategory(m_categories.at(index).id, trimmed)) {
         setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the category"));
         return;
@@ -331,6 +339,14 @@ void CategoryController::renameSubcategory(int categoryIndex, int subIndex, cons
     if (trimmed.isEmpty() || trimmed == cat.subcategories.at(subIndex).name) {
         return;
     }
+    // Same check as addSubcategory(), in this category (#34).
+    for (qsizetype i = 0; i < cat.subcategories.size(); ++i) {
+        if (i != subIndex && cat.subcategories.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  A subcategory with this name already exists"));
+            return;
+        }
+    }
+    // The rename also reaches the transactions and the rules of this category.
     if (!Database::instance().renameSubcategory(cat.subcategories.at(subIndex).id, trimmed)) {
         setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the subcategory"));
         return;
