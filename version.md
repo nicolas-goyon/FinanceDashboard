@@ -27,10 +27,18 @@ version as the new in-progress one. See `CI-CD.md`.
 
 ---
 
-## v0.2.1 (current)
+## v0.2.2 (current)
 
-Started as a documentation/project-hygiene pass; picked up an Account Details feature-and-fix
-pass in the same in-progress version.
+_No changes logged yet — add one with `python tools/version.py add <Section> "<text>"`._
+
+---
+
+## v0.2.1 — 2026-10-19 — Stabilization
+
+Stabilization release. A statement import is saved once and in one SQL transaction, the
+database has schema versions with a copy before each upgrade, and CI builds and publishes the
+app again: a Windows setup and portable ZIP, a Linux AppImage, .deb and archive. Also includes
+the Account Details pages and the documentation pass that started this version.
 
 ### Added
 - `TODO.md` — standing backlog of known limitations, bugs, and cleanups found during a full
@@ -38,25 +46,21 @@ pass in the same in-progress version.
   TODOs" section.
 - `version.md` (this file) — top-level changelog, replacing the ad-hoc "Feature pass — ..."
   narrative headers that used to accumulate at the top of `ARCHITECTURE.MD`.
-- `docs/` folder — `ARCHITECTURE.MD` split into focused per-topic files (see `ARCHITECTURE.MD`
-  for the index). Includes a new `docs/automated-docs.md` describing the doc-generation script.
-- `tools/generate_docs.py` — generates `docs/generated/source-tree.md` (a file/module listing
-  with descriptions pulled from `@brief`-style header comments) so that listing no longer has
-  to be hand-maintained. See `docs/automated-docs.md`.
+- `tools/generate_docs.py` — writes a file and module listing, with the descriptions of the
+  `@brief`-style header comments, to `docs/generated/source-tree.md`. CI does not run it.
 - **Account Details — balance chart time-range + Y-axis controls.** Time range presets (`7D` /
   `1M` / `6M` / `1Y` / `From start` / `Custom`, rolling from the account's own last transaction
   date, `Custom` via plain `yyyy-MM-dd` fields) plus a Y-axis scale toggle: "Auto" (existing
-  tight-fit behavior) vs. "From 0" (pins the axis minimum to 0). See `docs/account-history.md`.
+  tight-fit behavior) vs. "From 0" (pins the axis minimum to 0).
 - **Account Details — "Income by category" / "Expenses by category" pies.** Two new 2-level
   nested pie charts — category ring (inner) + subcategory ring (outer), each ring its own
   `PieSeries` in its own `GraphsView` stacked via `anchors.fill` (not Qt Graphs' native
   `PieSlice` sub-slice feature — turned out to render the opposite ring order needed; and not
   two `PieSeries` sharing one `GraphsView` either — that made `onClicked` stop firing on both
-  rings). Both rings' slices show labels and are independently clickable (shows "Category —"/
-  "Subcategory —" + amount + percentage). Income/expense is derived per-transaction from
-  credit/debit, not a tag on `Category`. Backed by the new
-  `AccountController::accountCategoryBreakdown(accountIndex)`. See `docs/account-history.md`
-  and `docs/charting-gotchas.md`.
+  rings). Both rings' slices show labels. A click on a slice is meant to show "Category —" /
+  "Subcategory —" + amount + percentage, but the slices do not get clicks yet (#57).
+  Income/expense is derived per-transaction from credit/debit, not a tag on `Category`. Backed
+  by the new `AccountController::accountCategoryBreakdown(accountIndex)`.
 - **Category prediction on statement import** — imported rows now arrive with a suggested
   category/subcategory and a real confidence score, learned from the user's own already-
   categorized transactions. No trained model and nothing persisted but the user's rules: a
@@ -66,7 +70,7 @@ pass in the same in-progress version.
   0.67 (amber), twice 0.80 (green) — and drops back automatically when the user recategorizes.
   New `src/predict/LabelNormalizer.{h,cpp}` (merchant-key normalization — the step most of the
   accuracy actually comes from) and `src/predict/CategoryPredictor.{h,cpp}`. Fulfils
-  `PROJECT.md` § Category System — Prediction. See `docs/category-prediction.md`.
+  `PROJECT.md` § Category System — Prediction.
 - **`category_rules` table + `Data::CategoryRule`** — user-authored "always categorize labels
   like X as Y" rules, the top rung of the cascade and the fastest-learning path in the system
   (one click, permanent). `src/db/tables/CategoryRulesTable.{h,cpp}` plus
@@ -86,10 +90,9 @@ pass in the same in-progress version.
 - **`TransactionsTable::allCategorized()` / `Database::allCategorizedTransactions()`** — every
   categorized transaction across every account, oldest first; the predictor's training set.
   Deliberately ignores account boundaries.
-- **`tools/predictor_selftest.cpp`** — standalone sanity harness for `src/predict/` (build
-  command in its header comment), covering normalization, each cascade rung, sign gating,
-  recurrence, subcategory ambiguity and the evaluator. Not part of the CMake build — it has its
-  own `main()`; see `TODO.md`'s "no tests" item for the Qt Test suite it stands in for.
+- **`tools/predictor_selftest.cpp`** — sanity tests for `src/predict/`, covering normalization,
+  each cascade rung, sign gating, recurrence, subcategory ambiguity and the evaluator. It runs
+  with the other tests (`tests/CMakeLists.txt`, below).
 - Full CI/CD pipeline on GitHub Actions (`.github/workflows/ci.yml`, documented in `CI-CD.md`).
   Every pull request, and every push to `main`, `develop`, `release/**` and `hotfix/**`, builds
   and packages the app on Windows and Linux and runs the tests and linters as independent,
@@ -117,15 +120,14 @@ pass in the same in-progress version.
   AppImage and `.deb` build scripts) and `LICENSE` (MIT), which doubles as the setup's licence
   page. The QML module builds into `<build>/qml/FinanceDashboard/` (`QT_QML_OUTPUT_DIRECTORY`),
   so it no longer takes the path of the Linux executable, which made the Linux link fail.
-- `tests/CMakeLists.txt` — `tools/predictor_selftest.cpp` is now a CTest target (`cmake
-  -DFD_BUILD_TESTS=ON`, then `ctest`) instead of a hand-run binary, and CI runs it on every
-  push. Partially clears `TODO.md`'s "no tests" item. `tests/import_save_test.cpp` (Qt Test)
-  runs the statement-import save path end to end on a temporary database: rows without a
-  category, subcategory or date, the reconciliation adjustment row, a category-only rule, a
-  failed save and its retry. The app and the tests compile the same core sources
-  (`FD_CORE_SOURCES`), and `cmake --build build --target fd_tests` builds every test.
-  `tests/db_migration_test.cpp` (Qt Test) opens databases built the way older versions left
-  them and checks each migration step.
+- `tests/CMakeLists.txt` — CTest targets (`cmake -DFD_BUILD_TESTS=ON`, then `ctest`) that CI
+  runs on every push: `predictor_selftest` (above), and the two Qt Test suites below. Partially
+  clears `TODO.md`'s "no tests" item. `tests/import_save_test.cpp` (Qt Test) runs the
+  statement-import save path end to end on a temporary database: rows without a category,
+  subcategory or date, the reconciliation adjustment row, a category-only rule, a failed save
+  and its retry. The app and the tests compile the same core sources (`FD_CORE_SOURCES`), and
+  `cmake --build build --target fd_tests` builds every test. `tests/db_migration_test.cpp` (Qt
+  Test) opens databases built the way older versions left them and checks each migration step.
 - **Docker build — build the app on any machine with only Docker installed.** `compose.yaml` +
   `.env` (options documented in `.env.example`: `TARGET` = `windows`/`linux`, `LINK_MODE` =
   `shared`/`static`, `BUILD_TYPE`, `QT_VERSION`, `LLVM_MINGW_VERSION`, job counts) +
@@ -157,17 +159,18 @@ pass in the same in-progress version.
   `configure.log` / `build.log` / `deploy.log` from inside the container (`logs/` mounted at
   `/work/logs`, `RUN_LOG_DIR`). Logged output is decoded as UTF-8 and empty stderr lines no
   longer show up as "System.Management.Automation.RemoteException" in Windows PowerShell.
-- **Launcher.** Packaged builds now start through a launcher next to `app/`:
+- **Launcher.** The packages of the Docker build start through a launcher next to `app/`:
   `launcher/windows/main.cpp` (Win32, no Qt, statically linked — CMake target
   `FinanceDashboardLauncher`) and `launcher/linux/FinanceDashboard.sh`. It checks
   `app/requirements.txt` (generated by `deploy.py`: every packaged file, min Windows build,
   binaries to `ldd` on Linux), shows every requirement as OK/FAIL if something's wrong, and
-  reports loader errors (missing DLL) the app itself can't.
+  reports loader errors (missing DLL) the app itself can't. The packages that CI builds do not
+  have it yet (#93).
 - **Start-up stage.** `src/startup/StartupChecks.h/.cpp`, run by `main.cpp` on every launch:
   requirement checks (none yet — placeholder for future ones) then initialization (data folder
-  and database open, moved out of `main.cpp`, still non-fatal as before). A failed fatal step
-  loads the new `qml/StartupErrorWindow.qml` (every step as met / not met + fix hint) instead
-  of `Main.qml`.
+  and database open, moved out of `main.cpp`). A failed fatal step (a database that does not
+  open, see Fixed) loads the new `qml/StartupErrorWindow.qml` (every step as met / not met +
+  fix hint) instead of `Main.qml`.
 - `CONTRIBUTING.md`, a pull-request template and issue forms (bug, feature, chore): the gitflow
   branch model (`main`, `develop`, `feature/*`, `bugfix/*`, `release/*`, `hotfix/*`), stacked
   pull requests (each one based on the one before it, merged from the bottom up), Conventional
@@ -186,7 +189,6 @@ pass in the same in-progress version.
   transaction fingerprints. `resetAll()` runs the steps again on the empty tables.
 
 ### Changed
-- **Removed** all `docs` for pruning and reduce overhead.
 - `README.md` rewritten to be a short, professional front door (what the app is, prerequisites,
   build/run steps).
 - **Account Details — transaction history table is now horizontally scrollable** instead of
@@ -195,14 +197,14 @@ pass in the same in-progress version.
   horizontal scrollbar when the card is narrower than the table.
 - **Account Details — all five `GraphsView`s (balance chart + both pies' inner/outer rings) use
   an explicit, higher-contrast `GraphsTheme`** instead of `ColorScheme.Dark` defaults, which
-  read as too washed-out against this app's near-black cards — same Catppuccin Mocha tokens
-  already documented in `docs/styling.md`.
+  read as too washed-out against this app's near-black cards — the same Catppuccin Mocha colors
+  as the rest of the app.
 - **`HoverPoint.qml`'s hover hit-box enlarged (26×26 → 34×34), and its tooltip now flips
   below/clamps horizontally instead of always centering above the point** — the small hit-box
   made hovering hard to land, and always-above-centered positioning cropped the tooltip for any
   point near the chart's top edge or a side. Both are shared-component fixes, so they apply to
   every page's line-chart hover (Account Details, Savings, Cash Flow, Investments, Overview,
-  Projects). See `docs/charting-gotchas.md`.
+  Projects).
 - **Confidence badge bucketing/formatting moved from QML to C++** — `Fmt::confidenceVariant()`
   / `Fmt::confidenceText()` (`src/utils/Formatter.h`) replace `ImportSnapshotPage.qml`'s
   page-level `confidenceVariant()`/`confidenceText()` JS helpers; rows now carry
