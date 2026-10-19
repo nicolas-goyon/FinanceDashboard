@@ -19,18 +19,27 @@ one file. Qt travels inside every package — nothing else to install.
 
 | Platform | File | What you do |
 |---|---|---|
-| Windows | `FinanceDashboard-<version>-windows-x64.msi` | Double-click. Start-menu shortcut and uninstaller included. |
+| Windows | `FinanceDashboard-<version>-windows-x64.exe` | Setup. Double-click, then choose "for me only" or "for all users". Start-menu shortcut and uninstaller included. |
 | Windows (portable) | `…-windows-x64.zip` | Unzip, run `FinanceDashboard.exe`. |
 | Linux | `FinanceDashboard-<version>-linux-x86_64.AppImage` | `chmod +x`, run. |
 | Linux (Debian/Ubuntu) | `finance-dashboard_<version>_amd64.deb` | `sudo apt install ./…deb` |
 | Linux (portable) | `…-linux-x86_64.tar.gz` | Extract, run `bin/FinanceDashboard`. |
 
-Releases are cut automatically from `main` — see `CI-CD.md`. Linux builds need glibc 2.39+
-(Ubuntu 24.04+, Debian 13+, Fedora 40+); on anything older, build from source below.
+The Windows setup installs "for me only" in `%LOCALAPPDATA%\Programs\FinanceDashboard` (no
+administrator rights) or "for all users" in `C:\Program Files\FinanceDashboard` (administrator
+rights). To update, run the setup of the new version. It keeps the install mode, the shortcuts
+and your data.
+
+A release is published when a `release/<x.y.z>` branch is merged into `main` — see `CI-CD.md`.
+Linux builds need glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+); on anything older, build
+from source below.
 
 Your data lives in one local SQLite file and never leaves the machine:
 `%APPDATA%\DataAnalysis\FinanceDashboard\` on Windows,
-`~/.local/share/DataAnalysis/FinanceDashboard/` on Linux.
+`~/.local/share/DataAnalysis/FinanceDashboard/` on Linux. When a new version changes the
+database format, the app first saves a copy next to it (`finance_dashboard.backup-<date>.db`) and
+tells you. If the upgrade fails, the app does not start, tells you why, and leaves the file as it
+was.
 
 ---
 
@@ -39,7 +48,7 @@ Your data lives in one local SQLite file and never leaves the machine:
 | Tool | Version |
 |---|---|
 | Qt | 6.8+ (developed against **6.11**) — include the **Qt Graphs** and **Qt Quick** modules |
-| CMake | 3.21+ (3.30+ only if you want to build the Windows `.msi` yourself) |
+| CMake | 3.21+ (3.27+ and [Inno Setup](https://jrsoftware.org/isinfo.php) 6+ only if you want to build the Windows setup yourself) |
 | C++ compiler | MSVC 2022 (recommended on Windows) or MinGW 13+ |
 
 Qt Charts and Qt Widgets are not required.
@@ -79,8 +88,9 @@ cmake --install build --config Release --prefix stage
 ```
 
 That `stage/` directory is exactly what the installers and the AppImage are built from. The
-version number comes from `version.json`, not from `CMakeLists.txt` — bump it with
-`python tools/version.py bump`.
+version number comes from `version.json`, not from `CMakeLists.txt`. The release flow sets it
+(see `CI-CD.md`); to make the in-progress version a minor or major one, use
+`python tools/version.py bump minor` (or `major`).
 
 ### Tests
 
@@ -89,6 +99,10 @@ cmake -B build -DFD_BUILD_TESTS=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 ```
+
+`ctest` runs `predictor_selftest` (category prediction) and `import_save_test` (the statement
+import, saved to a temporary database). `cmake --build build --target fd_tests` builds only the
+tests.
 
 ---
 
@@ -140,6 +154,8 @@ FinanceDashboard/
 
 - **`ARCHITECTURE.MD`** — start here for anything design-related.
 - **`CI-CD.md`** — the build/test/package/release pipeline, and how to change it.
+- **`CONTRIBUTING.md`** — gitflow branches, commit messages, labels, and what a pull request
+  needs before it is merged.
 - **`PROJECT.md`** — product spec: target pages, charts, features.
 - **`TODO.md`** — known limitations, bugs, and planned work.
 - **`version.md`** — changelog. Generated from `version.json`; edit that, or use

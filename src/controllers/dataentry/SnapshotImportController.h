@@ -1,6 +1,7 @@
 #ifndef FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_SNAPSHOTIMPORTCONTROLLER_H
 #define FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_SNAPSHOTIMPORTCONTROLLER_H
 
+#include "models/Account.h"
 #include "models/ImportedStatement.h"
 #include "models/ImportLog.h"
 #include "models/Transaction.h"
@@ -26,11 +27,11 @@
 // the log, then Save.
 //
 // Persistence is REAL as of § Account Management (ARCHITECTURE.MD):
-// save() writes the included rows to the `transactions` table
-// (Database::insertTransactions()) and auto-links the statement's account
-// hash to the chosen account if it isn't already stored there
-// (Database::accountHasHash()/addAccountHash()) — see save()'s doc comment
-// below for the exact contract with the QML side (accounts now come from
+// save() writes the included rows to the `transactions` table, auto-links
+// the statement's account hash to the chosen account if it isn't already
+// stored there, and adds the statement's balances as checkpoints — all in one
+// SQL transaction (Database::saveImport()). See save()'s doc comment below for
+// the exact contract with the QML side (accounts now come from
 // AccountController, not this class).
 
 class SnapshotImportController : public QObject
@@ -168,12 +169,14 @@ public:
 
     // Persists every included transaction row to the `transactions` table
     // for `accountId` (a real AccountController account id — QML passes
-    // AccountController.accounts[selectedIndex].id) via
-    // Database::insertTransactions(). Also auto-links this statement's
-    // account hash to that account (Database::addAccountHash(), source
-    // "auto") if it isn't stored there yet, so future imports of the same
-    // account auto-match. accountId < 0 (nothing selected) fails without
-    // writing anything. accountLabel is only used for the status message.
+    // AccountController.accounts[selectedIndex].id). Also auto-links this
+    // statement's account hash to that account (source "auto") if it isn't
+    // stored there yet, so future imports of the same account auto-match,
+    // and adds the statement's start and end balances as checkpoints. One
+    // SQL transaction (Database::saveImport()): if any write fails, nothing
+    // is saved and a retry stores each row once. accountId < 0 (nothing
+    // selected) fails without writing anything. accountLabel is only used
+    // for the status message.
     // The QML side must call AccountController.reload() afterward so the
     // singleton's cached accounts/hashes pick up this write (see
     // AccountController::reload() doc comment).
@@ -230,13 +233,13 @@ private:
     // singleton coupling with CategoryController" reasoning as everywhere
     // else in this class.
     static void ensureCategoryExists(const QString& name);
-    // Auto-remembers a statement-declared balance ("remember the start and
-    // end amount from the CSV" — product request) as an
-    // AccountBalanceCheckpoint, unless the account already has one dated
-    // exactly `date` (never overwrites an existing checkpoint — including
-    // one this same helper added on a prior import). No-op if `date` is
-    // invalid. See ARCHITECTURE.MD § Statement Import — Import Report.
-    static void rememberStatementBalance(int accountId, const QDate& date, double balance, const QString& note);
+    // The statement-declared balances ("remember the start and end amount
+    // from the CSV" — product request) that save() adds as
+    // AccountBalanceCheckpoints: the start and the end, except a date that is
+    // invalid or that the account already has a checkpoint for (an existing
+    // checkpoint is never overwritten — including one a prior import added).
+    // See ARCHITECTURE.MD § Statement Import — Import Report.
+    [[nodiscard]] QVector<Data::AccountBalanceCheckpoint> statementCheckpointsToAdd(int accountId) const;
     // Builds m_lastImportReport from the rows actually written by save()
     // (not from m_statement, which the user could still be editing by the
     // time the report is viewed) plus the reconciliation snapshot taken

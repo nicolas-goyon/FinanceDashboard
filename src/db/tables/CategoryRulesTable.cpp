@@ -1,4 +1,5 @@
 #include "CategoryRulesTable.h"
+#include "SqlText.h"
 #include "models/CategoryRule.h"
 
 #include <QSqlDatabase>
@@ -58,9 +59,9 @@ int CategoryRulesTable::insert(const Data::CategoryRule& rule)
         "INSERT INTO category_rules (pattern, category, subcategory, priority)"
         " VALUES (?, ?, ?, ?);"
     ));
-    query.addBindValue(rule.pattern);
-    query.addBindValue(rule.category);
-    query.addBindValue(rule.subcategory);
+    query.addBindValue(Sql::text(rule.pattern));
+    query.addBindValue(Sql::text(rule.category));
+    query.addBindValue(Sql::text(rule.subcategory));
     query.addBindValue(rule.priority);
 
     if (!query.exec()) {
@@ -79,8 +80,8 @@ bool CategoryRulesTable::updateTarget(int ruleId, const QString& category, const
     query.prepare(QStringLiteral(
         "UPDATE category_rules SET category = ?, subcategory = ? WHERE id = ?;"
     ));
-    query.addBindValue(category);
-    query.addBindValue(subcategory);
+    query.addBindValue(Sql::text(category));
+    query.addBindValue(Sql::text(subcategory));
     query.addBindValue(ruleId);
 
     const bool success = query.exec();

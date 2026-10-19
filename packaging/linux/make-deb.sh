@@ -12,7 +12,7 @@
 #   /usr/share/icons/hicolor/256x256/...   icon
 #   /usr/share/metainfo/*.xml              AppStream metadata
 #
-# The package therefore Depends on almost nothing: the Qt libraries it needs
+# The package therefore Depends on no Qt package: the Qt libraries it needs
 # travel inside it, exactly like the AppImage and the Windows installer. That
 # is the point — the user asked for plug and play, not for a package that
 # pulls half of Qt from the distribution's repositories and then disagrees with
@@ -20,11 +20,22 @@
 # would be built; if this ever goes to a real repository, that version links
 # against the distro's Qt instead.
 #
+# Qt's deployment leaves the system libraries out (glibc, X11/xcb, Wayland,
+# OpenGL/EGL, fonts, D-Bus, GLib), so Depends must list them. This script reads
+# the NEEDED entries of the files that the app loads at start-up (the binary,
+# the bundled libraries, the platform plugins and their integrations, the input
+# contexts, the image formats, the SQLite driver and the QML plugins), keeps the
+# libraries that are not bundled, and asks dpkg which package installed each
+# one on the build machine. Build on the oldest system the package is for (CI:
+# Ubuntu 24.04). Optional plugins (other SQL drivers, the GTK theme, eglfs) are
+# left out: Qt skips a plugin whose libraries are missing.
+# packaging/linux/test-deb.sh checks the result in a clean container.
+#
 # Why not CPack's DEB generator: it installs under a single prefix, so the
 # /opt payload plus the four /usr desktop-integration files would need two CPack
 # runs and a component split for what is twenty readable lines of shell here.
 #
-# Needs: dpkg-deb (Debian/Ubuntu), fakeroot optional.
+# Needs: dpkg-deb, dpkg and objdump (binutils) — Debian/Ubuntu; fakeroot optional.
 set -euo pipefail
 
 usage() { sed -n '2,30p' "$0" >&2; exit 2; }
@@ -82,6 +93,41 @@ install -m 644 "$REPO_ROOT/packaging/linux/io.github.nicolas_goyon.FinanceDashbo
 
 INSTALLED_SIZE_KB="$(du -sk "$ROOT" | cut -f1)"
 
+echo "==> Finding the system libraries that the app needs"
+command -v objdump >/dev/null || { echo "error: objdump not found (binutils)" >&2; exit 1; }
+APP_ROOT="$ROOT/opt/FinanceDashboard"
+mapfile -d '' ELF_FILES < <(find "$APP_ROOT/bin" "$APP_ROOT/lib" "$APP_ROOT/qml" \
+        "$APP_ROOT/plugins/platforms" "$APP_ROOT/plugins/xcbglintegrations" \
+        "$APP_ROOT/plugins/platforminputcontexts" "$APP_ROOT/plugins/imageformats" \
+        "$APP_ROOT/plugins"/wayland-* "$APP_ROOT/plugins/sqldrivers/libqsqlite.so" \
+        -type f \( -name '*.so*' -o -name FinanceDashboard \) -print0 2>/dev/null || true)
+declare -A DEP_PACKAGES=()
+# Read once. awk reads all its input below (no early `exit`, no `head`): under
+# `set -o pipefail`, a reader that stops early makes the writer fail with
+# SIGPIPE, and the script would stop with no message.
+LDCONFIG_CACHE="$(ldconfig -p)"
+for elf in "${ELF_FILES[@]}"; do
+    while read -r lib; do
+        [ -e "$APP_ROOT/lib/$lib" ] && continue          # bundled
+        path="$(awk -v l="$lib" '$1 == l && /x86-64|AArch64/ && path == "" {path = $NF} END {print path}' \
+                <<<"$LDCONFIG_CACHE")"
+        if [ -z "$path" ]; then
+            echo "error: ${elf#"$APP_ROOT/"} needs $lib, which is not on this machine" >&2
+            exit 1
+        fi
+        # dpkg -S fails when no package owns the file: `|| true`, so that the
+        # error message below is printed instead of a silent stop.
+        package="$(dpkg -S "$(readlink -f "$path")" 2>/dev/null | awk -F: 'NR == 1 {print $1}' || true)"
+        if [ -z "$package" ]; then
+            echo "error: no package owns $path (needed by ${elf#"$APP_ROOT/"})" >&2
+            exit 1
+        fi
+        DEP_PACKAGES["$package"]=1
+    done < <(objdump -p "$elf" 2>/dev/null | awk '/NEEDED/ {print $2}')
+done
+DEPENDS="$(printf '%s\n' "${!DEP_PACKAGES[@]}" | sort | paste -sd, - | sed 's/,/, /g')"
+echo "    Depends: $DEPENDS"
+
 cat > "$ROOT/DEBIAN/control" <<EOF
 Package: finance-dashboard
 Version: ${VERSION}
@@ -90,7 +136,7 @@ Priority: optional
 Architecture: ${DEB_ARCH}
 Maintainer: Nicolas Goyon <noreply@github.com>
 Installed-Size: ${INSTALLED_SIZE_KB}
-Depends: libc6, libstdc++6, libgl1, libfontconfig1, libfreetype6, libx11-6, libxkbcommon0
+Depends: ${DEPENDS}
 Homepage: https://github.com/nicolas-goyon/FinanceDashboard
 Description: Local-first personal finance dashboard
  Import bank statements, categorize transactions and track net worth, cash
