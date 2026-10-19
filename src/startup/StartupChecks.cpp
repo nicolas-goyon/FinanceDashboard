@@ -52,15 +52,46 @@ QList<StartupStep> StartupChecks::runInitialization(QString& dbPath)
     steps.append(folder);
 
     // ── Database ─────────────────────────────────────────────────────────────
-    // Not fatal — same behaviour as before the start-up stage existed: the
-    // app continues and pages that need the DB show the error inline.
+    // Fatal: after a failure open() has closed the connection, and the
+    // dashboard without its database would only show empty pages and hide
+    // the cause.
     StartupStep db;
     db.name   = QStringLiteral("Database");
+    db.fatal  = true;
     db.ok     = Database::instance().open(dbPath);
     db.detail = db.ok ? dbPath
                       : dbPath + QStringLiteral(" — ") + Database::instance().lastError();
-    db.hint   = QStringLiteral("Check the data folder above; delete or restore a corrupted database file.");
+    switch (Database::instance().openError()) {
+    case Database::OpenError::NewerSchema:
+        db.hint = QStringLiteral("A newer version of the app saved this file. Install that version or a "
+                                 "later one. The file was not changed.");
+        break;
+    case Database::OpenError::UpgradeFailed:
+        db.hint = QStringLiteral("The file was not changed. If the disk is full, free some space, then "
+                                 "start the app again. If the upgrade fails again, send the application "
+                                 "log to the maintainer.");
+        break;
+    case Database::OpenError::None:
+    case Database::OpenError::CannotOpen:
+        db.hint = QStringLiteral("Check that the data folder above can be written to. If the file is "
+                                 "damaged, move it out of the folder (the app then starts with an empty "
+                                 "database), or put back a copy (finance_dashboard.backup-<date>.db, "
+                                 "renamed to finance_dashboard.db).");
+        break;
+    }
     steps.append(db);
+
+    // ── Database upgrade ─────────────────────────────────────────────────────
+    // Only when open() upgraded an existing file: the report tells where the
+    // copy from before is. It goes to the log here; Main.qml shows it once.
+    const QString upgrade = Database::instance().upgradeReport();
+    if (db.ok && !upgrade.isEmpty()) {
+        StartupStep step;
+        step.name   = QStringLiteral("Database upgrade");
+        step.ok     = true;
+        step.detail = upgrade;
+        steps.append(step);
+    }
 
     return steps;
 }

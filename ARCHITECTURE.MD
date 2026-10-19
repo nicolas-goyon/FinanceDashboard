@@ -26,6 +26,32 @@ logic; the `.qml` file only renders what the controller hands it. See `docs/back
 full pattern and `docs/build-and-tooling.md` for the checklist to follow when adding a new
 page.
 
+## Data rule
+
+Writes that belong together go in one SQL transaction, in one `Database` method. Example:
+`Database::saveImport()` writes the rows of a statement, the account link and the balance
+checkpoints; if one write fails, nothing is written. Bind the text of a `TEXT NOT NULL` column
+through `Sql::text()` (`src/db/tables/SqlText.h`), because Qt binds a null `QString` as SQL
+`NULL`.
+
+The schema has a version (`PRAGMA user_version`, `Database::kSchemaVersion`). `createTable()`
+is the base schema and does not change; each change after it is one migration step in
+`Database::upgrade()`, written with its own SQL, with a test in `tests/db_migration_test.cpp`.
+Before it upgrades an existing database, the app saves a copy next to it (`VACUUM INTO`), before
+any change. The base tables and every step run in one SQL transaction, so the file is either
+upgraded or unchanged. A database that does not open (it cannot be read, a newer version saved
+it, or the upgrade failed) closes the connection and stops the app at start-up, with the cause
+(a fatal step in `StartupChecks`).
+
+A transaction's `fingerprint` is its identity in the bank's statement
+(`TransactionsTable::fingerprints()`): the bank's reference and the amount when the row has a
+reference (`bankReference()`), else every field. A row that the account already has is not saved
+again. Compute the fingerprints of a statement on all its rows, before you filter them: the
+second identical row of a statement has occurrence 2 in its fingerprint. A skipped row with the
+reference and amount of a saved row but another operation date is reported, with a link to the
+issue in `TransactionsTable::kReusedReferenceIssueUrl`: the identity assumes one reference per
+transaction.
+
 ## Where to look
 
 | Topic | Doc |
@@ -51,6 +77,7 @@ page.
 | Automated documentation generation | [`docs/automated-docs.md`](docs/automated-docs.md) |
 | Auto-generated file listing (regenerate, don't hand-edit) | [`docs/generated/source-tree.md`](docs/generated/source-tree.md) |
 | Build, test, package and release pipeline | [`CI-CD.md`](CI-CD.md) |
+| Tests (`ctest`): category predictor, statement-import save path | `tests/CMakeLists.txt`; the app and the tests share `FD_CORE_SOURCES` in `CMakeLists.txt` |
 | Version number & changelog (single source of truth) | [`CI-CD.md`](CI-CD.md) § Working with the changelog |
 
 ## Other top-level docs
@@ -58,6 +85,8 @@ page.
 - `README.md` — what the app is, where to download it, and how to build/run it.
 - `CI-CD.md` — how the app is built, tested, packaged and released. Read this before touching
   `.github/`, `packaging/`, `version.json` or the install/CPack half of `CMakeLists.txt`.
+- `CONTRIBUTING.md` — gitflow branches, commit messages, labels and the definition of done.
+  Read it before you create a branch or a pull request.
 - `PROJECT.md` — product spec (target pages, charts, features). Check before adding features.
 - `TODO.md` — backlog: known limitations, bugs, cleanups.
 - `version.md` — changelog (current version + every previous one). **Generated** from

@@ -8,8 +8,8 @@ Mocha, the same tokens as docs/styling.md). Run it after changing the design:
     python packaging/icons/make-icons.py
 
 Outputs, all committed:
-    finance-dashboard.ico       Windows — 16/24/32/48/64/128/256, used by the
-                                MSI (Add/Remove Programs) and the .exe
+    finance-dashboard.ico       Windows — 16/24/32/48/64/128/256, the icon of
+                                the setup (CPACK_INNOSETUP_ICON_FILE)
     finance-dashboard-256.png   Linux — hicolor 256x256 app icon (.deb/AppImage)
     finance-dashboard-512.png   Linux/AppStream — high-DPI source
 

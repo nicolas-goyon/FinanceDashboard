@@ -3,9 +3,9 @@ cmake_minimum_required(VERSION 3.21)
 # ── Version — single source of truth is version.json ─────────────────────────
 # The version is NOT typed here. version.json's "current" field is read below
 # and fed straight into project(... VERSION ...), so the build, the installers,
-# the release tag and the changelog can never drift apart. Bump it with
-# `python tools/version.py bump` (CI does this automatically on every release —
-# see CI-CD.md), never by editing a number in this file.
+# the release tag and the changelog can never drift apart. The release flow
+# sets it (see CI-CD.md); change it with `python tools/version.py bump`, never
+# by editing a number in this file.
 file(READ "${CMAKE_CURRENT_SOURCE_DIR}/version.json" FD_VERSION_JSON)
 string(JSON FD_VERSION GET "${FD_VERSION_JSON}" current)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
@@ -35,13 +35,19 @@ qt_standard_project_setup(REQUIRES 6.10)
 # QTP0004: auto-generate qmldir for QML files in subdirectories
 qt_policy(SET QTP0004 NEW)
 
-# ── Executable — entry point + UI-independent C++ (db / models / utils) ───────
-qt_add_executable(FinanceDashboard
-    src/main.cpp
-    # Start-up stage: requirement checks + initialization, run before the main
-    # window loads (see docs/startup.md).
-    src/startup/StartupChecks.h
-    src/startup/StartupChecks.cpp
+# QML modules build into <build>/qml/<URI path>. For an executable, the default
+# is <build>/<URI path>, here <build>/FinanceDashboard. On Linux the executable
+# has no extension and also wants <build>/FinanceDashboard, so the link fails
+# with "cannot open output file FinanceDashboard: Is a directory". Qt adds this
+# directory to the import path of qmllint and qmlcachegen.
+# https://doc.qt.io/qt-6/cmake-variable-qt-qml-output-directory.html
+set(QT_QML_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/qml")
+
+# ── UI-independent C++ (db / models / utils / predict / import) ──────────────
+# The app below and the tests (tests/CMakeLists.txt) compile this same list, so
+# a file added here is in both. Absolute paths, because tests/ is another
+# source directory.
+set(FD_CORE_SOURCES
     src/models/AssetEntry.h
     src/models/AssetEntry.cpp
     src/models/ImportedStatement.h
@@ -72,6 +78,7 @@ qt_add_executable(FinanceDashboard
     src/db/tables/AccountBalanceCheckpointsTable.cpp
     src/db/tables/CategoryRulesTable.h
     src/db/tables/CategoryRulesTable.cpp
+    src/db/tables/SqlText.h
     src/db/Database.h
     src/db/Database.cpp
     src/utils/Formatter.h
@@ -90,6 +97,17 @@ qt_add_executable(FinanceDashboard
     src/import/ImportTemplateRegistry.cpp
     src/import/SumeriaCcpCsvExtractionTemplate.h
     src/import/SumeriaCcpCsvExtractionTemplate.cpp
+)
+list(TRANSFORM FD_CORE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
+
+# ── Executable — entry point + start-up stage + the core above ──────────────────
+qt_add_executable(FinanceDashboard
+    src/main.cpp
+    # Start-up stage: requirement checks + initialization, run before the main
+    # window loads (see docs/startup.md).
+    src/startup/StartupChecks.h
+    src/startup/StartupChecks.cpp
+    ${FD_CORE_SOURCES}
 )
 
 # NOTE — tools/predictor_selftest.cpp is deliberately NOT listed above. It has
@@ -288,8 +306,8 @@ endif()
 #             with RPATH rewritten to $ORIGIN/../lib, skipping system libraries
 # https://doc.qt.io/qt-6/cmake-deployment.html
 #
-# Everything the CI packages (MSI, portable ZIP, AppImage, .deb, .tar.gz) is
-# built from this one install tree — there is no second, packaging-only copy of
+# Everything the CI packages (Windows setup, portable ZIP, AppImage, .deb,
+# .tar.gz) is built from this one install tree — there is no second, packaging-only copy of
 # the "which files ship" question. See CI-CD.md.
 install(TARGETS FinanceDashboard
     BUNDLE  DESTINATION .
@@ -334,8 +352,8 @@ install(SCRIPT ${deploy_script})
 
 # ── CPack — installers and portable archives ──────────────────────────────────
 # Run from the build directory after `cmake --install`-able configure:
-#   Windows: cpack -G WIX   -> FinanceDashboard-<version>-windows-x64.msi
-#            cpack -G ZIP   -> FinanceDashboard-<version>-windows-x64.zip
+#   Windows: cpack -G INNOSETUP -> FinanceDashboard-<version>-windows-x64.exe (setup)
+#            cpack -G ZIP       -> FinanceDashboard-<version>-windows-x64.zip
 #   Linux:   cpack -G TGZ   -> FinanceDashboard-<version>-linux-x86_64.tar.gz
 # The Linux AppImage and .deb are built from the same install tree by
 # packaging/linux/make-appimage.sh and packaging/linux/make-deb.sh — CPack has
@@ -350,10 +368,9 @@ set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "Local-first personal finance dashboard — import statements, categorize, track net worth")
 set(CPACK_PACKAGE_HOMEPAGE_URL      "https://github.com/nicolas-goyon/FinanceDashboard")
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "FinanceDashboard")
-# The MSI's licence page needs a .rtf or a .txt; the repo's LICENSE has no
+# The setup's licence page needs a .txt or a .rtf; the repo's LICENSE has no
 # extension, so copy it to one CPack recognises rather than keeping a second,
 # hand-maintained copy of the licence text that can silently drift from it.
-# CPack converts the .txt to RTF itself.
 configure_file("${CMAKE_CURRENT_SOURCE_DIR}/LICENSE"
                "${CMAKE_CURRENT_BINARY_DIR}/License.txt" COPYONLY)
 set(CPACK_RESOURCE_FILE_LICENSE     "${CMAKE_CURRENT_BINARY_DIR}/License.txt")
@@ -361,9 +378,10 @@ set(CPACK_VERBATIM_VARIABLES        ON)
 if(NOT WIN32)
     set(CPACK_STRIP_FILES ON)   # no `strip` in an MSVC toolchain — Unix only
 endif()
-# Start-menu (and desktop) shortcut: <exe basename> <label>. The WiX generator
-# finds the executable anywhere in the install tree, so the flat Windows layout
-# set at the top of this file is fine.
+# Start-menu shortcut and optional desktop shortcut: <exe basename> <label>. The
+# Inno Setup generator makes a shortcut for each .exe with this base name,
+# anywhere in the install tree, so the flat Windows layout set at the top of
+# this file is fine.
 set(CPACK_PACKAGE_EXECUTABLES       "FinanceDashboard" "Finance Dashboard")
 set(CPACK_CREATE_DESKTOP_LINKS      "FinanceDashboard")
 
@@ -376,32 +394,48 @@ set(CPACK_PACKAGE_FILE_NAME "FinanceDashboard-${PROJECT_VERSION}-${CPACK_SYSTEM_
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "FinanceDashboard-${PROJECT_VERSION}-source")
 
 if(WIN32)
-    set(CPACK_GENERATOR "WIX;ZIP")
+    set(CPACK_GENERATOR "INNOSETUP;ZIP")
 
-    # WiX .NET tools (v4/v5, `dotnet tool install --global wix`) rather than the
-    # unmaintained WiX 3 candle/light pair. CPack adds -ext WixToolset.UI.wixext
-    # by itself when this is 4. Requires CMake >= 3.30.
-    # https://cmake.org/cmake/help/latest/cpack_gen/wix.html
-    set(CPACK_WIX_VERSION 4)
-    if(CMAKE_VERSION VERSION_LESS 3.30)
+    # Inno Setup installer. The CPack generator needs CMake >= 3.27 and finds
+    # ISCC (Inno Setup 6 or later) on PATH or in its default install folder.
+    # https://cmake.org/cmake/help/latest/cpack_gen/innosetup.html
+    if(CMAKE_VERSION VERSION_LESS 3.27)
         message(WARNING
-            "CPACK_WIX_VERSION (WiX .NET tools) needs CMake >= 3.30; this is "
-            "${CMAKE_VERSION}, so `cpack -G WIX` would look for WiX 3's "
-            "candle/light instead and fail. Building and running the app is "
-            "unaffected — only MSI creation is. CI uses a newer CMake.")
+            "The CPack Inno Setup generator needs CMake >= 3.27; this is "
+            "${CMAKE_VERSION}, so `cpack` cannot make the Windows setup. "
+            "Building and running the app is not affected.")
     endif()
 
-    # MUST stay constant for the lifetime of the product: Windows uses it to
-    # recognise that 0.3.0 is an upgrade of 0.2.1 rather than a second, parallel
-    # installation. Generate a new one only if this ever becomes a different app.
-    set(CPACK_WIX_UPGRADE_GUID "9F2B4E7C-3A61-4C0D-9E8B-5D7A1C46F0B3")
-    set(CPACK_WIX_ARCHITECTURE  "x64")
-    set(CPACK_WIX_INSTALL_SCOPE "perMachine")
-    set(CPACK_WIX_PRODUCT_ICON  "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/finance-dashboard.ico")
-    set(CPACK_WIX_UI_REF        "WixUI_InstallDir")
-    set(CPACK_WIX_PROGRAM_MENU_FOLDER "Finance Dashboard")
-    set(CPACK_WIX_PROPERTY_ARPHELPLINK "${CPACK_PACKAGE_HOMEPAGE_URL}")
-    set(CPACK_WIX_PROPERTY_ARPURLINFOABOUT "${CPACK_PACKAGE_HOMEPAGE_URL}")
+    # The AppId MUST stay the same for the lifetime of the product: Setup
+    # updates an installed copy in place only when the AppId is the same. By
+    # default CPack takes it from CPACK_PACKAGE_INSTALL_REGISTRY_KEY (the install
+    # folder name), so set it explicitly. No braces: Inno Setup reads "{" as the
+    # start of a constant, and UsePreviousPrivileges (default yes) needs an AppId
+    # without constants.
+    # https://jrsoftware.org/ishelp/topic_setup_appid.htm
+    set(CPACK_INNOSETUP_SETUP_AppId "9F2B4E7C-3A61-4C0D-9E8B-5D7A1C46F0B3")
+
+    # The person who installs chooses "for me only" (the default, no
+    # administrator rights, %LOCALAPPDATA%\Programs) or "for all users"
+    # (administrator rights, Program Files). A later setup uses the mode of the
+    # installed copy and does not ask again.
+    # https://jrsoftware.org/ishelp/topic_setup_privilegesrequiredoverridesallowed.htm
+    set(CPACK_INNOSETUP_SETUP_PrivilegesRequired "lowest")
+    set(CPACK_INNOSETUP_SETUP_PrivilegesRequiredOverridesAllowed "dialog")
+
+    # CPack writes the architecture as "x64", which Inno Setup 6.3+ accepts with
+    # a deprecation warning. "x64compatible" also allows Arm64 Windows 11, which
+    # runs x64 apps through emulation.
+    # https://jrsoftware.org/ishelp/topic_archidentifiers.htm
+    set(CPACK_INNOSETUP_ARCHITECTURE "x64")
+    set(CPACK_INNOSETUP_SETUP_ArchitecturesAllowed "x64compatible")
+    set(CPACK_INNOSETUP_SETUP_ArchitecturesInstallIn64BitMode "x64compatible")
+
+    set(CPACK_INNOSETUP_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/finance-dashboard.ico")
+    set(CPACK_INNOSETUP_USE_MODERN_WIZARD ON)
+    set(CPACK_INNOSETUP_PROGRAM_MENU_FOLDER "Finance Dashboard")
+    # "Launch Finance Dashboard" check box on the last page of the setup.
+    set(CPACK_INNOSETUP_RUN_EXECUTABLES "FinanceDashboard")
 else()
     set(CPACK_GENERATOR "TGZ")
 endif()
