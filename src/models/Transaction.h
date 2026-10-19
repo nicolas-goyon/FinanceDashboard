@@ -32,6 +32,10 @@ struct Transaction {
     QString category;
     QString subcategory;
     QString sourceTemplate;    // ImportTemplate::id() this row came from, or "" if manual
+    QString fingerprint;       // identity of the row in its statement — see
+                                 // TransactionsTable::fingerprints(). Set by the import
+                                 // before it filters the rows; empty: insertBatch()
+                                 // computes it.
     // No `confidence` field here on purpose — the (future) category-
     // prediction model's per-row confidence is a review-screen-only concept
     // (see Data::ImportedTransaction::confidence), never written to the

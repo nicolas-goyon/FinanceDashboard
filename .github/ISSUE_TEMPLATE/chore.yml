@@ -1,0 +1,22 @@
+name: Chore
+description: Maintenance, repository, CI or tooling work with no user-visible change.
+labels: ["type: chore"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What is wrong or missing today.
+    validations:
+      required: true
+  - type: textarea
+    id: fix
+    attributes:
+      label: Proposed change
+  - type: textarea
+    id: accept
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ] …
+        - [ ] CI is green

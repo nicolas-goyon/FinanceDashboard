@@ -7,7 +7,7 @@ first — the runtime travels inside every package.
 
 | Platform | File | What it is |
 |---|---|---|
-| **Windows** | `FinanceDashboard-<version>-windows-x64.msi` | Installer. Start-menu and desktop shortcuts, proper uninstaller, upgrades in place over an older version. |
+| **Windows** | `FinanceDashboard-<version>-windows-x64.exe` | Setup. Installs for you only or for all users, with a Start-menu shortcut, an optional desktop shortcut and an uninstaller. To update, run the setup of a newer version: it updates the installed copy in place. |
 | Windows | `FinanceDashboard-<version>-windows-x64.zip` | Portable. Unzip anywhere and run `FinanceDashboard.exe`. Nothing is written outside the folder except the database. |
 | **Linux** | `FinanceDashboard-<version>-linux-x86_64.AppImage` | Single file. `chmod +x` it, run it. Works across distributions. |
 | Linux | `finance-dashboard_<version>_amd64.deb` | Debian/Ubuntu: `sudo apt install ./finance-dashboard_<version>_amd64.deb`. Installs under `/opt`, adds a menu entry. |
@@ -27,7 +27,7 @@ sha256sum -c SHA256SUMS.txt --ignore-missing
 ```
 
 ```powershell
-Get-FileHash .\FinanceDashboard-*.msi -Algorithm SHA256
+Get-FileHash .\FinanceDashboard-*-windows-x64.* -Algorithm SHA256
 ```
 
 ### Your data
@@ -37,6 +37,10 @@ network service of any kind:
 
 - Windows — `%APPDATA%\DataAnalysis\FinanceDashboard\finance_dashboard.db`
 - Linux — `~/.local/share/DataAnalysis/FinanceDashboard/finance_dashboard.db`
+
+When a new version changes the database format, the app first saves a copy
+next to it (`finance_dashboard.backup-<date>.db`) and tells you. If the upgrade
+fails, the app does not start, tells you why, and leaves the file as it was.
 
 Uninstalling does not delete it. Back that one file up and you have backed up
 everything.

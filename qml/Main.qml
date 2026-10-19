@@ -59,6 +59,11 @@ ApplicationWindow {
     // button (back → "manageAccounts", unchanged from before the restructure).
     property string accountTransactionsReturnViewId: "transactionsManagement"
 
+    // Set by main.cpp when this start upgraded the database
+    // (Database::upgradeReport(): versions, backup copy, duplicates removed).
+    // databaseNoticePopup below shows it once.
+    property string databaseNotice: ""
+
     // Overlay views: full-content pages reached from a sidebar action (or,
     // for "accountTransactions", from a button inside another overlay) that
     // replace the StackLayout rather than living in it — see the Loaders
@@ -449,6 +454,49 @@ ApplicationWindow {
         id: accountHistoryPageComponent
         AccountHistoryPage {
             onCloseRequested: root.currentViewId = "overview"
+        }
+    }
+
+    // ── Database upgrade notice ──────────────────────────────────────────────
+    // Opens at start-up when databaseNotice is set (see above): the user sees
+    // once that the database changed, where the copy from before is, and how
+    // many duplicate transactions were removed. Same look as ConfirmDialog.
+    Popup {
+        id: databaseNoticePopup
+        anchors.centerIn: Overlay.overlay
+        width: 460
+        padding: 20
+        modal: true
+
+        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
+
+        contentItem: ColumnLayout {
+            spacing: 14
+
+            Text {
+                text: "Database upgraded"
+                font.pixelSize: 19
+                font.bold: true
+                color: "#cdd6f4"
+            }
+            Text {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: root.databaseNotice
+                font.pixelSize: 14
+                color: "#a6adc8"
+            }
+            RowLayout {
+                Layout.topMargin: 6
+                Item { Layout.fillWidth: true }
+                PillButton { text: "OK"; variant: "primary"; onClicked: databaseNoticePopup.close() }
+            }
+        }
+
+        Component.onCompleted: {
+            if (root.databaseNotice.length > 0) {
+                open()
+            }
         }
     }
 }

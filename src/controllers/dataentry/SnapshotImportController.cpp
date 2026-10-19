@@ -4,6 +4,7 @@
 #include "utils/Formatter.h"
 #include "utils/AccountHashing.h"
 #include "db/Database.h"
+#include "db/tables/TransactionsTable.h"
 #include "models/Account.h"
 #include "models/Category.h"
 #include "models/CategoryRule.h"
@@ -13,10 +14,13 @@
 #include "predict/CategoryPredictor.h"
 #include "predict/LabelNormalizer.h"
 
+#include <algorithm>
 #include <cmath>
 #include <optional>
 #include <QDate>
 #include <QFileInfo>
+#include <QHash>
+#include <QLatin1String>
 #include <QMap>
 #include <QObject>
 #include <QSet>
@@ -37,6 +41,17 @@ constexpr int kStatusClearDelayMs = 4000; // how long a status message stays vis
 constexpr double kReconciliationEpsilon = 0.01;
 // Percent scale for the predictor's evaluation numbers (evaluatePredictor()).
 constexpr double kPercentScale = 100.0;
+
+// A row that has the bank reference and the amount of a saved transaction,
+// but another operation date. The identity by reference assumes one
+// reference per transaction; such a row says the bank may reuse them. It is
+// skipped like any saved row, and the import report links to the issue
+// (TransactionsTable::kReusedReferenceIssueUrl, maintainer decision of
+// 2026-10-18).
+bool hasReusedReference(const Data::Transaction& row, const QDate& savedOperationDate)
+{
+    return !TransactionsTable::bankReference(row.description).isEmpty() && savedOperationDate != row.operationDate;
+}
 
 // credit - debit, the signed amount the category predictor wants (see
 // Predict::CategoryPredictor::predict()). Both fields are magnitudes with the
@@ -554,38 +569,90 @@ void SnapshotImportController::save(int accountId, const QString& accountLabel)
         toSave.append(row);
     }
 
-    if (!Database::instance().insertTransactions(accountId, toSave)) {
-        setStatus(QStringLiteral("⚠  Failed to save transactions — see application log"));
-        return;
-    }
-
-    // Auto-link: if this statement has a computable fingerprint and the
-    // chosen account doesn't have it on file yet, store it now (source
-    // "auto") — future imports of the same account then auto-match (see §
-    // Statement Import / § Account Management in ARCHITECTURE.MD).
-    const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
-    if (!hash.isEmpty() && !Database::instance().accountHasHash(accountId, hash)) {
-        Database::instance().addAccountHash(accountId, hash, QStringLiteral("auto"));
-    }
-
+    // Auto-link: if this statement has a computable fingerprint, store it
+    // for the chosen account (source "auto") unless it is already there —
+    // future imports of the same account then auto-match (see § Statement
+    // Import / § Account Management in ARCHITECTURE.MD).
+    //
     // "Remember the start and end amount from the CSV" (product request) —
     // the statement's own declared balanceStart/balanceEnd become balance
     // checkpoints, same mechanism as manually-added ones (see § Balance
     // Checkpoints), so both this import's own reconciliation-check-1 next
     // time and the Account History line chart have a real anchor even
     // before the user ever opens Manage Accounts to add one by hand.
-    rememberStatementBalance(accountId, m_statement.balanceStartDate, m_statement.balanceStart,
-                              QStringLiteral("Auto — statement start (%1)").arg(m_sourceFileName));
-    rememberStatementBalance(accountId, m_statement.balanceEndDate, m_statement.balanceEnd,
-                              QStringLiteral("Auto — statement end (%1)").arg(m_sourceFileName));
+    //
+    // Rows, link and checkpoints go in one SQL transaction: a failure leaves
+    // the database as it was, so a retry cannot store a row twice.
+    //
+    // A row that this account already has (same fingerprint — a re-import,
+    // or a statement that overlaps an earlier one) is not saved again (#18).
+    // The fingerprints come from the whole statement, before the filter: two
+    // identical rows of it are two transactions (occurrence 1 and 2).
+    const QStringList fingerprints = TransactionsTable::fingerprints(toSave);
+    const QHash<QString, QDate> savedBefore = Database::instance().transactionFingerprints(accountId);
+    QVector<Data::Transaction> newRows;
+    newRows.reserve(toSave.size());
+    int alreadySaved = 0;
+    int reusedReferences = 0;
+    for (qsizetype i = 0; i < toSave.size(); ++i) {
+        const auto saved = savedBefore.constFind(fingerprints.at(i));
+        if (saved != savedBefore.cend()) {
+            ++alreadySaved;
+            if (hasReusedReference(toSave.at(i), saved.value())) {
+                ++reusedReferences;
+                qWarning().noquote()
+                    << QStringLiteral("[SnapshotImportController] row not saved: bank reference %1, amount %2, "
+                                      "operation date %3; the saved transaction has %4. See %5")
+                           .arg(TransactionsTable::bankReference(toSave.at(i).description))
+                           .arg(toSave.at(i).credit - toSave.at(i).debit, 0, 'f', 2)
+                           .arg(toSave.at(i).operationDate.toString(Qt::ISODate),
+                                saved.value().toString(Qt::ISODate),
+                                QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
+            }
+            continue;
+        }
+        Data::Transaction row = toSave.at(i);
+        row.fingerprint = fingerprints.at(i);
+        newRows.append(row);
+    }
 
-    buildImportReport(accountLabel, toSave, reconciliation);
+    const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
+    int inserted = 0;
+    if (!Database::instance().saveImport(accountId, newRows, hash, statementCheckpointsToAdd(accountId),
+                                         &inserted)) {
+        setStatus(QStringLiteral("⚠  Could not save the import. Nothing was saved — see application log"));
+        return;
+    }
+    if (inserted != newRows.size()) {
+        // Not expected (the filter above used the same fingerprints), but the
+        // counts below must tell what the database has.
+        qWarning() << "[SnapshotImportController] save: wrote" << inserted << "of" << newRows.size()
+                   << "new rows; the others were already saved";
+        alreadySaved += static_cast<int>(newRows.size()) - inserted;
+    }
+
+    buildImportReport(accountLabel, newRows, reconciliation);
+    m_lastImportReport.insert(QStringLiteral("alreadySavedCount"), alreadySaved);
+    m_lastImportReport.insert(QStringLiteral("reusedReferenceCount"), reusedReferences);
+    m_lastImportReport.insert(QStringLiteral("reusedReferenceUrl"),
+                              QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
     emit reportChanged();
 
-    setStatus(QString("✓  Saved %1 of %2 transaction(s) to \"%3\"")
-                   .arg(toSave.size())
-                   .arg(m_statement.transactions.size())
-                   .arg(accountLabel));
+    if (alreadySaved == 0) {
+        setStatus(QString("✓  Saved %1 of %2 transaction(s) to \"%3\"")
+                       .arg(inserted)
+                       .arg(m_statement.transactions.size())
+                       .arg(accountLabel));
+    } else if (inserted == 0) {
+        setStatus(QString("✓  Nothing new: the %1 transaction(s) of this statement are already saved in \"%2\"")
+                       .arg(alreadySaved)
+                       .arg(accountLabel));
+    } else {
+        setStatus(QString("✓  Saved %1 new transaction(s) to \"%2\" — %3 already saved, not added again")
+                       .arg(inserted)
+                       .arg(accountLabel)
+                       .arg(alreadySaved));
+    }
 }
 
 QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
@@ -647,6 +714,39 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
     result["endDiffRaw"]      = endDiff;
     result["endOk"]           = std::abs(endDiff) < kReconciliationEpsilon;
 
+    // ── Rows of this statement that the account already has (#18) ─────────
+    // save() skips them; the review screen can tell the user before saving.
+    // Same fingerprints as save(): the included rows, in statement order.
+    QVector<Data::Transaction> included;
+    for (const Data::ImportedTransaction& transaction : m_statement.transactions) {
+        if (!transaction.included) {
+            continue;
+        }
+        Data::Transaction row;
+        row.confirmationDate = transaction.confirmationDate;
+        row.operationDate    = transaction.operationDate;
+        row.description      = transaction.description;
+        row.debit            = transaction.debit;
+        row.credit           = transaction.credit;
+        row.balanceAfter     = transaction.balanceAfter;
+        included.append(row);
+    }
+    const QHash<QString, QDate> savedBefore = Database::instance().transactionFingerprints(accountId);
+    const QStringList fingerprints = TransactionsTable::fingerprints(included);
+    int alreadySaved = 0;
+    int reusedReferences = 0;
+    for (qsizetype i = 0; i < included.size(); ++i) {
+        const auto saved = savedBefore.constFind(fingerprints.at(i));
+        if (saved != savedBefore.cend()) {
+            ++alreadySaved;
+            if (hasReusedReference(included.at(i), saved.value())) {
+                ++reusedReferences;
+            }
+        }
+    }
+    result["alreadySavedCount"] = alreadySaved;
+    result["reusedReferenceCount"] = reusedReferences;
+
     return result;
 }
 
@@ -704,18 +804,33 @@ void SnapshotImportController::ensureCategoryExists(const QString& name)
     Database::instance().addCategory(name, QStringLiteral("#6c7086"));
 }
 
-void SnapshotImportController::rememberStatementBalance(int accountId, const QDate& date, double balance, const QString& note)
+QVector<Data::AccountBalanceCheckpoint> SnapshotImportController::statementCheckpointsToAdd(int accountId) const
 {
-    if (!date.isValid()) {
-        return;
-    }
     const QVector<Data::AccountBalanceCheckpoint> existing = Database::instance().loadBalanceCheckpoints(accountId);
-    for (const Data::AccountBalanceCheckpoint& checkpoint : existing) {
-        if (checkpoint.date == date) {
+    QVector<Data::AccountBalanceCheckpoint> toAdd;
+    const auto plan = [&](const QDate& date, double balance, const QString& note) {
+        if (!date.isValid()) {
+            return;
+        }
+        const auto sameDate = [&date](const Data::AccountBalanceCheckpoint& checkpoint) {
+            return checkpoint.date == date;
+        };
+        if (std::any_of(existing.cbegin(), existing.cend(), sameDate) ||
+            std::any_of(toAdd.cbegin(), toAdd.cend(), sameDate)) {
             return; // already have a checkpoint for this exact date — never overwritten automatically
         }
-    }
-    Database::instance().addBalanceCheckpoint(accountId, date, balance, note);
+        Data::AccountBalanceCheckpoint checkpoint;
+        checkpoint.accountId = accountId;
+        checkpoint.date = date;
+        checkpoint.balance = balance;
+        checkpoint.note = note;
+        toAdd.append(checkpoint);
+    };
+    plan(m_statement.balanceStartDate, m_statement.balanceStart,
+         QStringLiteral("Auto — statement start (%1)").arg(m_sourceFileName));
+    plan(m_statement.balanceEndDate, m_statement.balanceEnd,
+         QStringLiteral("Auto — statement end (%1)").arg(m_sourceFileName));
+    return toAdd;
 }
 
 void SnapshotImportController::buildImportReport(const QString& accountLabel, const QVector<Data::Transaction>& saved,
