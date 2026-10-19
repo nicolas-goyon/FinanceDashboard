@@ -27,6 +27,10 @@
 // handling — malformed rows are logged and skipped rather than aborting
 // the whole import.
 //
+// The row dates are "MM/dd", without a year: each one gets the year that
+// puts it in the statement period (from 31 days before its start to its
+// end), so the "Period" line is required.
+//
 // IMPORTANT: "{DescriptionFormated}" is a quoted CSV field that can contain
 // EMBEDDED NEWLINES (a genuinely multi-line description). The whole file is
 // therefore tokenized in one pass tracking quote state (parseCsvRecords() in

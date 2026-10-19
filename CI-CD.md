@@ -6,12 +6,14 @@
 
 ## What it does, in one paragraph
 
-Every push to any branch builds the app on Windows and Linux, packages it into
-files an end user can double-click, runs the tests and the linters, and uploads
-everything as run artifacts. Every push to **`main`** additionally publishes a
-GitHub release from those same files, then rolls the version forward. There is no
-tag to remember, no manual step and nothing to install by hand — including Qt,
-which the pipeline downloads for itself.
+Every pull request, and every push to `main`, `develop`, `release/**` and
+`hotfix/**`, builds the app on Windows and Linux, packages it into files an end
+user can double-click, runs the tests and the linters, and uploads everything as
+run artifacts. The project follows gitflow: a push to **`main`** is the merge of
+a `release/*` or `hotfix/*` branch, and it publishes a GitHub release from those
+same files, with its tag. Then CI opens a pull request that merges `main` back
+into `develop` and opens the next version. Nothing needs to be installed by hand
+— including Qt, which the pipeline downloads for itself.
 
 ---
 
@@ -54,14 +56,14 @@ A version number is never typed twice, so it can never disagree with itself.
 
 | Job | Runner | Blocking | What it does |
 |---|---|---|---|
-| **Changelog & version** | ubuntu-24.04 | yes | `version.py check` — version.md matches version.json, the current version is undated, no duplicates. Prints the release notes it *would* publish into the run summary. ~20 s. |
-| **Tests (ctest)** | ubuntu-24.04 | yes | Configures with `-DFD_BUILD_TESTS=ON`, builds `predictor_selftest`, runs `ctest`. |
+| **Changelog & version** | ubuntu-24.04 | yes | `version.py check --base <main>` — version.md matches version.json, no duplicates, at most one version in progress (the current one), and no change to a version that is released on `main`. Prints the release notes it *would* publish into the run summary. ~20 s. |
+| **Tests (ctest)** | ubuntu-24.04 | yes | Configures with `-DFD_BUILD_TESTS=ON`, builds the `fd_tests` target (`predictor_selftest`, `import_save_test`, `db_migration_test`), runs `ctest`. |
 | **qmllint** | ubuntu-24.04 | no | Builds the `FinanceDashboard_qmllint` target that `qt_add_qml_module()` generates — the same check `tools/run-static-analysis.ps1` runs locally. |
 | **clang-tidy** | ubuntu-24.04 | no | Full build (so AUTOMOC and the QML type-registration sources exist), then `run-clang-tidy` over `src/*.cpp` only, using the repo's `.clang-tidy`. Counts land in the run summary; the log is an artifact. |
-| **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → `.msi` + portable `.zip`. |
-| **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` install/remove check. |
+| **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → setup `.exe` + portable `.zip` → setup test (install, update in place, uninstall, in both install modes). |
+| **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` test in a clean `ubuntu:24.04` container. |
 | **Package — source** | ubuntu-24.04 | yes | `git archive` → source `.tar.gz` and `.zip`. |
-| **Release** | ubuntu-24.04 | — | `main` pushes only. Collects every artifact, writes `SHA256SUMS.txt`, publishes the release, then stamps and bumps the version. |
+| **Release** | ubuntu-24.04 | — | `main` pushes only, after every blocking job above. Collects every artifact, writes `SHA256SUMS.txt`, publishes the release and its tag, then opens the back-merge pull request into `develop` and starts CI on its branch. Releases wait in a queue, one at a time. A re-run finishes what an earlier run started. |
 
 ---
 
@@ -97,7 +99,7 @@ Reference: <https://doc.qt.io/qt-6/cmake-deployment.html>
 
 | Output | Built by | Notes |
 |---|---|---|
-| `.msi` | CPack `WIX` generator | WiX 5 via the `wix` .NET tool (`CPACK_WIX_VERSION 4`). Start-menu + desktop shortcut, uninstaller, per-machine, upgrades in place. |
+| `-windows-x64.exe` (setup) | CPack `INNOSETUP` generator | Inno Setup 6, preinstalled on the `windows-2025` image; the job writes its version to the log. The setup asks "for me only" or "for all users", and makes a Start-menu shortcut, an optional desktop shortcut and an uninstaller. A newer setup updates an installed copy in place, because the `AppId` in `CMakeLists.txt` never changes. |
 | `-windows-x64.zip` | CPack `ZIP` generator | Same tree, one folder deep. |
 | `-linux-x86_64.tar.gz` | CPack `TGZ` generator | Run `bin/FinanceDashboard`. |
 | `.AppImage` | `packaging/linux/make-appimage.sh` | AppDir + `AppRun` + `appimagetool`. |
@@ -131,15 +133,33 @@ Note the `.deb` bundles Qt rather than depending on the distribution's. That is
 the plug-and-play trade-off, deliberately: it is *not* how a package accepted
 into Debian proper would be built.
 
+Qt's deployment leaves the system libraries out: glibc, X11/xcb, Wayland,
+OpenGL/EGL, fonts, D-Bus and GLib. `make-deb.sh` therefore computes the
+`Depends` line: it reads the `NEEDED` entries of the files that the app loads at
+start-up (binary, bundled libraries, platform plugins and their integrations,
+QML plugins, SQLite driver), keeps the libraries that are not bundled, and asks
+`dpkg -S` which package installed each one on the build machine. Without these
+packages, the `.deb` installs, then fails with *"could not load the Qt platform
+plugin xcb"* on a machine that does not have them.
+
 ### Step 3 — prove it actually starts
 
 Both packaging jobs run the app before uploading anything:
 
-* **Windows** — launches the installed `.exe` on the `offscreen` platform and
-  requires it to still be alive after 15 s. `main.cpp` calls `exit(-1)` on
-  `objectCreationFailed`, so surviving means the whole QML tree loaded.
+* **Windows** — launches the installed `.exe` with the real `windows` platform
+  plugin and requires it to still be alive after 15 s. `main.cpp` calls
+  `exit(-1)` on `objectCreationFailed`, so surviving means the whole QML tree
+  loaded. The deploy step ships only the default platform plugin, so the
+  `offscreen` plugin is not in the tree. After `cpack`, the job runs the setup
+  silently twice (the second run is an update in place), then the uninstaller,
+  for "for me only" (`/CURRENTUSER`) and for "for all users" (`/ALLUSERS`).
 * **Linux** — runs the finished `.AppImage` under `Xvfb` with the real `xcb`
-  platform plugin, same 20 s rule, then installs and removes the `.deb`.
+  platform plugin, same 20 s rule. Then `packaging/linux/test-deb.sh` installs
+  the `.deb` in a clean `ubuntu:24.04` container, where only the package and its
+  `Depends` are present: each library the app loads at start-up must be found,
+  the app must stay up 20 s under `Xvfb`, and the package must remove cleanly.
+  The runner itself cannot show a missing `Depends` entry, because the
+  `setup-qt` action installed every X11 and GL library on it.
 
 Both steps blank out `QT_PLUGIN_PATH`, `QML2_IMPORT_PATH` and the Qt entries in
 `PATH`/`LD_LIBRARY_PATH` first. Without that the app would happily borrow a DLL
@@ -150,47 +170,85 @@ that is broken everywhere else.
 
 ## The release flow
 
-Triggered by a push to `main`, after the three packaging jobs succeed.
+The project follows gitflow. `develop` holds the in-progress version; `main`
+holds released code only, and every merge into it publishes a release.
 
 ```
- version.json: current = 0.2.1
-        │
-        ├─ 1. guard          gh release view v0.2.1  → exists? stop.
-        ├─ 2. collect        download packages-windows / -linux / -source
-        ├─ 3. checksums      sha256sum * > SHA256SUMS.txt
-        ├─ 4. notes          version.py notes  +  .github/release-notes-footer.md
-        ├─ 5. publish        gh release create v0.2.1 --target <sha> dist/*
-        ├─ 6. stamp          version.py release        → 0.2.1 dated today
-        ├─ 7. bump           version.py bump patch     → 0.2.2 opened
-        ├─ 8. render         version.py render         → version.md rewritten
-        └─ 9. commit         "chore(release): v0.2.1, open v0.2.2 [skip ci]"
-                             pushed to main (rebase-retried 3×)
+ develop: current = 0.2.1, no date
+    │
+    ├─ 1. cut          git switch -c release/0.2.1 develop
+    │                  (fixes for the release go into this branch)
+    ├─ 2. stamp        python tools/version.py release   → 0.2.1 dated today
+    │                  commit "chore(release): v0.2.1", PR release/0.2.1 → main
+    ├─ 3. merge        merge commit into main → CI runs on main
+    │
+ main (CI, release job, after every blocking job is green):
+    ├─ 4. check        v0.2.1 has a date; is v0.2.1 already published?
+    │                  (yes: skip 5–8; a draft is deleted and made again)
+    ├─ 5. collect      download packages-windows / -linux / -source
+    ├─ 6. checksums    sha256sum * > SHA256SUMS.txt
+    ├─ 7. notes        version.py notes  +  .github/release-notes-footer.md
+    ├─ 8. publish      gh release create v0.2.1 --target <sha> dist/*  (makes the tag)
+    └─ 9. back-merge   branch chore/back-merge-v0.2.1 from main,
+                       version.py bump patch → 0.2.2 opened,
+                       PR into develop, CI started on the branch
+                       (each part skipped when it is already done)
 ```
 
-**This does not loop.** A push authenticated with `GITHUB_TOKEN` does not start
-another workflow run — that is GitHub's own rule, not something this pipeline
-arranges. The `[skip ci]` marker is there in case anyone later swaps in a PAT.
+Nothing is committed to `main` by CI. After you merge the back-merge pull
+request, `develop` has the dated v0.2.1 and the new in-progress v0.2.2.
 
-**Minor and major releases.** The automatic bump is always a patch. For a
-feature or a breaking release, bump it yourself before pushing:
+**While a release branch is open, do not merge into `develop`.** A change logged
+on `develop` in that time would land under v0.2.1, which is published without
+it. The Changelog job catches it after the back-merge (`check --base main`
+refuses any change to a version that is released on `main`): move the entry to
+the new version.
+
+**The back-merge pull request.** The release job opens it with `GITHUB_TOKEN`,
+so GitHub must allow GitHub Actions to create pull requests (Settings →
+Actions → General → Workflow permissions). If it cannot, the release is
+published and the branch is pushed, but the job fails: change the setting,
+then re-run the job. A pull request opened with `GITHUB_TOKEN` does not start
+a CI run of its own, so the job starts one on the branch (`workflow_dispatch`,
+the one event that `GITHUB_TOKEN` can start): its checks show on the pull
+request, and a branch rule that asks for green CI can pass. Merge it with a
+**merge commit**, not a squash: `develop` must contain the release commit of
+`main`.
+
+**Re-running the release job.** A re-run (Actions → the run → Re-run failed
+jobs) finishes what the earlier run started, and does each part only once. A
+published release is not published again; a draft that a stopped upload left
+is deleted and published again. The back-merge is skipped when `develop`
+already contains the release commit, and the branch and the pull request are
+not made twice. If the tag `vX.Y.Z` exists on another commit, the job stops.
+
+**One release at a time.** Each run on `main` has a concurrency group of its
+own, so no run on `main` cancels another one. The release jobs share the
+`release` group with `queue: max`: they publish one at a time, in the order
+they arrive. With the default queue, a release job that waits would be
+cancelled when a third one arrives.
+
+**Minor and major releases.** The back-merge always opens a patch. To make the
+in-progress version a minor or a major one, run on `develop`:
 
 ```sh
-python tools/version.py bump minor   # 0.2.2 → 0.3.0
-git commit -am "chore: open v0.3.0"
+python tools/version.py bump minor   # in-progress 0.2.2 → 0.3.0, its entries kept
+git commit -am "chore: make the in-progress version v0.3.0"
 ```
 
-**If the bump commit fails to push** (branch protection, a race it lost three
-times), the release is already out but `version.json` still says the version
-that just shipped. The next run's guard will refuse to release again and tell
-you so. Fix it locally:
+`bump` renames an in-progress version instead of adding a second one: only the
+current version can be undated.
 
-```sh
-python tools/version.py release && python tools/version.py bump patch && python tools/version.py render
-```
+**Hotfixes.** `hotfix/<x.y.z>` starts from `main`: run `version.py bump patch`
+(the patch after the released version), commit the fix, run
+`version.py release`, then merge into `main`. The release job publishes it and
+opens the back-merge pull request. That pull request conflicts in
+`version.json` when `develop` uses the same number for its in-progress version:
+renumber `develop` first (`version.py bump minor`), then keep `develop`'s
+current version when you resolve the conflict.
 
-**Branch protection.** The release job pushes to `main` with `GITHUB_TOKEN`. If
-`main` is protected, allow the `github-actions[bot]` actor to bypass it, or the
-version bump will fail on every release.
+**Branch protection.** CI never pushes to `main` or `develop`, so a branch rule
+needs no bypass for `github-actions[bot]`.
 
 ---
 
@@ -203,13 +261,14 @@ python tools/version.py add Added "`Foo.qml` — what it does."
 python tools/version.py add Fixed "Bar no longer does the wrong thing."
 python tools/version.py add Added --group "Navigation & shell" "..."
 python tools/version.py summary "One line describing this version."
-python tools/version.py render          # refresh version.md (add/summary do it too)
-python tools/version.py check           # what CI runs
+python tools/version.py render          # refresh version.md (add/summary/bump/release do it too)
+python tools/version.py check --base origin/main   # what CI runs
 ```
 
 The maintenance rule is unchanged — log the change when you make it, under the
 current in-progress version. Only the command is new. If you do edit
 `version.json` by hand, run `render` afterwards or the Changelog job fails.
+`add` and `summary` refuse to change a released (dated) version.
 
 ---
 
@@ -268,7 +327,7 @@ and a first-run wall of warnings must not block releases. Once a tree is clean,
 delete that line from its job — nothing else changes.
 
 **Add macOS.** Copy `package-windows`, switch the runner to `macos-14`, drop the
-WiX step. `qt_generate_deploy_qml_app_script()` already handles `.app` bundles
+Inno Setup steps. `qt_generate_deploy_qml_app_script()` already handles `.app` bundles
 via `macdeployqt`, so CPack `DragNDrop` gives a `.dmg`. Nothing outside that new
 job needs to change — that is the independence rule paying off. (Unsigned macOS
 builds are refused by Gatekeeper, so read the code-signing note below first.)
@@ -296,14 +355,16 @@ cmake --install build --prefix stage
 ( cd build && cpack )                                          # .tar.gz
 bash packaging/linux/make-appimage.sh stage "$(python3 tools/version.py current)" dist
 bash packaging/linux/make-deb.sh      stage "$(python3 tools/version.py current)" dist
+deb=$(ls dist/*.deb); docker run --rm -v "$PWD:/src:ro" ubuntu:24.04 \
+    bash /src/packaging/linux/test-deb.sh "/src/$deb"      # clean-system test
 ```
 
 ```powershell
-# Windows (needs `dotnet tool install --global wix` once, and CMake >= 3.30 for the MSI)
+# Windows (the setup needs Inno Setup 6 and CMake >= 3.27)
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build --config Release --parallel
 cmake --install build --config Release --prefix stage
-cd build ; cpack -C Release                                    # .msi + .zip
+cd build ; cpack -C Release                                    # setup .exe + .zip
 ```
 
 `act` is not worth setting up for this pipeline — the jobs are mostly "install
@@ -324,9 +385,10 @@ packaging/
 ├── linux/finance-dashboard.desktop
 ├── linux/*.metainfo.xml            AppStream metadata
 ├── linux/make-appimage.sh
-└── linux/make-deb.sh
+├── linux/make-deb.sh
+└── linux/test-deb.sh             installs and starts the .deb in a clean container
 tests/CMakeLists.txt                the ctest registration
 tools/version.py                    version.json ⇄ version.md, release notes
 version.json                        the version and the changelog
-LICENSE                             MIT — also becomes the MSI's licence page
+LICENSE                             MIT — also becomes the setup's licence page
 ```

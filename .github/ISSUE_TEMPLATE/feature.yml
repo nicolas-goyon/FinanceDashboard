@@ -1,0 +1,29 @@
+name: Feature
+description: A new feature or a user-visible improvement.
+labels: ["type: feature"]
+body:
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What the user can do after this change, and why it is useful.
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Proposed design
+      description: Pages, controllers and data that change. Links to the Qt documentation for each Qt type or property.
+  - type: textarea
+    id: decisions
+    attributes:
+      label: Decisions needed
+      description: Questions for the maintainer before the work starts.
+  - type: textarea
+    id: accept
+    attributes:
+      label: Acceptance criteria
+      value: |
+        - [ ] …
+        - [ ] Tests added
+        - [ ] `README.md` / `ARCHITECTURE.MD` updated

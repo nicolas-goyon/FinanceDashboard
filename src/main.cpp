@@ -1,3 +1,4 @@
+#include "db/Database.h"
 #include "startup/StartupChecks.h"
 
 #include <QCoreApplication>
@@ -67,6 +68,9 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
             {{QStringLiteral("steps"), Startup::StartupChecks::toVariantList(steps)}});
         engine.loadFromModule("FinanceDashboard", "StartupErrorWindow");
     } else {
+        // Main.qml shows it once when this start upgraded the database.
+        engine.setInitialProperties(
+            {{QStringLiteral("databaseNotice"), Database::instance().upgradeReport()}});
         engine.loadFromModule("FinanceDashboard", "Main");
     }
 

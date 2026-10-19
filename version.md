@@ -20,9 +20,10 @@ fact. Small fixes to a feature that's still unreleased/in-progress in the *same*
 need their own extra line; fold them into the feature's own entry instead of listing "fixed a
 bug in the thing I just added two lines above."
 
-**Releases** are cut automatically: every push to `main` publishes the in-progress version as a
-GitHub release (installers + portable builds + source archives), stamps its date here, and
-opens the next patch version as the new in-progress one. See `CI-CD.md`.
+**Releases** follow gitflow. A `release/<x.y.z>` branch stamps the date here
+(`version.py release`). Its merge into `main` publishes the GitHub release (setup, portable
+builds, source archives). Then CI opens a pull request into `develop` that opens the next patch
+version as the new in-progress one. See `CI-CD.md`.
 
 ---
 
@@ -70,7 +71,7 @@ pass in the same in-progress version.
   like X as Y" rules, the top rung of the cascade and the fastest-learning path in the system
   (one click, permanent). `src/db/tables/CategoryRulesTable.{h,cpp}` plus
   `Database::loadCategoryRules()` / `addCategoryRule()` (upsert, so re-teaching replaces rather
-  than stacks) / `removeCategoryRule()`.
+  than stacks) / `removeCategoryRule()`. A category-only rule (no subcategory) saves correctly.
 - **Import review screen — RULE column and confidence tooltips.** A `＋` per row teaches a rule
   from that row's merchant key and current category, then re-scores the whole statement so
   every other row for the same merchant snaps to it immediately. Hovering the CONFIDENCE badge
@@ -90,24 +91,41 @@ pass in the same in-progress version.
   recurrence, subcategory ambiguity and the evaluator. Not part of the CMake build — it has its
   own `main()`; see `TODO.md`'s "no tests" item for the Qt Test suite it stands in for.
 - Full CI/CD pipeline on GitHub Actions (`.github/workflows/ci.yml`, documented in `CI-CD.md`).
-  Every push builds and packages the app on Windows and Linux and runs the tests and linters as
-  independent, individually re-runnable jobs; every push to `main` publishes a GitHub release.
-  Ships a Windows `.msi` installer and portable `.zip`, a Linux `.AppImage`, `.deb` and
-  portable `.tar.gz`, source archives and `SHA256SUMS.txt` — none of which need Qt installed on
-  the target machine.
+  Every pull request, and every push to `main`, `develop`, `release/**` and `hotfix/**`, builds
+  and packages the app on Windows and Linux and runs the tests and linters as independent,
+  individually re-runnable jobs. The project follows gitflow: merging a `release/*` or
+  `hotfix/*` branch into `main` publishes a GitHub release and its tag, once every blocking job
+  (including Tests and Changelog) is green, and CI then opens a pull request that merges `main`
+  back into `develop`, opens the next version and starts CI on that pull request. Releases wait
+  in a queue, one at a time, and a re-run of the release job finishes what an earlier run
+  started without publishing twice. CI never commits to `main`. Ships a Windows setup (`.exe`,
+  made with Inno Setup: it asks "for me only" or "for all users", and the setup of a newer
+  version updates an installed copy in place) and portable `.zip`, a Linux `.AppImage`, `.deb`
+  and portable `.tar.gz`, source archives and `SHA256SUMS.txt` — none of which need Qt
+  installed on the target machine.
 - `version.json` + `tools/version.py` — the version and the changelog are now one
   machine-readable file. `CMakeLists.txt` reads `current` straight into `project(... VERSION
   ...)`, so the build, the installer file names, the release tag and the app's own
   `setApplicationVersion()` can no longer disagree. `version.md` is generated from it
-  (`version.py render`); log a change with `version.py add <Section> "<text>"`.
+  (`version.py render`); log a change with `version.py add <Section> "<text>"`. Only the
+  current version can be in progress: `bump` renames an in-progress version instead of adding a
+  second one, `add` refuses a released version, and `check --base origin/main` refuses any
+  change to a version that is released on `main`.
 - Self-contained deployment via `qt_generate_deploy_qml_app_script()` — `cmake --install` now
   produces a directory that runs on a machine with no Qt, and every package is cut from that
   one tree. Plus `packaging/` (generated app icon, `.desktop` entry, AppStream metadata,
-  AppImage and `.deb` build scripts) and `LICENSE` (MIT), which doubles as the MSI's licence
-  page.
+  AppImage and `.deb` build scripts) and `LICENSE` (MIT), which doubles as the setup's licence
+  page. The QML module builds into `<build>/qml/FinanceDashboard/` (`QT_QML_OUTPUT_DIRECTORY`),
+  so it no longer takes the path of the Linux executable, which made the Linux link fail.
 - `tests/CMakeLists.txt` — `tools/predictor_selftest.cpp` is now a CTest target (`cmake
   -DFD_BUILD_TESTS=ON`, then `ctest`) instead of a hand-run binary, and CI runs it on every
-  push. Partially clears `TODO.md`'s "no tests" item.
+  push. Partially clears `TODO.md`'s "no tests" item. `tests/import_save_test.cpp` (Qt Test)
+  runs the statement-import save path end to end on a temporary database: rows without a
+  category, subcategory or date, the reconciliation adjustment row, a category-only rule, a
+  failed save and its retry. The app and the tests compile the same core sources
+  (`FD_CORE_SOURCES`), and `cmake --build build --target fd_tests` builds every test.
+  `tests/db_migration_test.cpp` (Qt Test) opens databases built the way older versions left
+  them and checks each migration step.
 - **Docker build — build the app on any machine with only Docker installed.** `compose.yaml` +
   `.env` (options documented in `.env.example`: `TARGET` = `windows`/`linux`, `LINK_MODE` =
   `shared`/`static`, `BUILD_TYPE`, `QT_VERSION`, `LLVM_MINGW_VERSION`, job counts) +
@@ -150,6 +168,22 @@ pass in the same in-progress version.
   and database open, moved out of `main.cpp`, still non-fatal as before). A failed fatal step
   loads the new `qml/StartupErrorWindow.qml` (every step as met / not met + fix hint) instead
   of `Main.qml`.
+- `CONTRIBUTING.md`, a pull-request template and issue forms (bug, feature, chore): the gitflow
+  branch model (`main`, `develop`, `feature/*`, `bugfix/*`, `release/*`, `hotfix/*`), stacked
+  pull requests (each one based on the one before it, merged from the bottom up), Conventional
+  Commits, the label set, the definition of done and the repository settings. Dependabot pull
+  requests now target `develop`.
+- **Database schema versioning.** `PRAGMA user_version` and ordered migration steps in
+  `Database::upgrade()`, run when the app opens the database, all in one SQL transaction: the
+  file is either upgraded or unchanged. Before it upgrades an existing database, and before any
+  change to it, the app saves a copy next to it (`finance_dashboard.backup-<date>.db`, made
+  with `VACUUM INTO`), and a dialog at start-up says what changed. A database from a newer
+  version of the app, or an upgrade that fails, stops the app at start-up with the reason, and
+  the file is not changed (the connection is closed, so nothing writes to it; a failed upgrade
+  removes its copy). Migration 1 drops the `iban`, `bic` and `number` columns of an old
+  `accounts` table and keeps its id counter; their values are also removed from the copy, and
+  the file is compacted (`VACUUM`) so that no old bytes stay in it. Migration 2 adds the
+  transaction fingerprints. `resetAll()` runs the steps again on the empty tables.
 
 ### Changed
 - **Removed** all `docs` for pruning and reduce overhead.
@@ -180,9 +214,16 @@ pass in the same in-progress version.
   explaining where the suggested category came from, shown as a tooltip on the confidence
   badge. Review-screen-only and never persisted, same status as `confidence`.
 - Both packaging jobs smoke-test the app before publishing: the Windows build is launched from
-  its install tree on the `offscreen` platform, the Linux `.AppImage` under Xvfb with the real
-  `xcb` plugin, each with the builder's own Qt removed from the environment so a package that
-  only works on the build machine fails the job.
+  its install tree with the real `windows` platform plugin (the tree has no `offscreen` plugin)
+  and its setup is installed, installed again over itself and uninstalled in both install
+  modes, the Linux `.AppImage` under Xvfb with the real `xcb` plugin, each with the builder's
+  own Qt removed from the environment so a package that only works on the build machine fails
+  the job. The `.deb` is installed and started in a clean `ubuntu:24.04` container
+  (`packaging/linux/test-deb.sh`), which checks its `Depends` line: `make-deb.sh` now computes
+  it from the `NEEDED` entries of the files the app loads (the system libraries that the
+  bundled Qt needs: X11/xcb, Wayland, OpenGL/EGL, fonts, D-Bus, GLib) and stops with an error
+  that names the library when one is missing or no package owns it, so the package no longer
+  fails with "could not load the Qt platform plugin xcb" on a machine without them.
 - `cmake_minimum_required` 3.20 → 3.21 (Qt's CMake deployment API), and `main.cpp` takes its
   version from the `FD_VERSION_STRING` compile definition instead of a hard-coded `"0.2.0"`.
 
@@ -194,6 +235,50 @@ pass in the same in-progress version.
   Transactions card's empty `sub` line made QtQuick Layouts exclude it from the card's
   implicit-height calculation (a hair shorter than its two neighbors, which both have a real
   sub line) — now shows "All time" instead of an empty string.
+- **Statement import — saving works for rows without a category, subcategory or date, and a
+  failed save writes nothing.** A null `QString` was bound as SQL `NULL` in `TEXT NOT NULL`
+  columns, so the save failed on a first import (no predicted category), a category without a
+  subcategory, the reconciliation adjustment row and a cleared date in the transaction editor;
+  text and dates are now bound as `''` (`Sql::text()`, `src/db/tables/SqlText.h`). The rows,
+  the account link and the balance checkpoints of an import now go in one SQL transaction
+  (`Database::saveImport()`). Before, the rows written before a failing one stayed in the
+  database, and each retry stored them again.
+- **Statement import — a statement row is saved only once.** Re-importing a statement, or
+  importing one that overlaps an earlier one, saved every row again while the reconciliation
+  stayed green. Each row now has a fingerprint, unique per account: the bank's reference (the
+  last exact "Internal ref.:" label of the description) and the amount when the row has one, so
+  that a later export with another value date or running balance still matches, else the dates,
+  debit, credit and balance after in cents, and the description. Rows that the account already
+  has are skipped, and the status line and the import report say how many. A skipped row with
+  the reference and amount of a saved row but another operation date (the bank may reuse its
+  references) is counted in the import report and the upgrade dialog, with a link to issue
+  #126. Two identical rows of one statement are two transactions (the second one has its
+  occurrence number in its fingerprint), and a row that breaks a `NOT NULL` column fails the
+  save instead of being skipped. The upgrade to schema version 2 removes the duplicates that
+  earlier re-imports saved, after it saves a copy of the database: of each row, the copy with a
+  category stays, then the one with a subcategory, then the oldest one. The upgrade dialog says
+  how many removed copies had another category, label, date or balance, and the application log
+  lists them.
+- **A database that does not open stops the app with the cause.** `Database::open()` used to
+  leave the connection open after a failure, so the app started on an empty dashboard and the
+  SQLite error went only to the log. It now closes the connection, and the start-up error
+  window shows the cause ("file is not a database", for example) and what to do.
+- **Statement import — row dates get the right year.** A row date has no year (`MM/dd`); it
+  used to get the year of the period start, so a January row of a December → January statement
+  was dated a year too early, and a December row of a January statement eleven months later. It
+  now gets the year that puts it in the statement period (from 31 days before its start to its
+  end), and a statement without a readable "Period" line is refused instead of losing every row
+  (#30). When a period of 11 months or more lets a date fit two years, the later one is used,
+  with a warning; a row date that cannot be placed is logged. A 29 February row is no longer
+  skipped (#31). Rows that an earlier version saved with a wrong year are not corrected: a
+  re-import of their statement adds the row with the right date, and the old row must be
+  deleted by hand.
+- **Statement import — amounts.** Amounts grouped with spaces ("1 300.00", also with no-break
+  spaces), with a decimal comma ("1 234,56 €") or with a thousands comma ("1,234") are read,
+  and "nan", "inf", garbled grouping ("1.2.3", "0,123") or any text that is not a number are
+  refused: a debit of "-1 300.00" used to skip its row with only a warning (#32). An amount
+  that an earlier version read wrong ("1,234" as 1.234) is not corrected: a re-import adds the
+  right row next to the old one.
 
 ### Docs
 - See `Added`/`Changed`/`Fixed` above.

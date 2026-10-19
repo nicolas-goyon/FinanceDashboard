@@ -17,6 +17,10 @@
 #include "models/Account.h"
 #include "models/Transaction.h"
 
+#include <QHash>
+#include <QSet>
+#include <QStringList>
+
 #include <optional>
 #include <QString>
 #include <QDate>
@@ -37,10 +41,35 @@ public:
     static Database& instance();
 
     // Open (and initialise) the SQLite file at `path`.
-    // Creates tables on first run.  Returns false on failure.
+    // Creates tables on first run, then upgrades the schema to the version of
+    // this app (see upgrade()). Returns false on failure. After a failure the
+    // connection is closed (isOpen() is false), so nothing writes to a file
+    // that this version of the app cannot use; openError() tells why.
     bool    open(const QString& path);
+    // Closes the connection; open() can then open another file (tests).
+    void    close();
     [[nodiscard]] bool    isOpen() const;
     [[nodiscard]] QString lastError() const;
+
+    // Why the last open() failed, for the hint of the fatal start-up step
+    // (StartupChecks). NewerSchema and UpgradeFailed leave the file as it was.
+    enum class OpenError {
+        None,
+        CannotOpen,    // the file cannot be opened, read or created
+        NewerSchema,   // a newer version of the app saved the file
+        UpgradeFailed, // the copy or the upgrade failed; the file is unchanged
+    };
+    [[nodiscard]] OpenError openError() const { return m_openError; }
+
+    // ── Schema version (PRAGMA user_version) ─────────────────────────────────
+    // The schema version that this app writes. Each version after 0 is one
+    // ordered migration step in upgrade().
+    static constexpr int kSchemaVersion = 2;
+    [[nodiscard]] int schemaVersion() const;
+    // Empty, unless the last open() upgraded an existing database: then one
+    // or two sentences for the user (old and new version, where the backup
+    // copy is, how many duplicate transactions were removed).
+    [[nodiscard]] QString upgradeReport() const { return m_upgradeReport; }
 
     // ── Table accessors (for future direct use by specialised services) ────────
     SnapshotsTable&         snapshots()             { return m_snapshots; }
@@ -133,6 +162,18 @@ public:
     // Appends every transaction in the batch to `accountId` (does not clear
     // existing rows — see TransactionsTable::insertBatch()).
     bool insertTransactions(int accountId, const QVector<Data::Transaction>& txs);
+    // Saves an imported statement in one SQL transaction: the rows, the
+    // account fingerprint link (when `accountHash` is not empty and the
+    // account does not have it yet) and the balance checkpoints. If one write
+    // fails, nothing is written and lastError() tells which write failed.
+    // A row that the account already has (same fingerprint, see
+    // TransactionsTable) is skipped; `inserted`, when not null, receives the
+    // number of rows written.
+    bool saveImport(int accountId, const QVector<Data::Transaction>& txs, const QString& accountHash,
+                    const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted = nullptr);
+    // The fingerprints of the rows that `accountId` already has, each with
+    // the operation date of its row (see TransactionsTable).
+    [[nodiscard]] QHash<QString, QDate> transactionFingerprints(int accountId) const;
     [[nodiscard]] QVector<Data::Transaction> transactionsForAccount(int accountId) const;
     [[nodiscard]] int  transactionCountForAccount(int accountId) const;
     // Edits an already-persisted row in place (by Data::Transaction::id) —
@@ -195,8 +236,38 @@ private:
 
     Database();
 
+    // open() without the close() on failure.
+    bool openFile(const QString& path);
+    // Sets m_openError and m_lastError, logs, returns false.
+    bool failOpen(OpenError error, const QString& message);
+    // A copy of the open file next to it (VACUUM INTO), before an upgrade.
+    bool backUp(const QString& path, QString& backupPath);
+    // createTable() of every table class: the base schema (version 0).
+    bool createBaseTables();
+    // What the migration steps did, for the upgrade report.
+    struct UpgradeStats {
+        bool droppedAccountNumbers = false; // step 1 removed iban / bic / number
+        int  removedDuplicates = 0;         // step 2
+        int  removedWithOtherValues = 0;    // of those: another category, label, date…
+        int  reusedReferences = 0;          // of those: same bank reference, another operation date
+    };
+    // The iban / bic / number columns that the accounts table still has.
+    [[nodiscard]] QStringList accountNumberColumns() const;
+    // Empties those columns in the copy that backUp() made, and compacts it,
+    // so that the copy keeps no account number (maintainer decision).
+    bool clearAccountNumbersInCopy(const QString& backupPath, const QStringList& columns);
+    // The migration steps from `from` + 1 up to kSchemaVersion, then
+    // PRAGMA user_version. Runs in the caller's SQL transaction, so that the
+    // file is either at kSchemaVersion or unchanged.
+    bool upgrade(int from, UpgradeStats& stats);
+    bool migrateTo1(UpgradeStats& stats); // accounts: drop iban / bic / number
+    bool migrateTo2(UpgradeStats& stats); // transactions: fingerprint + UNIQUE index
+    [[nodiscard]] QStringList columnsOf(const QString& table) const;
+
     QSqlDatabase            m_db;
     QString                 m_lastError;
+    QString                 m_upgradeReport;
+    OpenError               m_openError = OpenError::None;
     SnapshotsTable          m_snapshots;
     AssetEntriesTable       m_assetEntries;
     CategoriesTable         m_categoriesTable;
