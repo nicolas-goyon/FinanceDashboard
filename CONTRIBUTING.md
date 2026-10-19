@@ -18,6 +18,10 @@ For how CI builds, tests and publishes the app, see `CI-CD.md`.
 
 Do not push to `main` or `develop` directly.
 
+**History rewrite.** On 2026-10-20 at 06:39 UTC, the history on GitHub was rewritten to remove
+personal data. Delete a clone made before that time and clone the repository again. Do not push
+from an old clone: it would bring the old history back.
+
 ---
 
 ## From an issue to a merge

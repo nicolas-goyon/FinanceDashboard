@@ -6,7 +6,19 @@
       "date": null,
       "title": null,
       "summary": "",
-      "sections": []
+      "sections": [
+        {
+          "name": "Changed",
+          "groups": [
+            {
+              "title": null,
+              "entries": [
+                "The Git history on GitHub was rewritten on 2026-10-20 at 06:39 UTC to remove personal data. A clone made before that time still has the old history: delete it and clone the repository again."
+              ]
+            }
+          ]
+        }
+      ]
     },
     {
       "version": "0.2.1",
