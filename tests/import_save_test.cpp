@@ -25,6 +25,13 @@
 //        byte order mark is read
 //   #46  a "ref" in the free text stays in the name; the reference block is
 //        the run of reference lines at the end; a name is never empty or null
+//   #39  a failed save returns false, says it in red (until the next
+//        message), and leaves the report as it was; reset() clears the report
+//        of the last save
+//   #53  "Auto-filled" counts only the rows whose category the predictor
+//        filled
+//   #54  a status message has a level, and a new message stays for the whole
+//        delay
 
 #include "SnapshotImportController.h"
 #include "db/Database.h"
@@ -35,6 +42,7 @@
 #include "models/CategoryRule.h"
 #include "models/Transaction.h"
 #include "utils/AccountHashing.h"
+#include "utils/StatusMessage.h"
 
 #include <QFile>
 #include <QSqlError>
@@ -198,6 +206,11 @@ private slots:
     void utf16FileIsRead();
     void refInTheFreeTextStaysInTheName();
     void nameFallsBackToTheFirstLine();
+    void failedSaveSaysItAndKeepsTheReport();
+    void saveWithoutAccountIsAWarning();
+    void resetClearsTheLastReport();
+    void manualPicksAreNotAutoFilled();
+    void newStatusMessageStaysForTheWholeDelay();
 
 private:
     // Runs the template alone on `csv`: the statement as it reads it, and its log.
@@ -874,6 +887,102 @@ void ImportSaveTest::nameFallsBackToTheFirstLine()
     QCOMPARE(rows.size(), qsizetype(2));
     QCOMPARE(rows.at(0).name, QStringLiteral("Internal ref.: F2"));
     QCOMPARE(rows.at(1).name, QStringLiteral(""));
+}
+
+void ImportSaveTest::failedSaveSaysItAndKeepsTheReport()
+{
+    SnapshotImportController controller;
+    parse(controller, marchStatement());
+    QVERIFY(controller.save(m_account, QStringLiteral("Checking")));
+    const QVariantMap report = controller.lastImportReport();
+    QVERIFY(!report.isEmpty());
+
+    // A second statement on the same controller, whose save fails: the report
+    // stays the one of the save that worked.
+    failInsertsNamed(QStringLiteral("BOOM"));
+    parse(controller, overlappingStatement());
+    controller.setRowName(2, QStringLiteral("BOOM"));   // the one new row
+    QVERIFY(!controller.save(m_account, QStringLiteral("Checking")));
+    QCOMPARE(controller.statusLevel(), QStringLiteral("danger"));
+    QCOMPARE(controller.lastImportReport(), report);
+}
+
+void ImportSaveTest::saveWithoutAccountIsAWarning()
+{
+    SnapshotImportController controller;
+    parse(controller, marchStatement());
+    QVERIFY(!controller.save(-1, QStringLiteral("(no account selected)")));
+    QCOMPARE(controller.statusLevel(), QStringLiteral("warning"));
+    QCOMPARE(transactionCount(), 0);
+}
+
+void ImportSaveTest::resetClearsTheLastReport()
+{
+    SnapshotImportController controller;
+    parse(controller, marchStatement());
+    QVERIFY(controller.save(m_account, QStringLiteral("Checking")));
+    QCOMPARE(controller.statusLevel(), QStringLiteral("success"));
+    QVERIFY(!controller.lastImportReport().isEmpty());
+
+    // "Import another file", then a save that fails: no report of the first import.
+    controller.reset();
+    QVERIFY(controller.lastImportReport().isEmpty());
+    failInsertsNamed(QStringLiteral("BOOM"));
+    parse(controller, overlappingStatement());
+    controller.setRowName(2, QStringLiteral("BOOM"));
+    QVERIFY(!controller.save(m_account, QStringLiteral("Checking")));
+    QVERIFY(controller.lastImportReport().isEmpty());
+}
+
+void ImportSaveTest::manualPicksAreNotAutoFilled()
+{
+    {
+        // An empty database: nothing to learn from, so no prediction.
+        SnapshotImportController controller;
+        parse(controller, marchStatement());
+        QCOMPARE(controller.predictionInfo().value(QStringLiteral("filledCount")).toInt(), 0);
+        categorizeAll(controller);   // three picks by hand
+        QCOMPARE(controller.predictionInfo().value(QStringLiteral("filledCount")).toInt(), 0);
+        QVERIFY(controller.save(m_account, QStringLiteral("Checking")));
+    }
+
+    // The same merchants again: the predictor fills the three rows.
+    SnapshotImportController controller;
+    parse(controller, marchStatementLaterExport());
+    QCOMPARE(controller.predictionInfo().value(QStringLiteral("filledCount")).toInt(), 3);
+    // A subcategory picked by hand keeps the predicted category: still counted.
+    controller.setRowSubcategory(0, QStringLiteral("Market"));
+    QCOMPARE(controller.predictionInfo().value(QStringLiteral("filledCount")).toInt(), 3);
+    // A category picked by hand (another one than the predicted Groceries) is
+    // not auto-filled any more.
+    controller.setRowCategory(1, QStringLiteral("Transport"));
+    QCOMPARE(controller.predictionInfo().value(QStringLiteral("filledCount")).toInt(), 2);
+}
+
+void ImportSaveTest::newStatusMessageStaysForTheWholeDelay()
+{
+    QObject owner;
+    int changes = 0;
+    StatusMessage status(&owner, 1000, [&changes]() { ++changes; });
+    status.show(StatusMessage::Level::Warning, QStringLiteral("first"));
+    QCOMPARE(status.variant(), QStringLiteral("warning"));
+    QTest::qWait(600);
+    status.show(StatusMessage::Level::Success, QStringLiteral("second"));
+    QCOMPARE(status.variant(), QStringLiteral("success"));
+    // 1200 ms after the first message, 600 ms after the second one: the
+    // timer of the first message must not clear the second one.
+    QTest::qWait(600);
+    QCOMPARE(status.text(), QStringLiteral("second"));
+    QTRY_COMPARE_WITH_TIMEOUT(status.text(), QString(), 3000);
+    QCOMPARE(changes, 3);   // two messages, then one clear
+
+    // A failure stays until the next message (#39).
+    status.show(StatusMessage::Level::Danger, QStringLiteral("failure"));
+    QCOMPARE(status.variant(), QStringLiteral("danger"));
+    QTest::qWait(1500);
+    QCOMPARE(status.text(), QStringLiteral("failure"));
+    status.show(StatusMessage::Level::Success, QStringLiteral("next"));
+    QCOMPARE(status.text(), QStringLiteral("next"));
 }
 
 QTEST_GUILESS_MAIN(ImportSaveTest)

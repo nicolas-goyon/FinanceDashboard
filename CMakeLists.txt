@@ -83,6 +83,8 @@ set(FD_CORE_SOURCES
     src/db/Database.cpp
     src/utils/Formatter.h
     src/utils/AccountHashing.h
+    src/utils/StatusMessage.h
+    src/utils/StatusMessage.cpp
     # Category prediction (see docs/category-prediction.md). UI-independent
     # and Qt-Core-only — no QML_ELEMENT, no QObject; SnapshotImportController
     # below owns an instance and does the QML plumbing.

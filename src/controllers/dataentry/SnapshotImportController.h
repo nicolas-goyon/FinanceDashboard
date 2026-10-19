@@ -6,6 +6,7 @@
 #include "models/ImportLog.h"
 #include "models/Transaction.h"
 #include "predict/CategoryPredictor.h"
+#include "utils/StatusMessage.h"
 
 #include <QDate>
 #include <QObject>
@@ -76,6 +77,8 @@ class SnapshotImportController : public QObject
     Q_PROPERTY(int warningCount READ warningCount NOTIFY logChanged)
 
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged)
+    // "success", "warning" or "danger": the StatusBadge variant of statusText (#54).
+    Q_PROPERTY(QString statusLevel READ statusLevel NOTIFY statusChanged)
 
     // Filled in by save() right after a successful write — see
     // lastImportReport()'s doc comment and buildImportReport() for the exact
@@ -100,7 +103,8 @@ public:
     [[nodiscard]] int errorCount() const;
     [[nodiscard]] int warningCount() const;
 
-    [[nodiscard]] QString statusText() const { return m_statusText; }
+    [[nodiscard]] QString statusText() const { return m_status.text(); }
+    [[nodiscard]] QString statusLevel() const { return m_status.variant(); }
 
     [[nodiscard]] QVariantMap lastImportReport() const { return m_lastImportReport; }
 
@@ -164,7 +168,8 @@ public:
     // constants in CategoryPredictor.h should be argued about against.
     Q_INVOKABLE [[nodiscard]] QVariantMap evaluatePredictor();
 
-    // Clears the parsed statement and returns to the file/template picker.
+    // Clears the parsed statement and the last import report, and returns to
+    // the file/template picker.
     Q_INVOKABLE void reset();
 
     // Persists every included transaction row to the `transactions` table
@@ -177,10 +182,15 @@ public:
     // is saved and a retry stores each row once. accountId < 0 (nothing
     // selected) fails without writing anything. accountLabel is only used
     // for the status message.
+    // Returns false when the save failed (no account selected, or a database
+    // error, so nothing was written): the status message (level "danger" or
+    // "warning") tells why, and the import report is not changed. The page
+    // then stays on the review step (#39). A statement whose rows are all
+    // saved already is a success ("Nothing new"): true.
     // The QML side must call AccountController.reload() afterward so the
     // singleton's cached accounts/hashes pick up this write (see
     // AccountController::reload() doc comment).
-    Q_INVOKABLE void save(int accountId, const QString& accountLabel);
+    Q_INVOKABLE bool save(int accountId, const QString& accountLabel);
 
     // ── Reconciliation (see ARCHITECTURE.MD § Statement Import — Import
     //    Report / § Balance Checkpoints) ─────────────────────────────────────
@@ -224,11 +234,12 @@ signals:
     void statementChanged();
     void logChanged();
     void statusChanged();
-    // Emitted after save() successfully builds a new lastImportReport().
+    // Emitted after save() successfully builds a new lastImportReport(), and
+    // after reset() clears it.
     void reportChanged();
 
 private:
-    void setStatus(const QString& msg);
+    void setStatus(StatusMessage::Level level, const QString& msg);
     // Adds `name` as a new category (neutral color) if no existing category
     // matches it case-insensitively — used by addReconciliationAdjustment()
     // to make sure "Reconciliation Adjustment" exists before a row is
@@ -269,7 +280,7 @@ private:
     QString m_sourceFileName;
     QString m_templateId; // last parseFile()'s templateId — stored on saved transactions as source_template
 
-    QString m_statusText;
+    StatusMessage m_status;
     QVariantMap m_lastImportReport;
 
     // ── Category prediction state ───────────────────────────────────────────
@@ -283,6 +294,11 @@ private:
     // appended afterwards (addReconciliationAdjustment()) only ever get
     // *higher* indices, so no remapping is needed.
     QSet<int> m_userEditedRows;
+    // The rows of m_userEditedRows whose *category* the user (or the
+    // reconciliation adjustment) set, not the predictor. A row where the user
+    // only picked a subcategory keeps the predicted category: it stays in the
+    // "Auto-filled" count of predictionInfo() (#53).
+    QSet<int> m_userCategoryRows;
 };
 
 #endif // FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_SNAPSHOTIMPORTCONTROLLER_H

@@ -2,6 +2,7 @@
 #define FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_CATEGORYCONTROLLER_H
 
 #include "models/Category.h"
+#include "utils/StatusMessage.h"
 
 #include <QObject>
 #include <QString>
@@ -58,12 +59,15 @@ class CategoryController : public QObject
 
     Q_PROPERTY(QVariantList categories READ categories NOTIFY categoriesChanged)
     Q_PROPERTY(QString      statusText READ statusText NOTIFY statusChanged)
+    // "success", "warning" or "danger": the StatusBadge variant of statusText (#54).
+    Q_PROPERTY(QString      statusLevel READ statusLevel NOTIFY statusChanged)
 
 public:
     explicit CategoryController(QObject* parent = nullptr);
 
     [[nodiscard]] QVariantList categories() const;
-    [[nodiscard]] QString      statusText() const { return m_statusText; }
+    [[nodiscard]] QString      statusText() const { return m_status.text(); }
+    [[nodiscard]] QString      statusLevel() const { return m_status.variant(); }
 
     // Convenience lookups (used to fill a color swatch given only names,
     // e.g. a transaction row that stores category/subcategory as strings).
@@ -119,16 +123,17 @@ private:
     // Database::loadCategories() comes back empty.
     void seedDefaults();
 
-    // Sets a transient status message (e.g. "duplicate name" / "removed"),
-    // auto-clearing after 3s — same pattern and timing as
+    // Sets a transient status message (e.g. "duplicate name" / "removed")
+    // and its level, auto-clearing 3s after the last message (StatusMessage,
+    // #54) — same pattern and timing as
     // AccountController::setStatus(), added here so both QML_SINGLETON
     // controllers with near-identical CRUD shapes give the same user
     // feedback on success/failure instead of CategoryController silently
     // no-op'ing (see ARCHITECTURE.MD § Shared Components).
-    void setStatus(const QString& msg);
+    void setStatus(StatusMessage::Level level, const QString& msg);
 
     QVector<Data::Category> m_categories;
-    QString m_statusText;
+    StatusMessage m_status;
 };
 
 #endif // FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_CATEGORYCONTROLLER_H

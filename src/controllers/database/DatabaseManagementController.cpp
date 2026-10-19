@@ -7,7 +7,6 @@
 #include <QLatin1String>
 #include <QObject>
 #include <QString>
-#include <QTimer>
 #include <QVector>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
 
@@ -17,26 +16,27 @@ constexpr int kStatusClearDelayMs = 4000; // how long a status message stays vis
 
 DatabaseManagementController::DatabaseManagementController(QObject* parent)
     : QObject(parent)
+    , m_status(this, kStatusClearDelayMs, [this]() { emit statusChanged(); })
 {}
 
 void DatabaseManagementController::resetDatabase()
 {
     if (!Database::instance().resetAll()) {
-        setStatus(QStringLiteral("⚠  Reset failed — see application log"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Reset failed — see application log"));
         return;
     }
-    setStatus(QStringLiteral("✓  Database reset — everything cleared"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Database reset — everything cleared"));
     emit databaseReset();
 }
 
 void DatabaseManagementController::resetToMock()
 {
     if (!Database::instance().resetAll()) {
-        setStatus(QStringLiteral("⚠  Reset failed — see application log"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Reset failed — see application log"));
         return;
     }
     seedMockData();
-    setStatus(QStringLiteral("✓  Database reset to mock data"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Database reset to mock data"));
     emit databaseReset();
 }
 
@@ -46,10 +46,10 @@ bool DatabaseManagementController::clearTransactionsForAccount(int accountId)
         return false;
     }
     if (!Database::instance().clearTransactionsForAccount(accountId)) {
-        setStatus(QStringLiteral("⚠  Could not clear transactions for this account"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not clear transactions for this account"));
         return false;
     }
-    setStatus(QStringLiteral("✓  Cleared transactions for this account"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Cleared transactions for this account"));
     return true;
 }
 
@@ -177,12 +177,7 @@ void DatabaseManagementController::seedMockData() // static, see header
     }
 }
 
-void DatabaseManagementController::setStatus(const QString& msg)
+void DatabaseManagementController::setStatus(StatusMessage::Level level, const QString& msg)
 {
-    m_statusText = msg;
-    emit statusChanged();
-    QTimer::singleShot(kStatusClearDelayMs, this, [this]() {
-        m_statusText.clear();
-        emit statusChanged();
-    });
+    m_status.show(level, msg);
 }

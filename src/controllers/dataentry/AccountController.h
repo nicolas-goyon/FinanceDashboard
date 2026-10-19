@@ -3,6 +3,7 @@
 
 #include "models/Account.h"
 #include "models/Transaction.h"
+#include "utils/StatusMessage.h"
 
 #include <QObject>
 #include <QString>
@@ -66,6 +67,8 @@ class AccountController : public QObject
     Q_PROPERTY(QVariantList accountCategories READ accountCategories NOTIFY accountCategoriesChanged)
     Q_PROPERTY(QVariantList accountTypes READ accountTypes NOTIFY accountTypesChanged)
     Q_PROPERTY(QString      statusText READ statusText NOTIFY statusChanged)
+    // "success", "warning" or "danger": the StatusBadge variant of statusText (#54).
+    Q_PROPERTY(QString      statusLevel READ statusLevel NOTIFY statusChanged)
 
 public:
     explicit AccountController(QObject* parent = nullptr);
@@ -73,7 +76,8 @@ public:
     [[nodiscard]] QVariantList accounts() const;
     [[nodiscard]] QVariantList accountCategories() const;
     [[nodiscard]] QVariantList accountTypes() const;
-    [[nodiscard]] QString      statusText() const   { return m_statusText; }
+    [[nodiscard]] QString      statusText() const   { return m_status.text(); }
+    [[nodiscard]] QString      statusLevel() const  { return m_status.variant(); }
 
     // Account CRUD (index into the current accounts() list). Each writes
     // through Database::instance() first; the in-memory list (and
@@ -223,7 +227,7 @@ signals:
     void statusChanged();
 
 private:
-    void setStatus(const QString& msg);
+    void setStatus(StatusMessage::Level level, const QString& msg);
     void loadFromDb();
     // Seeds the default account types (CCP, Livret A, LDDS, PEL, Assurance
     // Vie, PEA, CTO, Other), the 4 default account categories (Day-to-day,
@@ -239,7 +243,7 @@ private:
     QVector<Data::Account>         m_accounts;
     QVector<Data::AccountCategory> m_accountCategories;
     QVector<Data::AccountType>     m_accountTypes;
-    QString                        m_statusText;
+    StatusMessage                  m_status;
 };
 
 #endif // FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_ACCOUNTCONTROLLER_H

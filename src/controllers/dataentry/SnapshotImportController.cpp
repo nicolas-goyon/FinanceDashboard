@@ -25,7 +25,6 @@
 #include <QObject>
 #include <QSet>
 #include <QString>
-#include <QTimer>
 #include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
@@ -73,6 +72,7 @@ QDate effectiveDateOf(const Data::ImportedTransaction& transaction)
 
 SnapshotImportController::SnapshotImportController(QObject* parent)
     : QObject(parent)
+    , m_status(this, kStatusClearDelayMs, [this]() { emit statusChanged(); })
 {
     for (const ImportTemplate* tpl : ImportTemplateRegistry::all()) {
         m_templates.append(QVariantMap{
@@ -153,8 +153,11 @@ QVariantMap SnapshotImportController::predictionInfo() const
 {
     int filled = 0;
     int needsReview = 0;
-    for (const Data::ImportedTransaction& transaction : m_statement.transactions) {
-        if (transaction.category.isEmpty()) {
+    for (qsizetype row = 0; row < m_statement.transactions.size(); ++row) {
+        const Data::ImportedTransaction& transaction = m_statement.transactions.at(row);
+        // Only the rows whose category the predictor filled: a category that
+        // the user picked is not "auto-filled" (#53).
+        if (transaction.category.isEmpty() || m_userCategoryRows.contains(static_cast<int>(row))) {
             continue;
         }
         ++filled;
@@ -240,6 +243,7 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
     m_statement = Data::ImportedStatement{};
     m_log.clear();
     m_userEditedRows.clear(); // fresh statement — nobody has decided anything yet
+    m_userCategoryRows.clear();
     m_templateId = templateId; // stashed for save()'s Data::Transaction::sourceTemplate
 
     const ImportTemplate* tpl = ImportTemplateRegistry::byId(templateId);
@@ -275,9 +279,9 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
     emit logChanged();
 
     if (m_lastParseFailed) {
-        setStatus(QStringLiteral("⚠  Import failed — see the log for details"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Import failed — see the log for details"));
     } else {
-        setStatus(QString("✓  Parsed %1 transaction(s) from %2")
+        setStatus(StatusMessage::Level::Success, QString("✓  Parsed %1 transaction(s) from %2")
                        .arg(m_statement.transactions.size())
                        .arg(m_sourceFileName));
     }
@@ -302,6 +306,7 @@ void SnapshotImportController::setRowCategory(int row, const QString& category)
     transaction.confidence = 0.0;
     transaction.predictionReason.clear();
     m_userEditedRows.insert(row);
+    m_userCategoryRows.insert(row);
     emit statementChanged();
 }
 
@@ -400,9 +405,14 @@ void SnapshotImportController::reset()
     m_sourceFileName.clear();
     m_templateId.clear();
     m_userEditedRows.clear();
+    m_userCategoryRows.clear();
     m_predictor.clear(); // rebuilt by the next parseFile() — never stale
+    // The report of the last save goes too: after "Import another file", a
+    // failed save must not show the report of the earlier import (#39).
+    m_lastImportReport.clear();
     emit statementChanged();
     emit logChanged();
+    emit reportChanged();
 }
 
 // ── Category prediction (see docs/category-prediction.md) ─────────────────────
@@ -467,7 +477,7 @@ bool SnapshotImportController::rememberRowAsRule(int row)
     const QString rowSubcategory = m_statement.transactions.at(row).subcategory;
 
     if (rowCategory.isEmpty()) {
-        setStatus(QStringLiteral("⚠  Pick a category for this row first, then teach it as a rule"));
+        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  Pick a category for this row first, then teach it as a rule"));
         return false;
     }
 
@@ -477,12 +487,12 @@ bool SnapshotImportController::rememberRowAsRule(int row)
     // Data::CategoryRule::pattern).
     const QString pattern = Predict::LabelNormalizer::normalize(rowName, rowDescription).key;
     if (pattern.isEmpty()) {
-        setStatus(QStringLiteral("⚠  This row's label has nothing distinctive to build a rule from"));
+        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  This row's label has nothing distinctive to build a rule from"));
         return false;
     }
 
     if (Database::instance().addCategoryRule(pattern, rowCategory, rowSubcategory) < 0) {
-        setStatus(QStringLiteral("⚠  Failed to save the rule — see application log"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Failed to save the rule — see application log"));
         return false;
     }
 
@@ -490,7 +500,7 @@ bool SnapshotImportController::rememberRowAsRule(int row)
     // same statement snaps to the new rule without the user re-importing.
     // The row they taught it from is in m_userEditedRows and stays as-is.
     refreshPredictions();
-    setStatus(QString("✓  From now on, \"%1\" is categorized as %2")
+    setStatus(StatusMessage::Level::Success, QString("✓  From now on, \"%1\" is categorized as %2")
                    .arg(pattern, rowSubcategory.isEmpty()
                                       ? rowCategory
                                       : rowCategory + QStringLiteral(" / ") + rowSubcategory));
@@ -535,11 +545,11 @@ QVariantMap SnapshotImportController::evaluatePredictor()
     };
 }
 
-void SnapshotImportController::save(int accountId, const QString& accountLabel)
+bool SnapshotImportController::save(int accountId, const QString& accountLabel)
 {
     if (accountId < 0) {
-        setStatus(QStringLiteral("⚠  Please select an account before saving"));
-        return;
+        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  Please select an account before saving"));
+        return false;
     }
 
     // Snapshot the reconciliation result *before* writing anything — the
@@ -623,8 +633,8 @@ void SnapshotImportController::save(int accountId, const QString& accountLabel)
     int inserted = 0;
     if (!Database::instance().saveImport(accountId, newRows, hash, statementCheckpointsToAdd(accountId),
                                          &inserted)) {
-        setStatus(QStringLiteral("⚠  Could not save the import. Nothing was saved — see application log"));
-        return;
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the import. Nothing was saved — see application log"));
+        return false;
     }
     if (inserted != newRows.size()) {
         // Not expected (the filter above used the same fingerprints), but the
@@ -642,20 +652,21 @@ void SnapshotImportController::save(int accountId, const QString& accountLabel)
     emit reportChanged();
 
     if (alreadySaved == 0) {
-        setStatus(QString("✓  Saved %1 of %2 transaction(s) to \"%3\"")
+        setStatus(StatusMessage::Level::Success, QString("✓  Saved %1 of %2 transaction(s) to \"%3\"")
                        .arg(inserted)
                        .arg(m_statement.transactions.size())
                        .arg(accountLabel));
     } else if (inserted == 0) {
-        setStatus(QString("✓  Nothing new: the %1 transaction(s) of this statement are already saved in \"%2\"")
+        setStatus(StatusMessage::Level::Success, QString("✓  Nothing new: the %1 transaction(s) of this statement are already saved in \"%2\"")
                        .arg(alreadySaved)
                        .arg(accountLabel));
     } else {
-        setStatus(QString("✓  Saved %1 new transaction(s) to \"%2\" — %3 already saved, not added again")
+        setStatus(StatusMessage::Level::Success, QString("✓  Saved %1 new transaction(s) to \"%2\" — %3 already saved, not added again")
                        .arg(inserted)
                        .arg(accountLabel)
                        .arg(alreadySaved));
     }
+    return true;
 }
 
 QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
@@ -800,8 +811,9 @@ void SnapshotImportController::addReconciliationAdjustment(int accountId)
     // later refreshPredictions() can't relabel a reconciliation adjustment as
     // whatever merchant its synthetic description happens to look like.
     m_userEditedRows.insert(static_cast<int>(m_statement.transactions.size()) - 1);
+    m_userCategoryRows.insert(static_cast<int>(m_statement.transactions.size()) - 1);
     emit statementChanged();
-    setStatus(QString("✓  Added a %1 adjustment transaction to match the declared closing balance")
+    setStatus(StatusMessage::Level::Success, QString("✓  Added a %1 adjustment transaction to match the declared closing balance")
                    .arg(Fmt::money(diff, true)));
 }
 
@@ -898,12 +910,7 @@ void SnapshotImportController::buildImportReport(const QString& accountLabel, co
     };
 }
 
-void SnapshotImportController::setStatus(const QString& msg)
+void SnapshotImportController::setStatus(StatusMessage::Level level, const QString& msg)
 {
-    m_statusText = msg;
-    emit statusChanged();
-    QTimer::singleShot(kStatusClearDelayMs, this, [this]() {
-        m_statusText.clear();
-        emit statusChanged();
-    });
+    m_status.show(level, msg);
 }

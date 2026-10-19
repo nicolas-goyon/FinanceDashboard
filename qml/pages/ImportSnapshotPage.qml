@@ -89,7 +89,11 @@ Item {
         saveButtonResetTimer.restart()
         var accountId = page.selectedAccount !== null ? page.selectedAccount.id : -1
         var label = page.selectedAccount !== null ? page.selectedAccount.name : "(no account selected)"
-        controller.save(accountId, label)
+        if (!controller.save(accountId, label)) {
+            // Nothing was saved: stay on the review step. The status badge
+            // tells why, in red (#39).
+            return
+        }
         // Pick up the transactions/hash write this just made (and a
         // possible new "Reconciliation Adjustment" category) — see
         // AccountController.reload()/CategoryController.reload() doc
@@ -188,7 +192,7 @@ Item {
                 StatusBadge {
                     visible: controller.statusText.length > 0
                     text: controller.statusText
-                    variant: controller.lastParseFailed ? "danger" : "success"
+                    variant: controller.statusLevel
                 }
             }
 
