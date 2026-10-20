@@ -47,6 +47,23 @@ builds, source archives). Then CI opens a pull request that merges the release b
   before the pull request that opens the next version or before the back-merge.
   `CONTRIBUTING.md` tells when a whole stack can be merged at once (#131).
 
+### Fixed
+- Statement import: the "Prénom Nom" line gives the account holder name again. The accent in
+  the code was read as two Latin-1 characters, so the name was always "—" (#43).
+- Statement import: when the amount of the start balance line cannot be read, the end balance
+  line no longer becomes the start balance, and the reconciliation no longer counts the unread
+  balance as 0: no false gap and no adjustment row (#44).
+- Statement import: a CSV file saved as Windows-1252 (for example by a spreadsheet) is read.
+  Before, "€" and the accented letters broke the balances and the holder name. A UTF-8 file
+  with a few bad bytes stays UTF-8 (the bad bytes show as "�"), and a UTF-16 file with a byte
+  order mark is read. The import log warns in each case. If you imported a Windows-1252 file
+  before, a new import of the same file can add its rows that have no bank reference again:
+  their description changed (#45).
+- Statement import: the reference block of a description is the run of reference lines at its
+  end ("Internal ref.: …", "End-to-end ref.: …"). So a "ref" in the free text ("Rent for March,
+  ref: APT12") stays in the transaction name, and a description with only reference lines gets
+  its first line as the name instead of an empty name. Rows saved before keep their name (#46).
+
 ---
 
 ## v0.2.1 — 2026-10-19 — Stabilization

@@ -17,9 +17,20 @@
 //   #31  a 29 February row is read
 //   #32  grouped and comma amounts are read; "nan", "inf" and garbled
 //        grouping are refused
+//   #43  a "Prénom Nom" line gives the holder name
+//   #44  a start balance that cannot be read leaves the end balance as it is
+//   #44  ...and the reconciliation does not count the unread balance as 0
+//   #45  a Windows-1252 file is read; a UTF-8 byte order mark is skipped; a
+//        UTF-8 file with a few bad bytes stays UTF-8; a UTF-16 file with a
+//        byte order mark is read
+//   #46  a "ref" in the free text stays in the name; the reference block is
+//        the run of reference lines at the end; a name is never empty or null
 
 #include "SnapshotImportController.h"
 #include "db/Database.h"
+#include "import/SumeriaCcpCsvExtractionTemplate.h"
+#include "models/ImportLog.h"
+#include "models/ImportedStatement.h"
 #include "models/Account.h"
 #include "models/CategoryRule.h"
 #include "models/Transaction.h"
@@ -29,6 +40,7 @@
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QTemporaryDir>
+#include <QStringEncoder>
 #include <QTest>
 #include <QUrl>
 #include <QVariantMap>
@@ -178,8 +190,19 @@ private slots:
     void malformedAmountsAreRefused();
     void longPeriodGetsTheLaterYear();
     void dateOutsideThePeriodIsLogged();
+    void holderNameWithAnAccentIsRead();
+    void unreadableStartBalanceKeepsTheEndBalance();
+    void windows1252FileIsRead();
+    void utf8ByteOrderMarkIsSkipped();
+    void utf8FileWithABadByteStaysUtf8();
+    void utf16FileIsRead();
+    void refInTheFreeTextStaysInTheName();
+    void nameFallsBackToTheFirstLine();
 
 private:
+    // Runs the template alone on `csv`: the statement as it reads it, and its log.
+    bool readStatement(const QByteArray& csv, Data::ImportedStatement& out,
+                       QVector<Data::ImportLogEntry>& log);
     void parse(SnapshotImportController& controller, const QByteArray& csv);
     // Parses and saves `csv`, then returns the saved rows, oldest first.
     QVector<Data::Transaction> parseAndSave(const QByteArray& csv);
@@ -674,6 +697,183 @@ void ImportSaveTest::dateOutsideThePeriodIsLogged()
     const QVector<Data::Transaction> rows = Database::instance().transactionsForAccount(m_account);
     QCOMPARE(rows.size(), qsizetype(1));
     QCOMPARE(rows.at(0).operationDate, QDate(2026, 3, 2));
+}
+
+bool ImportSaveTest::readStatement(const QByteArray& csv, Data::ImportedStatement& out,
+                                   QVector<Data::ImportLogEntry>& log)
+{
+    const QString path = m_dir.filePath(QStringLiteral("template.csv"));
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate) || file.write(csv) != csv.size()) {
+        return false;
+    }
+    file.close();
+    return SumeriaCcpCsvExtractionTemplate().parse(path, out, log);
+}
+
+void ImportSaveTest::holderNameWithAnAccentIsRead()
+{
+    Data::ImportedStatement st;
+    QVector<Data::ImportLogEntry> log;
+    QVERIFY(readStatement("Pr\xC3\xA9nom Nom,H\xC3\xA9l\xC3\xA8ne Martin\n" + marchStatement(), st, log));
+    QCOMPARE(st.accountHolderName, QStringLiteral("Hélène Martin"));
+}
+
+void ImportSaveTest::unreadableStartBalanceKeepsTheEndBalance()
+{
+    Data::ImportedStatement st;
+    QVector<Data::ImportLogEntry> log;
+    QVERIFY(readStatement(statement("From 03/01/2026 to 03/31/2026", "03/01/2026,five hundred",
+                                    "03/31/2026,440.00 \xE2\x82\xAC",
+                                    "03/02,03/02,\"Card payment 1234: CARREFOUR\nInternal ref.: A1\",-20.00,,480.00\n"),
+                          st, log));
+    QVERIFY(!st.balanceStartDate.isValid());
+    QCOMPARE(st.balanceStart, 0.0);
+    QCOMPARE(st.balanceEndDate, QDate(2026, 3, 31));
+    QCOMPARE(st.balanceEnd, 440.0);
+    const bool warned = std::any_of(log.cbegin(), log.cend(), [](const Data::ImportLogEntry& entry) {
+        return entry.level == Data::LogLevel::Warning && entry.message.contains(QStringLiteral("start balance"));
+    });
+    QVERIFY(warned);
+
+    // The reconciliation does not use 0 for the unread start: before the fix,
+    // it found a gap of 500 and offered an adjustment of +500.
+    SnapshotImportController controller;
+    parse(controller, statement("From 03/01/2026 to 03/31/2026", "03/01/2026,five hundred",
+                                "03/31/2026,440.00 \xE2\x82\xAC",
+                                "03/02,03/02,\"Card payment 1234: CARREFOUR\nInternal ref.: A1\",-60.00,,440.00\n"));
+    const QVariantMap check = controller.checkReconciliation(m_account);
+    QVERIFY(!check.value(QStringLiteral("hasDeclaredStart")).toBool());
+    QVERIFY(!check.value(QStringLiteral("endAvailable")).toBool());
+    QVERIFY(check.value(QStringLiteral("endOk")).toBool());
+    controller.addReconciliationAdjustment(m_account);
+    QCOMPARE(controller.transactionRows().size(), qsizetype(1));   // no adjustment row
+    QCOMPARE(controller.statementInfo().value(QStringLiteral("balanceStartText")).toString(), QStringLiteral("—"));
+}
+
+void ImportSaveTest::windows1252FileIsRead()
+{
+    // "é" is 0xE9 and "€" is 0x80 in Windows-1252: neither is valid UTF-8.
+    QByteArray csv = "Pr\xE9nom Nom,H\xE9l\xE8ne Martin\n" + marchStatement();
+    csv.replace("\xE2\x82\xAC", "\x80");
+    Data::ImportedStatement st;
+    QVector<Data::ImportLogEntry> log;
+    QVERIFY(readStatement(csv, st, log));
+    QCOMPARE(st.accountHolderName, QStringLiteral("Hélène Martin"));
+    QCOMPARE(st.balanceStart, 500.0);
+    QCOMPARE(st.balanceEnd, 440.0);
+    QCOMPARE(st.transactions.size(), qsizetype(3));
+    const bool told = std::any_of(log.cbegin(), log.cend(), [](const Data::ImportLogEntry& entry) {
+        return entry.message.contains(QStringLiteral("Windows-1252"));
+    });
+    QVERIFY(told);
+}
+
+void ImportSaveTest::utf8ByteOrderMarkIsSkipped()
+{
+    Data::ImportedStatement st;
+    QVector<Data::ImportLogEntry> log;
+    QVERIFY(readStatement("\xEF\xBB\xBF" + marchStatement(), st, log));
+    QCOMPARE(st.iban, QString::fromLatin1(kIban));   // the first label is still "IBAN"
+    QCOMPARE(st.balanceEnd, 440.0);
+    const bool told = std::any_of(log.cbegin(), log.cend(), [](const Data::ImportLogEntry& entry) {
+        return entry.message.contains(QStringLiteral("Windows-1252"));
+    });
+    QVERIFY(!told);
+}
+
+void ImportSaveTest::utf8FileWithABadByteStaysUtf8()
+{
+    // One stray Windows-1252 byte in a UTF-8 file: the file stays UTF-8 (the
+    // "€" of the balances are valid UTF-8), with or without a byte order mark.
+    for (const QByteArray& bom : {QByteArray(), QByteArray("\xEF\xBB\xBF")}) {
+        Data::ImportedStatement st;
+        QVector<Data::ImportLogEntry> log;
+        QVERIFY(readStatement(bom + "Pr\xC3\xA9nom Nom,Ren\xE9 Martin\n" + marchStatement(), st, log));
+        QCOMPARE(st.iban, QString::fromLatin1(kIban));
+        QCOMPARE(st.balanceStart, 500.0);
+        QCOMPARE(st.balanceEnd, 440.0);
+        QCOMPARE(st.accountHolderName, QStringLiteral("Ren� Martin"));
+        const bool told = std::any_of(log.cbegin(), log.cend(), [](const Data::ImportLogEntry& entry) {
+            return entry.level == Data::LogLevel::Warning && entry.message.contains(QStringLiteral("not valid UTF-8"));
+        });
+        QVERIFY(told);
+    }
+}
+
+void ImportSaveTest::utf16FileIsRead()
+{
+    QStringEncoder utf16(QStringConverter::Utf16LE);
+    const QByteArray csv = QByteArray("\xFF\xFE") + QByteArray(utf16.encode(QString::fromUtf8(marchStatement())));
+    Data::ImportedStatement st;
+    QVector<Data::ImportLogEntry> log;
+    QVERIFY(readStatement(csv, st, log));
+    QCOMPARE(st.iban, QString::fromLatin1(kIban));
+    QCOMPARE(st.balanceEnd, 440.0);
+    QCOMPARE(st.transactions.size(), qsizetype(3));
+}
+
+void ImportSaveTest::refInTheFreeTextStaysInTheName()
+{
+    Data::ImportedStatement st;
+    QVector<Data::ImportLogEntry> log;
+    QVERIFY(readStatement(statement("From 03/01/2026 to 03/31/2026", "03/01/2026,500.00 \xE2\x82\xAC",
+                                    "03/31/2026,0.00 \xE2\x82\xAC",
+                                    "03/02,03/02,\"Rent for March, ref: APT12\nInternal ref.: R1\",-500.00,,0.00\n"),
+                          st, log));
+    QCOMPARE(st.transactions.size(), qsizetype(1));
+    QCOMPARE(st.transactions.at(0).name, QStringLiteral("Rent for March, ref: APT12"));
+
+    // The reference block is the run of reference lines at the end: a "ref:"
+    // line followed by free text stays, and a label of several words ends
+    // the name too.
+    Data::ImportedStatement block;
+    QVERIFY(readStatement(statement("From 03/01/2026 to 03/31/2026", "03/01/2026,500.00 \xE2\x82\xAC",
+                                    "03/31/2026,0.00 \xE2\x82\xAC",
+                                    "03/02,03/02,\"Transfer ref: rent March\nMarch 2026\nEnd-to-end ref.: E2E1\n"
+                                    "Internal ref.: R2\",-500.00,,0.00\n"),
+                          block, log));
+    QCOMPARE(block.transactions.size(), qsizetype(1));
+    QCOMPARE(block.transactions.at(0).name, QStringLiteral("Transfer ref: rent March March 2026"));
+}
+
+void ImportSaveTest::nameFallsBackToTheFirstLine()
+{
+    Data::ImportedStatement st;
+    QVector<Data::ImportLogEntry> log;
+    QVERIFY(readStatement(statement("From 03/01/2026 to 03/31/2026", "03/01/2026,500.00 \xE2\x82\xAC",
+                                    "03/31/2026,470.00 \xE2\x82\xAC",
+                                    "03/02,03/02,\"Transfer ref: rent March\nInternal ref.: F1\",-20.00,,480.00\n"
+                                    "03/03,03/03,\"Internal ref.: F2\",-10.00,,470.00\n"),
+                          st, log));
+    QCOMPARE(st.transactions.size(), qsizetype(2));
+    QCOMPARE(st.transactions.at(0).name, QStringLiteral("Transfer ref: rent March"));
+    QCOMPARE(st.transactions.at(1).name, QStringLiteral("Internal ref.: F2"));
+
+    // An empty description gives an empty name, not a null one.
+    Data::ImportedStatement empty;
+    QVERIFY(readStatement(statement("From 03/01/2026 to 03/31/2026", "03/01/2026,500.00 \xE2\x82\xAC",
+                                    "03/31/2026,495.00 \xE2\x82\xAC", "03/04,03/04,,-5.00,,495.00\n"),
+                          empty, log));
+    QCOMPARE(empty.transactions.size(), qsizetype(1));
+    QVERIFY(empty.transactions.at(0).name.isEmpty());
+    QVERIFY(!empty.transactions.at(0).name.isNull());
+
+    // The save stores the reference-only row and the empty one with their
+    // names (#16: a null name fails it).
+    SnapshotImportController controller;
+    parse(controller, statement("From 03/01/2026 to 03/31/2026", "03/01/2026,500.00 \xE2\x82\xAC",
+                                "03/31/2026,485.00 \xE2\x82\xAC",
+                                "03/03,03/03,\"Internal ref.: F2\",-10.00,,490.00\n"
+                                "03/04,03/04,,-5.00,,485.00\n"));
+    controller.save(m_account, QStringLiteral("Checking"));
+    QVector<Data::Transaction> rows = Database::instance().transactionsForAccount(m_account);
+    std::sort(rows.begin(), rows.end(), [](const Data::Transaction& a, const Data::Transaction& b) {
+        return a.id < b.id;
+    });
+    QCOMPARE(rows.size(), qsizetype(2));
+    QCOMPARE(rows.at(0).name, QStringLiteral("Internal ref.: F2"));
+    QCOMPARE(rows.at(1).name, QStringLiteral(""));
 }
 
 QTEST_GUILESS_MAIN(ImportSaveTest)

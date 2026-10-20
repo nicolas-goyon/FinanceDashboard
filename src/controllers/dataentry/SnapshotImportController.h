@@ -201,6 +201,9 @@ public:
     //     declared balanceEnd. This is the one the Save flow blocks on:
     //     excluding ("un-keeping") a row the bank itself counted breaks this
     //     equation. See addReconciliationAdjustment() for the fix path.
+    // A balance line that the parser could not read leaves its date invalid
+    // (#44): "hasDeclaredStart": false skips check 1, and "endAvailable":
+    // false skips check 2 ("endOk": true, so no adjustment and no warning).
     // Returns "available": false (nothing else meaningful) if nothing has
     // been parsed yet or accountId is invalid.
     Q_INVOKABLE [[nodiscard]] QVariantMap checkReconciliation(int accountId) const;

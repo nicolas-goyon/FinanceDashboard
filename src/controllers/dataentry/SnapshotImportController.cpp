@@ -102,9 +102,12 @@ QVariantMap SnapshotImportController::statementInfo() const
         { "accountHashRaw",     hash },
         { "periodFromText",     Fmt::dateOrDash(m_statement.periodFrom) },
         { "periodToText",       Fmt::dateOrDash(m_statement.periodTo) },
-        { "balanceStartText",   Fmt::money(m_statement.balanceStart) },
+        // A balance line that could not be read has no date (#44): "—", not 0.
+        { "balanceStartText",   m_statement.balanceStartDate.isValid() ? Fmt::money(m_statement.balanceStart)
+                                                                       : QStringLiteral("—") },
         { "balanceStartDateText", Fmt::dateOrDash(m_statement.balanceStartDate) },
-        { "balanceEndText",     Fmt::money(m_statement.balanceEnd) },
+        { "balanceEndText",     m_statement.balanceEndDate.isValid() ? Fmt::money(m_statement.balanceEnd)
+                                                                     : QStringLiteral("—") },
         { "balanceEndDateText", Fmt::dateOrDash(m_statement.balanceEndDate) },
         { "transactionCount",   m_statement.transactions.size() },
     };
@@ -663,11 +666,21 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
         return result;
     }
 
+    // A balance line that could not be read has no date (#44): the checks
+    // that need it do not run, instead of counting it as 0.
+    const bool hasDeclaredStart = m_statement.balanceStartDate.isValid();
+    const bool hasDeclaredEnd = m_statement.balanceEndDate.isValid();
+    const bool endAvailable = hasDeclaredStart && hasDeclaredEnd;
+    result["hasDeclaredStart"] = hasDeclaredStart;
+    result["endAvailable"] = endAvailable;
+
     // ── Check 1: declared start vs. our own last record before that date ──
-    const std::optional<Data::AccountBalanceCheckpoint> checkpoint =
-        Database::instance().latestCheckpointOnOrBefore(accountId, m_statement.balanceStartDate);
-    const std::optional<Data::Transaction> priorTx =
-        Database::instance().latestTransactionOnOrBefore(accountId, m_statement.balanceStartDate);
+    std::optional<Data::AccountBalanceCheckpoint> checkpoint;
+    std::optional<Data::Transaction> priorTx;
+    if (hasDeclaredStart) {
+        checkpoint = Database::instance().latestCheckpointOnOrBefore(accountId, m_statement.balanceStartDate);
+        priorTx = Database::instance().latestTransactionOnOrBefore(accountId, m_statement.balanceStartDate);
+    }
 
     bool hasStartReference = false;
     double expectedStart = 0.0;
@@ -692,7 +705,7 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
     result["hasStartReference"]   = hasStartReference;
     result["startSourceLabel"]    = startSourceLabel;
     result["startSourceDateText"] = Fmt::dateOrDash(startSourceDate);
-    result["startDeclaredText"]   = Fmt::money(m_statement.balanceStart);
+    result["startDeclaredText"]   = hasDeclaredStart ? Fmt::money(m_statement.balanceStart) : QStringLiteral("—");
     result["startExpectedText"]   = hasStartReference ? Fmt::money(expectedStart) : QStringLiteral("—");
     const double startDiff = m_statement.balanceStart - expectedStart;
     result["startOk"]       = !hasStartReference || std::abs(startDiff) < kReconciliationEpsilon;
@@ -706,13 +719,14 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
         }
     }
     const double computedEnd = m_statement.balanceStart + sumIncluded;
-    const double endDiff = m_statement.balanceEnd - computedEnd;
+    const double endDiff = endAvailable ? m_statement.balanceEnd - computedEnd : 0.0;
 
-    result["endComputedText"] = Fmt::money(computedEnd);
-    result["endDeclaredText"] = Fmt::money(m_statement.balanceEnd);
-    result["endDiffText"]     = Fmt::money(endDiff, true);
+    result["endComputedText"] = endAvailable ? Fmt::money(computedEnd) : QStringLiteral("—");
+    result["endDeclaredText"] = hasDeclaredEnd ? Fmt::money(m_statement.balanceEnd) : QStringLiteral("—");
+    result["endDiffText"]     = endAvailable ? Fmt::money(endDiff, true) : QStringLiteral("—");
     result["endDiffRaw"]      = endDiff;
-    result["endOk"]           = std::abs(endDiff) < kReconciliationEpsilon;
+    // Not checked is not a mismatch: no adjustment, no warning before the save.
+    result["endOk"]           = !endAvailable || std::abs(endDiff) < kReconciliationEpsilon;
 
     // ── Rows of this statement that the account already has (#18) ─────────
     // save() skips them; the review screen can tell the user before saving.
