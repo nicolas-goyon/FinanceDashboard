@@ -49,6 +49,9 @@ Item {
             ? AccountController.accounts[page.selectedAccountIndex] : null
 
     property var summary: ({})
+    // "€" or "$": the currency of the account, for the labels below (#48).
+    readonly property string currencySymbol: page.summary.currencySymbol !== undefined
+        ? page.summary.currencySymbol : "€"
     property var history: []
     property var rows: []
     // { income: [{ category, totalRaw, totalText, subcategories: [...] }, ...],
@@ -303,7 +306,7 @@ Item {
                 ChartCard {
                     Layout.fillWidth: true
                     implicitHeight: 410
-                    title: "Balance over time (€) — computed from every transaction"
+                    title: "Balance over time (" + page.currencySymbol + ") — computed from every transaction"
 
                     // Chart controls — direct children of ChartCard's content Item
                     // (not a Layout), positioned by anchors like the GraphsView/
@@ -445,6 +448,7 @@ Item {
                                 HoverPoint {
                                     seriesName: page.account !== null ? page.account.name : ""
                                     pointColor: "#89b4fa"
+                                    suffix: " " + page.currencySymbol
                                 }
                             }
                         }
@@ -520,7 +524,7 @@ Item {
                                         onClicked: (slice) => {
                                             incomePieInfo.text = "Category — " + slice.label + "  —  "
                                                 + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " €  (" + Math.round(slice.percentage * 100) + " %)"
+                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
                                         }
                                     }
                                 }
@@ -553,7 +557,7 @@ Item {
                                         onClicked: (slice) => {
                                             incomePieInfo.text = "Subcategory — " + slice.label + "  —  "
                                                 + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " €  (" + Math.round(slice.percentage * 100) + " %)"
+                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
                                         }
                                     }
                                 }
@@ -611,7 +615,7 @@ Item {
                                         onClicked: (slice) => {
                                             expensePieInfo.text = "Category — " + slice.label + "  —  "
                                                 + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " €  (" + Math.round(slice.percentage * 100) + " %)"
+                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
                                         }
                                     }
                                 }
@@ -634,7 +638,7 @@ Item {
                                         onClicked: (slice) => {
                                             expensePieInfo.text = "Subcategory — " + slice.label + "  —  "
                                                 + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " €  (" + Math.round(slice.percentage * 100) + " %)"
+                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
                                         }
                                     }
                                 }

@@ -519,6 +519,7 @@ QVariantList AccountController::transactionsForAccount(int accountIndex) const
     }
 
     const auto txs = Database::instance().transactionsForAccount(m_accounts.at(accountIndex).id);
+    const Fmt::Currency unit = currencyOf(accountIndex);
     rows.reserve(txs.size());
     for (const Data::Transaction& transaction : txs) {
         rows.append(QVariantMap{
@@ -529,11 +530,11 @@ QVariantList AccountController::transactionsForAccount(int accountIndex) const
             { "operationDateIso",    transaction.operationDate.isValid() ? transaction.operationDate.toString(Qt::ISODate) : QString() },
             { "name",                transaction.name },
             { "description",        transaction.description },
-            { "debitText",          transaction.debit  > 0.0 ? Fmt::money(-transaction.debit) : QStringLiteral("—") },
+            { "debitText",          transaction.debit  > 0.0 ? Fmt::money(-transaction.debit, unit) : QStringLiteral("—") },
             { "debit",              transaction.debit },
-            { "creditText",         transaction.credit > 0.0 ? Fmt::money(transaction.credit, true) : QStringLiteral("—") },
+            { "creditText",         transaction.credit > 0.0 ? Fmt::money(transaction.credit, unit, true) : QStringLiteral("—") },
             { "credit",             transaction.credit },
-            { "balanceText",        Fmt::money(transaction.balanceAfter) },
+            { "balanceText",        Fmt::money(transaction.balanceAfter, unit) },
             { "category",           transaction.category },
             { "subcategory",        transaction.subcategory },
         });
@@ -592,7 +593,7 @@ QVariantList AccountController::balanceCheckpoints(int accountIndex) const
             { "date",         checkpoint.date.isValid() ? checkpoint.date.toString(Qt::ISODate) : QString() },
             { "dateText",     Fmt::dateOrDash(checkpoint.date) },
             { "balance",      checkpoint.balance },
-            { "balanceText",  Fmt::money(checkpoint.balance) },
+            { "balanceText",  Fmt::money(checkpoint.balance, currencyOf(accountIndex)) },
             { "note",         checkpoint.note },
         });
     }
@@ -684,13 +685,14 @@ QVariantList AccountController::accountBalanceHistory(int accountIndex) const
         running = first.balanceAfter - (first.credit - first.debit);
     }
 
-    auto pushPoint = [&points](const QDate& date, double balance) {
+    const Fmt::Currency unit = currencyOf(accountIndex);
+    auto pushPoint = [&points, unit](const QDate& date, double balance) {
         points.append(QVariantMap{
             { "dateIso",     date.toString(Qt::ISODate) },
             { "dateText",    Fmt::dateOrDash(date) },
             { "timeMs",      static_cast<double>(date.startOfDay().toMSecsSinceEpoch()) },
             { "balance",     balance },
-            { "balanceText", Fmt::money(balance) },
+            { "balanceText", Fmt::money(balance, unit) },
         });
     };
 
@@ -733,8 +735,9 @@ QVariantMap AccountController::accountBalanceSummary(int accountIndex) const
         }
     }
 
-    result["currentBalanceText"] = Fmt::money(currentBalance);
+    result["currentBalanceText"] = Fmt::money(currentBalance, currencyOf(accountIndex));
     result["currentBalanceRaw"]  = currentBalance;
+    result["currencySymbol"]     = Fmt::currencySymbol(currencyOf(accountIndex));
     result["asOfDateText"]       = asOfText;
     result["transactionCount"]   = Database::instance().transactionCountForAccount(accountId);
     result["hasHistory"]         = !history.isEmpty();
@@ -775,8 +778,9 @@ QVariantMap AccountController::accountCategoryBreakdown(int accountIndex) const
         }
     }
 
-    auto buildList = [](const QMap<QString, double>& categoryTotals,
-                         const QMap<QString, QMap<QString, double>>& subTotals) {
+    const Fmt::Currency unit = currencyOf(accountIndex);
+    auto buildList = [unit](const QMap<QString, double>& categoryTotals,
+                             const QMap<QString, QMap<QString, double>>& subTotals) {
         QVariantList list;
         for (auto categoryIt = categoryTotals.constBegin(); categoryIt != categoryTotals.constEnd(); ++categoryIt) {
             QVariantList subcategories;
@@ -785,13 +789,13 @@ QVariantMap AccountController::accountCategoryBreakdown(int accountIndex) const
                 subcategories.append(QVariantMap{
                     { "subcategory", subIt.key() },
                     { "totalRaw",    subIt.value() },
-                    { "totalText",   Fmt::money(subIt.value()) },
+                    { "totalText",   Fmt::money(subIt.value(), unit) },
                 });
             }
             list.append(QVariantMap{
                 { "category",      categoryIt.key() },
                 { "totalRaw",      categoryIt.value() },
-                { "totalText",     Fmt::money(categoryIt.value()) },
+                { "totalText",     Fmt::money(categoryIt.value(), unit) },
                 { "subcategories", subcategories },
             });
         }
@@ -801,6 +805,14 @@ QVariantMap AccountController::accountCategoryBreakdown(int accountIndex) const
     result["income"]   = buildList(incomeCategoryTotals, incomeSubTotals);
     result["expenses"] = buildList(expenseCategoryTotals, expenseSubTotals);
     return result;
+}
+
+Fmt::Currency AccountController::currencyOf(int accountIndex) const
+{
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
+        return Fmt::currency();
+    }
+    return Fmt::currencyFromCode(m_accounts.at(accountIndex).currency);
 }
 
 void AccountController::setStatus(StatusMessage::Level level, const QString& msg)

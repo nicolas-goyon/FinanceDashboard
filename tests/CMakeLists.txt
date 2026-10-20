@@ -91,9 +91,9 @@ set_tests_properties(db_migration_test PROPERTIES
 #   The writes of the table classes: a null optional text, and the empty required
 #   values that the Database refuses (#125); renames that reach every row that
 #   uses the name, with the duplicate checks of the controllers (#34); the
-#   default data written once per database (#37), the mock data (#38) and the
-#   order of the balance history (#36). It compiles the core sources plus three
-#   controllers.
+#   default data written once per database (#37), the mock data (#38), the
+#   order of the balance history (#36) and the currency of an account (#48). It
+#   compiles the core sources plus three controllers.
 
 qt_add_executable(db_write_test
     db_write_test.cpp
@@ -124,8 +124,8 @@ set_tests_properties(db_write_test PROPERTIES
 # calc_test
 #   The calculations behind the texts and charts of the pages: the Projects page
 #   (#41), the money flow and the rolling average of the Cash Flow page (#42,
-#   #56), the performance of the Investments page (#56). No database. It
-#   compiles the page controllers that it tests.
+#   #56), the performance of the Investments page (#56) and the money format
+#   (#48). No database. It compiles the page controllers that it tests.
 
 qt_add_executable(calc_test
     calc_test.cpp

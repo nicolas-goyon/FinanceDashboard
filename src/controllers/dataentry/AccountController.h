@@ -3,6 +3,7 @@
 
 #include "models/Account.h"
 #include "models/Transaction.h"
+#include "utils/Formatter.h"
 #include "utils/StatusMessage.h"
 
 #include <QObject>
@@ -182,7 +183,10 @@ public:
     // Current balance = the last point of accountBalanceHistory(), or (if
     // there are no dated transactions at all) the latest balance checkpoint
     // on or before today, or empty/zero if neither exists.
-    // { currentBalanceText, currentBalanceRaw, asOfDateText, transactionCount, hasHistory }
+    // { currentBalanceText, currentBalanceRaw, currencySymbol, asOfDateText,
+    //   transactionCount, hasHistory }. The texts of the amounts of an account
+    //   use its currency, and currencySymbol is "€" or "$" for the labels of
+    //   the page (#48).
     Q_INVOKABLE [[nodiscard]] QVariantMap accountBalanceSummary(int accountIndex) const;
 
     // Category/subcategory breakdown for the account's two new "Income by
@@ -231,6 +235,9 @@ signals:
 private:
     void setStatus(StatusMessage::Level level, const QString& msg);
     void loadFromDb();
+    // The currency of the account at `accountIndex` (its `currency` column),
+    // or the app's currency for an index out of the list (#48).
+    [[nodiscard]] Fmt::Currency currencyOf(int accountIndex) const;
     // Writes the default account types (CCP, Livret A, LDDS, PEL, Assurance
     // Vie, PEA, CTO, Other), the 4 default account categories (Day-to-day,
     // Savings, Investments, Urgent savings) and 6 demo accounts to the DB, all

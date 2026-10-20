@@ -7,6 +7,8 @@
 //         when the spending is more than the income
 //   #56   Cash Flow: the 3-month average starts at the third month;
 //         Investments: the deposit of the month is not performance
+//   #48   Fmt::money(): rounded to cents before the sign, "—" for NaN and
+//         infinity, and the currency of the amount
 
 #include "CashFlowController.h"
 #include "InvestmentsController.h"
@@ -33,6 +35,13 @@ QString kpiValue(const ProjectsController& controller, const QString& label)
         }
     }
     return {};
+}
+
+// `text` with each '_' made a narrow no-break space (U+202F), the separator
+// of Fmt::money().
+QString nb(const char* text)
+{
+    return QString::fromUtf8(text).replace(QLatin1Char('_'), QChar(0x202F));
 }
 
 double total(const QVariantList& side)
@@ -79,6 +88,9 @@ private slots:
     void moneyFlowSavesTheLeftover();
     void rollingAverageStartsAtTheThirdMonth();
     void monthlyPerformanceLeavesTheDepositOut();
+    void moneyIsRoundedBeforeItsSign();
+    void moneyOfNotANumberIsADash();
+    void moneyUsesTheGivenCurrency();
 };
 
 void CalcTest::projectWithNoMonthlyContributionIsNeverDone()
@@ -212,6 +224,37 @@ void CalcTest::monthlyPerformanceLeavesTheDepositOut()
     // Month 3: 10 600 € → 10 200 €, a loss on top of the deposit.
     const double loss = controller.perfLosses().at(2).toDouble();
     QVERIFY2(qAbs(loss - ((10200.0 - 10600.0 - 250.0) / 10600.0 * 100.0)) < 1e-9, qPrintable(QString::number(loss)));
+}
+
+void CalcTest::moneyIsRoundedBeforeItsSign()
+{
+    QCOMPARE(Fmt::money(-1e-12, true), nb("+0,00_€"));
+    QCOMPARE(Fmt::money(-0.004), nb("0,00_€"));
+    QCOMPARE(Fmt::money(-0.006), nb("-0,01_€"));
+    QCOMPARE(Fmt::money(19.99), nb("19,99_€"));
+    QCOMPARE(Fmt::money(0.999), nb("1,00_€"));
+    QCOMPARE(Fmt::money(-1234567.891), nb("-1_234_567,89_€"));
+    QCOMPARE(Fmt::money(80.5, true), nb("+80,50_€"));
+}
+
+void CalcTest::moneyOfNotANumberIsADash()
+{
+    QCOMPARE(Fmt::money(std::numeric_limits<double>::quiet_NaN()), QStringLiteral("—"));
+    QCOMPARE(Fmt::money(std::numeric_limits<double>::infinity()), QStringLiteral("—"));
+    QCOMPARE(Fmt::money(-std::numeric_limits<double>::infinity(), true), QStringLiteral("—"));
+    QCOMPARE(Fmt::money(1e300), QStringLiteral("—"));
+}
+
+void CalcTest::moneyUsesTheGivenCurrency()
+{
+    QCOMPARE(Fmt::money(80.5, Fmt::Currency::USD), nb("80,50_$"));
+    QCOMPARE(Fmt::money(-80.5, Fmt::Currency::USD, true), nb("-80,50_$"));
+    QCOMPARE(Fmt::money(80.5, Fmt::Currency::EUR), nb("80,50_€"));
+    QCOMPARE(Fmt::currencyFromCode(QStringLiteral("USD")), Fmt::Currency::USD);
+    QCOMPARE(Fmt::currencyFromCode(QStringLiteral("usd")), Fmt::Currency::USD);
+    QCOMPARE(Fmt::currencyFromCode(QStringLiteral("EUR")), Fmt::Currency::EUR);
+    QCOMPARE(Fmt::currencyFromCode(QString()), Fmt::Currency::EUR);
+    QCOMPARE(Fmt::currencySymbol(Fmt::Currency::USD), QStringLiteral("$"));
 }
 
 QTEST_GUILESS_MAIN(CalcTest)
