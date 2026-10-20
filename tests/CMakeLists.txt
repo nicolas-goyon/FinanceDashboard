@@ -156,8 +156,10 @@ set_tests_properties(db_copy_test PROPERTIES
 #   127.0.0.1 in place of GitHub (the request and its headers, no cookie, the
 #   refused checks, a check with no answer, the check at start), the pages
 #   that openPage() opens, the release notes without images (safeNotes()),
-#   and the network access of the QML engine (local files only). No
-#   internet. It compiles the update sources, the controller and
+#   the installation (UpdateInstaller: the AppImage replaced, the setup and
+#   its command line, the refused downloads), and the network access of the
+#   QML engine (local files only). No internet. It compiles the update
+#   sources, the controller, the installer and
 #   src/startup/LocalOnlyNetwork.cpp.
 qt_add_executable(update_test
     update_test.cpp
@@ -165,8 +167,12 @@ qt_add_executable(update_test
     ${CMAKE_SOURCE_DIR}/src/update/SemVer.cpp
     ${CMAKE_SOURCE_DIR}/src/update/ReleaseFeed.h
     ${CMAKE_SOURCE_DIR}/src/update/ReleaseFeed.cpp
+    ${CMAKE_SOURCE_DIR}/src/update/UpdatePackage.h
+    ${CMAKE_SOURCE_DIR}/src/update/UpdatePackage.cpp
     ${CMAKE_SOURCE_DIR}/src/controllers/updates/UpdateController.h
     ${CMAKE_SOURCE_DIR}/src/controllers/updates/UpdateController.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/updates/UpdateInstaller.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/updates/UpdateInstaller.cpp
     ${CMAKE_SOURCE_DIR}/src/startup/LocalOnlyNetwork.h
     ${CMAKE_SOURCE_DIR}/src/startup/LocalOnlyNetwork.cpp
 )

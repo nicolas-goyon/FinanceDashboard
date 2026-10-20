@@ -84,13 +84,21 @@ transaction.
 
 ## Network rule
 
-The app makes one network call: the update check of `UpdateController`
-(`src/controllers/updates/`, #117). At each start (unless the user turned it off) and on "Check
-now", it reads the list of releases of the project (`GET api.github.com/repos/.../releases`), with
-no token, no cookie and no data of the user. GitHub sees the internet address of the computer and
-the version of the app (the `User-Agent` header); the request sends `Accept-Language: en`, not the
-language of the computer. `src/update/` reads that list and the versions (SemVer, the channels of
-#129) with no network. `tests/update_test.cpp` tests the check with a local test server
+The app makes two network calls, both in `src/controllers/updates/` (#117):
+
+- the update check of `UpdateController`: at each start (unless the user turned it off) and on
+  "Check now", it reads the list of releases of the project (`GET api.github.com/repos/.../releases`);
+- the download of `UpdateInstaller`, only when the user clicks "Install" (the setup and the
+  AppImage): `SHA256SUMS.txt` and the package of the newest release, from
+  `github.com/nicolas-goyon/FinanceDashboard/releases/download/...`. It follows redirects to GitHub
+  only (`github.com`, `*.githubusercontent.com`), and checks the SHA-256 before it uses the file,
+  and the setup again just before it runs.
+
+Both send no token, no cookie and no data of the user. GitHub sees the internet address of the
+computer and the version of the app (the `User-Agent` header); the requests send
+`Accept-Language: en`, not the language of the computer. `src/update/` reads the list, the
+versions (SemVer, the channels of #129), the kind of installation and `SHA256SUMS.txt` with no
+network. `tests/update_test.cpp` tests the check and the download with a local test server
 (127.0.0.1), never with GitHub.
 
 The QML engine has no network access: `main.cpp` gives it `Startup::LocalOnlyNetworkFactory`
@@ -99,8 +107,8 @@ rich text) reads local files and `qrc:` resources only. An `http`/`https` addres
 with no connection. QML opens a `file:` address itself, and on Windows `file://server/...` is a
 network share. So the release notes, text from GitHub, go through `UpdateController::safeNotes()`
 before QML shows them: it removes their images, background images and style sheets. The update
-check has its own `QNetworkAccessManager` (no cookie), not the one of the engine. `openPage()`
-opens the pages of the project on GitHub only.
+check and the download share one `QNetworkAccessManager` (`UpdateController::m_network`, no
+cookie), not the one of the engine. `openPage()` opens the pages of the project on GitHub only.
 
 Any other network call needs a decision of the maintainer first: the app promises that the data
 never leaves the computer.
@@ -120,7 +128,7 @@ never leaves the computer.
 | Account History page | [`docs/account-history.md`](docs/account-history.md) |
 | Transactions sidebar category | [`docs/transactions.md`](docs/transactions.md) |
 | Database management (reset/reseed/per-account cleanup) | [`docs/database-management.md`](docs/database-management.md) |
-| Update check: Updates page, banner, channels, versions | `src/controllers/updates/UpdateController.h` (class comment), `src/update/`, `src/startup/LocalOnlyNetwork.h` (no network for QML), `README.md` § Updates |
+| Update check and installation: Updates page, banner, channels, versions, download | `src/controllers/updates/UpdateController.h` and `UpdateInstaller.h` (class comments), `src/update/`, `packaging/windows/update-restart.iss`, `src/startup/LocalOnlyNetwork.h` (no network for QML), `README.md` § Updates |
 | QML/C++ boundary pattern & C++ component responsibilities | [`docs/backend.md`](docs/backend.md) |
 | Styling / Catppuccin palette | [`docs/styling.md`](docs/styling.md) |
 | Qt Graphs pitfalls learned on this project | [`docs/charting-gotchas.md`](docs/charting-gotchas.md) |

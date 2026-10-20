@@ -21,27 +21,46 @@
 //   - safeNotes(): notes that a Text shows without reading a file or an
 //     address (no image, no background image, no style sheet), the usual
 //     notes unchanged;
+//   - the installation (#117, part 2): the kind of a copy of the app, the
+//     names of the packages, SHA256SUMS.txt, the addresses that the
+//     installer downloads; with FakeGitHub: the AppImage replaced in place
+//     and started again, the setup kept until "Install and restart" (its
+//     command line), a damaged, bigger, incomplete or redirected download
+//     refused with the old file unchanged, a cancelled download, a new try
+//     after a failure, and the steps of the copies that update by hand;
 //   - the network access of the QML engine (Startup::LocalOnlyNetworkFactory):
 //     local files only, and an image in Markdown notes is not downloaded.
 
 #include "UpdateController.h"
+#include "UpdateInstaller.h"
 #include "startup/LocalOnlyNetwork.h"
 #include "update/ReleaseFeed.h"
 #include "update/SemVer.h"
+#include "update/UpdatePackage.h"
 
 #include <QBuffer>
 #include <QByteArray>
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QDate>
 #include <QDateTime>
+#include <QDir>
 #include <QFile>
+#include <QFileDevice>
+#include <QFileInfo>
 #include <QHash>
 #include <QHostAddress>
 #include <QImage>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QList>
+#include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QPair>
 #include <QPointer>
+#include <QProcessEnvironment>
 #include <QQmlComponent>
 #include <QQmlEngine>
 #include <QRegularExpression>
@@ -61,6 +80,7 @@
 #include <QVariantMap>
 
 #include <memory>
+#include <tuple>
 #include <utility>
 
 namespace {
@@ -168,6 +188,75 @@ bool readsNoResource(const QString& markdown)
     return true;
 }
 
+// The request path of the list of releases (FakeGitHub::feedUrl()).
+const QByteArray kFeedPath = "/repos/nicolas-goyon/FinanceDashboard/releases?per_page=100";
+
+QByteArray packageBytes(int size)
+{
+    QByteArray bytes;
+    bytes.reserve(size);
+    for (int i = 0; i < size; ++i) {
+        bytes.append(static_cast<char>((i * 7) % 251));
+    }
+    return bytes;
+}
+
+QByteArray sha256Hex(const QByteArray& data)
+{
+    return QCryptographicHash::hash(data, QCryptographicHash::Sha256).toHex();
+}
+
+// A SHA256SUMS.txt as CI writes it: `hash` for `name`, and another file.
+QByteArray sumsFor(const QByteArray& hash, const QString& name)
+{
+    return hash + "  " + name.toUtf8() + "\n" + QByteArray(64, 'a') + "  FinanceDashboard-0.2.3-source.zip\n";
+}
+
+// One release of the prod app, `version`, with `assets` (name, address, size).
+QByteArray releaseJson(const QString& version, const QList<std::tuple<QString, QString, qint64>>& assets)
+{
+    QJsonArray files;
+    for (const auto& [name, url, size] : assets) {
+        files.append(QJsonObject{{QStringLiteral("name"), name},
+                                 {QStringLiteral("browser_download_url"), url},
+                                 {QStringLiteral("size"), size}});
+    }
+    const QJsonObject release{
+        {QStringLiteral("tag_name"), QStringLiteral("v") + version},
+        {QStringLiteral("name"), QStringLiteral("Finance Dashboard v") + version},
+        {QStringLiteral("prerelease"), false},
+        {QStringLiteral("draft"), false},
+        {QStringLiteral("published_at"), QStringLiteral("2026-10-22T08:00:00Z")},
+        {QStringLiteral("body"), QStringLiteral("Notes.")},
+        {QStringLiteral("html_url"),
+         QStringLiteral("https://github.com/nicolas-goyon/FinanceDashboard/releases/tag/v") + version},
+        {QStringLiteral("assets"), files},
+    };
+    return QJsonDocument(QJsonArray{release}).toJson(QJsonDocument::Compact);
+}
+
+void writeFile(const QString& path, const QByteArray& content)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        qFatal("cannot write %s", qPrintable(path));
+    }
+    file.write(content);
+}
+
+QByteArray readFile(const QString& path)
+{
+    QFile file(path);
+    return file.open(QIODevice::ReadOnly) ? file.readAll() : QByteArray();
+}
+
+// The prod app 0.2.2, which follows the releases (Stable).
+void useProdApp()
+{
+    QCoreApplication::setApplicationName(QStringLiteral("FinanceDashboard"));
+    QCoreApplication::setApplicationVersion(QStringLiteral("0.2.2"));
+}
+
 } // namespace
 
 // ── FakeGitHub ───────────────────────────────────────────────────────────────
@@ -194,18 +283,31 @@ public:
                         .arg(port()));
     }
     void setAnswer(const QByteArray& answer) { m_answer = answer; }
+    // The answer for one request path (path and query), in place of answer().
+    void setRoute(const QByteArray& path, const QByteArray& answer) { m_routes.insert(path, answer); }
     void hold(bool hold) { m_hold = hold; }
+    // Holds the answers of `path` only.
+    void holdPath(const QByteArray& path) { m_holdPath = path; }
     void answerNow()
     {
-        const QList<QPointer<QTcpSocket>> held = std::exchange(m_held, {});
-        for (const QPointer<QTcpSocket>& socket : held) {
+        const QList<QPair<QPointer<QTcpSocket>, QByteArray>> held = std::exchange(m_held, {});
+        for (const auto& [socket, path] : held) {
             if (socket != nullptr) {
-                answer(socket);
+                answer(socket, path);
             }
         }
     }
     [[nodiscard]] int connections() const { return m_connections; }
     [[nodiscard]] const QList<QByteArray>& requests() const { return m_requests; }
+    // The request paths, in order.
+    [[nodiscard]] QList<QByteArray> paths() const
+    {
+        QList<QByteArray> result;
+        for (const QByteArray& head : m_requests) {
+            result.append(head.left(head.indexOf('\r')).split(' ').value(1));
+        }
+        return result;
+    }
 
 private:
     void accept()
@@ -224,32 +326,54 @@ private:
         if (end < 0) {
             return;
         }
-        m_requests.append(data.left(end));
+        const QByteArray head = data.left(end);
+        m_requests.append(head);
         m_received.remove(socket);
-        if (m_hold) {
-            m_held.append(socket);
+        const QByteArray path = head.left(head.indexOf('\r')).split(' ').value(1);
+        if (m_hold || (!m_holdPath.isEmpty() && path == m_holdPath)) {
+            m_held.append({socket, path});
             return;
         }
-        answer(socket);
+        answer(socket, path);
     }
-    void answer(QTcpSocket* socket)
+    void answer(QTcpSocket* socket, const QByteArray& path)
     {
-        if (m_answer.isEmpty()) {
+        const QByteArray response = m_routes.value(path, m_answer);
+        if (response.isEmpty()) {
             return;
         }
-        socket->write(m_answer);
+        socket->write(response);
         socket->disconnectFromHost();
     }
 
     QTcpServer m_server;
     bool m_listening = false;
     QByteArray m_answer;
+    QHash<QByteArray, QByteArray> m_routes;
     bool m_hold = false;
+    QByteArray m_holdPath;
     int m_connections = 0;
     QHash<QTcpSocket*, QByteArray> m_received;
     QList<QByteArray> m_requests;
-    QList<QPointer<QTcpSocket>> m_held;
+    QList<QPair<QPointer<QTcpSocket>, QByteArray>> m_held;
 };
+
+// Serves a release 0.2.3 of the prod app on `github`: the list, its
+// SHA256SUMS.txt (/dl/sums) and `package` named `name` (/dl/package), with
+// `announced` as its size in the list (-1: its real size).
+void serveRelease(FakeGitHub& github, const QString& name, const QByteArray& package, const QByteArray& sums,
+                  qint64 announced = -1)
+{
+    const QString base = QStringLiteral("http://127.0.0.1:%1").arg(github.port());
+    github.setRoute(kFeedPath, httpAnswer(200, "OK",
+                                          releaseJson(QStringLiteral("0.2.3"),
+                                                      {{name, base + QStringLiteral("/dl/package"),
+                                                        announced < 0 ? package.size() : announced},
+                                                       {QStringLiteral("SHA256SUMS.txt"), base + QStringLiteral("/dl/sums"),
+                                                        sums.size()}})));
+    github.setRoute("/dl/sums", httpAnswer(200, "OK", sums, {}, "text/plain"));
+    github.setRoute("/dl/package", httpAnswer(200, "OK", package, {}, "application/octet-stream"));
+}
 
 class UpdateTest : public QObject
 {
@@ -285,6 +409,27 @@ private slots:
 
     void qmlNetworkReadsLocalFilesOnly();
     void markdownImageIsNotDownloaded();
+
+    void installKinds();
+    void sumsOfARelease();
+    void downloadAddresses();
+    void environmentOfTheNewAppImage();
+    void installReplacesTheAppImage();
+    void installKeepsTheSetupUntilRestart();
+    void installRefusesABadDownload_data();
+    void installRefusesABadDownload();
+    void installCanBeCancelled();
+    void installFollowsAnAllowedRedirect();
+    void installAgainAfterAFailure();
+    void installStopsADownloadWithNoData();
+    void installChecksTheSetupAgainBeforeItRuns();
+    void installWaitsForTheSetupThenOffersAgain();
+    void installTellsWhenTheNewVersionDoesNotStart();
+    void installNeedsAWritableAppImage();
+    void installAllowsTheFeedServerOnlyOnThisComputer();
+    void oldDownloadsGo();
+    void manualStepsForTheOtherCopies_data();
+    void manualStepsForTheOtherCopies();
 
 private:
     // Runs a check of `controller` on the list file, and waits for its end.
@@ -948,6 +1093,690 @@ void UpdateTest::markdownImageIsNotDownloaded()
     QVERIFY2(text != nullptr, qPrintable(component.errorString()));
     QTest::qWait(1000);
     QCOMPARE(server.connections(), before);
+}
+
+void UpdateTest::installKinds()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString setupDir = dir.filePath(QStringLiteral("setup"));
+    const QString zipDir = dir.filePath(QStringLiteral("zip"));
+    QVERIFY(QDir().mkpath(setupDir));
+    QVERIFY(QDir().mkpath(zipDir));
+    writeFile(setupDir + QStringLiteral("/unins000.exe"), "uninstaller");
+    const QString appImage = dir.filePath(QStringLiteral("app.AppImage"));
+    writeFile(appImage, "AppImage");
+
+    using Update::InstallKind;
+    QCOMPARE(Update::installKindOf(QDir(setupDir), {}, true), InstallKind::WindowsSetup);
+    QCOMPARE(Update::installKindOf(QDir(zipDir), {}, true), InstallKind::WindowsPortable);
+    QCOMPARE(Update::installKindOf(QDir(zipDir), appImage, false), InstallKind::AppImage);
+    // $APPIMAGE of a file that is not there: not an AppImage.
+    QCOMPARE(Update::installKindOf(QDir(zipDir), dir.filePath(QStringLiteral("gone.AppImage")), false),
+             InstallKind::LinuxArchive);
+    QCOMPARE(Update::installKindOf(QDir(QStringLiteral("/opt/FinanceDashboard/bin")), {}, false), InstallKind::LinuxPackage);
+    QCOMPARE(Update::installKindOf(QDir(QStringLiteral("/opt/FinanceDashboard/bin/")), {}, false), InstallKind::LinuxPackage);
+    QCOMPARE(Update::installKindOf(QDir(zipDir), {}, false), InstallKind::LinuxArchive);
+
+    QVERIFY(Update::installsItself(InstallKind::WindowsSetup));
+    QVERIFY(Update::installsItself(InstallKind::AppImage));
+    QVERIFY(!Update::installsItself(InstallKind::WindowsPortable));
+    QVERIFY(!Update::installsItself(InstallKind::LinuxPackage));
+    QVERIFY(!Update::installsItself(InstallKind::LinuxArchive));
+    QCOMPARE(Update::installKindName(InstallKind::WindowsSetup), QStringLiteral("setup"));
+    QCOMPARE(Update::installKindName(InstallKind::LinuxPackage), QStringLiteral("deb"));
+
+    // The names of the files that CI publishes.
+    const QString prod = QStringLiteral("FinanceDashboard");
+    QCOMPARE(Update::packageFileName(InstallKind::WindowsSetup, prod, QStringLiteral("0.2.3")),
+             QStringLiteral("FinanceDashboard-0.2.3-windows-x64.exe"));
+    QCOMPARE(Update::packageFileName(InstallKind::WindowsPortable, prod, QStringLiteral("0.2.3")),
+             QStringLiteral("FinanceDashboard-0.2.3-windows-x64.zip"));
+    QCOMPARE(Update::packageFileName(InstallKind::AppImage, QStringLiteral("FinanceDashboardTest"),
+                                     QStringLiteral("0.2.2-exp.94.pr147")),
+             QStringLiteral("FinanceDashboardTest-0.2.2-exp.94.pr147-linux-x86_64.AppImage"));
+    QCOMPARE(Update::packageFileName(InstallKind::LinuxPackage, prod, QStringLiteral("0.2.3")),
+             QStringLiteral("finance-dashboard_0.2.3_amd64.deb"));
+    QCOMPARE(Update::packageFileName(InstallKind::LinuxArchive, prod, QStringLiteral("0.2.3")),
+             QStringLiteral("FinanceDashboard-0.2.3-linux-x86_64.tar.gz"));
+}
+
+void UpdateTest::sumsOfARelease()
+{
+    const QByteArray lower(64, 'a');
+    const QByteArray upper(64, 'B');
+    const QByteArray sums = lower + "  FinanceDashboard-0.2.3-windows-x64.exe\r\n" + upper
+                            + " *FinanceDashboard-0.2.3-linux-x86_64.AppImage\n" + "not-a-hash  x.zip\n"
+                            + QByteArray(63, 'c') + "  short.zip\n";
+    QCOMPARE(Update::sha256Of(sums, QStringLiteral("FinanceDashboard-0.2.3-windows-x64.exe")), lower);
+    // The "*" of a binary file, and lower case.
+    QCOMPARE(Update::sha256Of(sums, QStringLiteral("FinanceDashboard-0.2.3-linux-x86_64.AppImage")), upper.toLower());
+    QVERIFY(Update::sha256Of(sums, QStringLiteral("x.zip")).isEmpty());
+    QVERIFY(Update::sha256Of(sums, QStringLiteral("short.zip")).isEmpty());
+    // The whole name only.
+    QVERIFY(Update::sha256Of(sums, QStringLiteral("FinanceDashboard-0.2.3-windows-x64")).isEmpty());
+    QVERIFY(Update::sha256Of({}, QStringLiteral("a.exe")).isEmpty());
+}
+
+void UpdateTest::downloadAddresses()
+{
+    const auto download = [](const char* url) { return UpdateInstaller::isProjectDownload(QUrl(QLatin1String(url))); };
+    QVERIFY(download("https://github.com/nicolas-goyon/FinanceDashboard/releases/download/v0.2.1/SHA256SUMS.txt"));
+    QVERIFY(download("https://GitHub.com/Nicolas-Goyon/financedashboard/releases/download/v0.2.1/a.exe"));
+    QVERIFY(!download("http://github.com/nicolas-goyon/FinanceDashboard/releases/download/v0.2.1/a.exe"));
+    QVERIFY(!download("https://github.com/someone/FinanceDashboard/releases/download/v0.2.1/a.exe"));
+    QVERIFY(!download("https://github.com/nicolas-goyon/FinanceDashboard/releases/tag/v0.2.1"));
+    QVERIFY(!download("https://github.com/nicolas-goyon/FinanceDashboard/releases/download/../../../x/a.exe"));
+    QVERIFY(!download("https://example.org/nicolas-goyon/FinanceDashboard/releases/download/v0.2.1/a.exe"));
+    QVERIFY(!download("https://someone@github.com/nicolas-goyon/FinanceDashboard/releases/download/v0.2.1/a.exe"));
+
+    const auto host = [](const char* url) { return UpdateInstaller::isGitHubDownloadHost(QUrl(QLatin1String(url))); };
+    QVERIFY(host("https://objects.githubusercontent.com/github-production-release-asset-2e65be/1/2"));
+    QVERIFY(host("https://release-assets.githubusercontent.com/github-production-release-asset/1/2"));
+    QVERIFY(host("https://github.com/nicolas-goyon/FinanceDashboard/releases/download/v0.2.1/a.exe"));
+    QVERIFY(!host("http://objects.githubusercontent.com/a"));
+    QVERIFY(!host("https://githubusercontent.com.example.org/a"));
+    QVERIFY(!host("https://evilgithubusercontent.com/a"));
+    QVERIFY(!host("https://someone@objects.githubusercontent.com/a"));
+    QVERIFY(!host("https://objects.githubusercontent.com:8443/a"));
+}
+
+void UpdateTest::environmentOfTheNewAppImage()
+{
+    QProcessEnvironment environment;
+    environment.insert(QStringLiteral("APPDIR"), QStringLiteral("/tmp/.mount_abc"));
+    environment.insert(QStringLiteral("APPIMAGE"), QStringLiteral("/home/u/app.AppImage"));
+    environment.insert(QStringLiteral("ARGV0"), QStringLiteral("app.AppImage"));
+    environment.insert(QStringLiteral("OWD"), QStringLiteral("/home/u"));
+    environment.insert(QStringLiteral("LD_LIBRARY_PATH"), QStringLiteral("/tmp/.mount_abc/usr/lib:/opt/lib"));
+    environment.insert(QStringLiteral("QT_PLUGIN_PATH"), QStringLiteral("/tmp/.mount_abc/usr/plugins"));
+    environment.insert(QStringLiteral("XDG_DATA_DIRS"), QStringLiteral("/tmp/.mount_abc/usr/share:/usr/local/share:/usr/share"));
+    // Another folder whose name starts with the same text: it stays.
+    environment.insert(QStringLiteral("QML2_IMPORT_PATH"), QStringLiteral("/tmp/.mount_abcd/usr/qml"));
+    environment.insert(QStringLiteral("HOME"), QStringLiteral("/home/u"));
+    const QProcessEnvironment result = UpdateInstaller::environmentForNewAppImage(environment);
+    for (const char* name : {"APPDIR", "APPIMAGE", "ARGV0", "OWD", "QT_PLUGIN_PATH"}) {
+        QVERIFY2(!result.contains(QLatin1String(name)), name);
+    }
+    QCOMPARE(result.value(QStringLiteral("LD_LIBRARY_PATH")), QStringLiteral("/opt/lib"));
+    QCOMPARE(result.value(QStringLiteral("XDG_DATA_DIRS")), QStringLiteral("/usr/local/share:/usr/share"));
+    QCOMPARE(result.value(QStringLiteral("QML2_IMPORT_PATH")), QStringLiteral("/tmp/.mount_abcd/usr/qml"));
+    QCOMPARE(result.value(QStringLiteral("HOME")), QStringLiteral("/home/u"));
+}
+
+void UpdateTest::installReplacesTheAppImage()
+{
+    useProdApp();
+    FakeGitHub github;
+    QVERIFY(github.listening());
+    const QString name = QStringLiteral("FinanceDashboard-0.2.3-linux-x86_64.AppImage");
+    const QByteArray package = packageBytes(300 * 1024);
+    serveRelease(github, name, package, sumsFor(sha256Hex(package), name));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString target = dir.filePath(QStringLiteral("Finance Dashboard.AppImage"));
+    writeFile(target, "old");
+    QVERIFY(QFile::setPermissions(target, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ExeOwner));
+
+    UpdateController controller;
+    controller.setFeedUrl(github.feedUrl());
+    UpdateInstaller& installer = controller.installerForTests();
+    installer.setKind(Update::InstallKind::AppImage);
+    installer.setAppImagePath(target);
+    QString launched;
+    QStringList launchedArguments;
+    QProcessEnvironment launchedEnvironment;
+    bool quit = false;
+    installer.setLauncherForTests(
+        [&](const QString& program, const QStringList& arguments, const QProcessEnvironment& environment) {
+            launched = program;
+            launchedArguments = arguments;
+            launchedEnvironment = environment;
+            return true;
+        });
+    installer.setQuitForTests([&quit]() { quit = true; });
+
+    checkNow(controller);
+    QVERIFY(controller.updateAvailable());
+    QCOMPARE(controller.installKind(), QStringLiteral("appimage"));
+    QVERIFY(controller.installsItself());
+    QVERIFY(controller.manualSteps().isEmpty());
+    QCOMPARE(controller.installState(), QStringLiteral("idle"));
+
+    QSignalSpy changed(&controller, &UpdateController::installChanged);
+    controller.install();
+    QCOMPARE(controller.installState(), QStringLiteral("downloading"));
+    QVERIFY(controller.bannerVisible());
+    QTRY_COMPARE_WITH_TIMEOUT(controller.installState(), QStringLiteral("installed"), 10000);
+    QCOMPARE(controller.installVersion(), QStringLiteral("0.2.3"));
+    QVERIFY(changed.count() >= 2); // downloading, then installed (and the progress between)
+    QCOMPARE(controller.installProgress(), 1.0);
+    QVERIFY(controller.installText().contains(QStringLiteral("Restart the app")));
+    // Cancel and close do nothing now: the new AppImage is in place.
+    controller.cancelInstall();
+    controller.dismissBanner();
+    QCOMPARE(controller.installState(), QStringLiteral("installed"));
+    QVERIFY(controller.bannerVisible());
+    // The new file, executable, in place of the old one; no file next to it.
+    QCOMPARE(readFile(target), package);
+    QVERIFY(QFileInfo(target).permissions().testFlag(QFileDevice::ExeOwner));
+    QCOMPARE(QDir(dir.path()).entryList(QDir::Files), QStringList{QStringLiteral("Finance Dashboard.AppImage")});
+    // The list, then SHA256SUMS.txt, then the package; no cookie, English.
+    QCOMPARE(github.paths(), (QList<QByteArray>{kFeedPath, "/dl/sums", "/dl/package"}));
+    for (const QByteArray& head : github.requests()) {
+        const QHash<QByteArray, QByteArray> headers = headersOf(head);
+        QVERIFY(!headers.contains("cookie"));
+        QCOMPARE(headers.value("accept-language"), QByteArray("en"));
+        QCOMPARE(headers.value("user-agent"), QByteArray("FinanceDashboard/0.2.2"));
+    }
+
+    // "Restart now": the new AppImage starts without the folders of the old
+    // one, then the app quits.
+    const QByteArray oldLibraryPath = qgetenv("LD_LIBRARY_PATH");
+    const bool hadLibraryPath = qEnvironmentVariableIsSet("LD_LIBRARY_PATH");
+    qputenv("APPDIR", "/tmp/.mount_test");
+    qputenv("LD_LIBRARY_PATH", "/tmp/.mount_test/usr/lib:/opt/lib");
+    controller.restartNow();
+    qunsetenv("APPDIR");
+    if (hadLibraryPath) {
+        qputenv("LD_LIBRARY_PATH", oldLibraryPath);
+    } else {
+        qunsetenv("LD_LIBRARY_PATH");
+    }
+    QCOMPARE(launched, QFileInfo(target).absoluteFilePath());
+    QVERIFY(launchedArguments.isEmpty());
+    QVERIFY(!launchedEnvironment.contains(QStringLiteral("APPDIR")));
+    QCOMPARE(launchedEnvironment.value(QStringLiteral("LD_LIBRARY_PATH")), QStringLiteral("/opt/lib"));
+    QVERIFY(quit);
+}
+
+void UpdateTest::installKeepsTheSetupUntilRestart()
+{
+    useProdApp();
+    FakeGitHub github;
+    QVERIFY(github.listening());
+    const QString name = QStringLiteral("FinanceDashboard-0.2.3-windows-x64.exe");
+    const QByteArray package = packageBytes(120 * 1024);
+    serveRelease(github, name, package, sumsFor(sha256Hex(package), name));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString downloads = dir.filePath(QStringLiteral("FinanceDashboard-update"));
+    QVERIFY(QDir().mkpath(downloads));
+    // A setup and a log of an earlier update: they go.
+    writeFile(downloads + QStringLiteral("/FinanceDashboard-0.2.2-windows-x64.exe"), "old setup");
+    writeFile(downloads + QStringLiteral("/setup.log"), "old log");
+
+    UpdateController controller;
+    controller.setFeedUrl(github.feedUrl());
+    UpdateInstaller& installer = controller.installerForTests();
+    installer.setKind(Update::InstallKind::WindowsSetup);
+    installer.setDownloadDir(downloads);
+    QString launched;
+    QStringList launchedArguments;
+    bool quit = false;
+    installer.setLauncherForTests([&](const QString& program, const QStringList& arguments, const QProcessEnvironment&) {
+        launched = program;
+        launchedArguments = arguments;
+        return true;
+    });
+    installer.setQuitForTests([&quit]() { quit = true; });
+
+    checkNow(controller);
+    QCOMPARE(controller.installKind(), QStringLiteral("setup"));
+    controller.install();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.installState(), QStringLiteral("ready"), 10000);
+    QVERIFY(controller.installText().contains(QStringLiteral("closes during the installation")));
+    QCOMPARE(QDir(downloads).entryList(QDir::Files), QStringList{name});
+    QCOMPARE(readFile(QDir(downloads).filePath(name)), package);
+    QVERIFY(launched.isEmpty()); // nothing runs before "Install and restart"
+    controller.cancelInstall();
+    controller.dismissBanner();
+    QCOMPARE(controller.installState(), QStringLiteral("ready"));
+
+    controller.restartNow();
+    QCOMPARE(launched, QDir(downloads).filePath(name));
+    QStringList expected = UpdateInstaller::setupArguments();
+    expected.append(QStringLiteral("/LOG=") + QDir::toNativeSeparators(QDir(downloads).filePath(QStringLiteral("setup.log"))));
+    QCOMPARE(launchedArguments, expected);
+    QVERIFY(launchedArguments.contains(QStringLiteral("/RESTARTAPP=1")));
+    QCOMPARE(controller.installState(), QStringLiteral("installing"));
+    QVERIFY(!quit); // the setup closes the app (Restart Manager)
+    controller.dismissBanner();
+    QCOMPARE(controller.installState(), QStringLiteral("installing"));
+    QVERIFY(controller.bannerVisible());
+}
+
+void UpdateTest::installRefusesABadDownload_data()
+{
+    QTest::addColumn<QString>("problem");
+    QTest::addColumn<QString>("expected"); // a part of the message
+
+    QTest::newRow("damaged") << QStringLiteral("damaged") << QStringLiteral("is damaged");
+    QTest::newRow("bigger") << QStringLiteral("bigger") << QStringLiteral("is bigger than");
+    QTest::newRow("incomplete") << QStringLiteral("incomplete") << QStringLiteral("is incomplete");
+    QTest::newRow("not listed") << QStringLiteral("not listed") << QStringLiteral("does not list");
+    QTest::newRow("no sums") << QStringLiteral("no sums") << QStringLiteral("has no SHA256SUMS.txt");
+    QTest::newRow("no package") << QStringLiteral("no package") << QStringLiteral("has no file");
+    QTest::newRow("other server") << QStringLiteral("other server") << QStringLiteral("not on the GitHub page");
+    QTest::newRow("redirect elsewhere") << QStringLiteral("redirect elsewhere") << QStringLiteral("which is not GitHub");
+    QTest::newRow("server error") << QStringLiteral("server error") << QStringLiteral("status 500");
+}
+
+void UpdateTest::installRefusesABadDownload()
+{
+    QFETCH(QString, problem);
+    QFETCH(QString, expected);
+    useProdApp();
+    FakeGitHub github;
+    QVERIFY(github.listening());
+    const QString name = QStringLiteral("FinanceDashboard-0.2.3-linux-x86_64.AppImage");
+    const QByteArray package = packageBytes(64 * 1024);
+    const QString base = QStringLiteral("http://127.0.0.1:%1").arg(github.port());
+    QString packageUrl = base + QStringLiteral("/dl/package");
+    qint64 announced = package.size();
+    QByteArray sums = sumsFor(sha256Hex(package), name);
+    QByteArray packageAnswer = httpAnswer(200, "OK", package, {}, "application/octet-stream");
+    QList<std::tuple<QString, QString, qint64>> assets;
+    bool withSums = true;
+    bool withPackage = true;
+    if (problem == QLatin1String("damaged")) {
+        sums = sumsFor(sha256Hex("another file"), name);
+    } else if (problem == QLatin1String("bigger")) {
+        announced = package.size() - 1000;
+    } else if (problem == QLatin1String("incomplete")) {
+        announced = package.size() + 1000;
+    } else if (problem == QLatin1String("not listed")) {
+        sums = sumsFor(sha256Hex(package), QStringLiteral("FinanceDashboard-0.2.3-windows-x64.exe"));
+    } else if (problem == QLatin1String("no sums")) {
+        withSums = false;
+    } else if (problem == QLatin1String("no package")) {
+        withPackage = false; // the release still has a package of the app: the ZIP
+        assets.append({QStringLiteral("FinanceDashboard-0.2.3-windows-x64.zip"), base + QStringLiteral("/dl/zip"), 10});
+    } else if (problem == QLatin1String("other server")) {
+        packageUrl = QStringLiteral("http://localhost:%1/dl/package").arg(github.port());
+    } else if (problem == QLatin1String("redirect elsewhere")) {
+        packageAnswer = "HTTP/1.1 302 Found\r\nLocation: http://localhost:" + QByteArray::number(github.port())
+                        + "/dl/package\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+    } else if (problem == QLatin1String("server error")) {
+        packageAnswer = httpAnswer(500, "Internal Server Error", "{}");
+    }
+    if (withPackage) {
+        assets.append({name, packageUrl, announced});
+    }
+    if (withSums) {
+        assets.append({QStringLiteral("SHA256SUMS.txt"), base + QStringLiteral("/dl/sums"), sums.size()});
+    }
+    github.setRoute(kFeedPath, httpAnswer(200, "OK", releaseJson(QStringLiteral("0.2.3"), assets)));
+    github.setRoute("/dl/sums", httpAnswer(200, "OK", sums, {}, "text/plain"));
+    github.setRoute("/dl/package", packageAnswer);
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString target = dir.filePath(QStringLiteral("app.AppImage"));
+    writeFile(target, "old");
+    UpdateController controller;
+    controller.setFeedUrl(github.feedUrl());
+    UpdateInstaller& installer = controller.installerForTests();
+    installer.setKind(Update::InstallKind::AppImage);
+    installer.setAppImagePath(target);
+    installer.setLauncherForTests([](const QString&, const QStringList&, const QProcessEnvironment&) { return true; });
+    installer.setQuitForTests([]() {});
+    checkNow(controller);
+    QVERIFY(controller.updateAvailable());
+
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("^\\[UpdateInstaller\\] ")));
+    controller.install();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.installState(), QStringLiteral("failed"), 10000);
+    QVERIFY2(controller.installText().contains(expected), qPrintable(controller.installText()));
+    QVERIFY(controller.bannerVisible());
+    // The old AppImage is unchanged, with no file next to it.
+    QCOMPARE(readFile(target), QByteArray("old"));
+    QCOMPARE(QDir(dir.path()).entryList(QDir::Files), QStringList{QStringLiteral("app.AppImage")});
+    controller.cancelInstall();
+    QCOMPARE(controller.installState(), QStringLiteral("idle"));
+}
+
+void UpdateTest::installCanBeCancelled()
+{
+    useProdApp();
+    FakeGitHub github;
+    QVERIFY(github.listening());
+    const QString name = QStringLiteral("FinanceDashboard-0.2.3-linux-x86_64.AppImage");
+    const QByteArray package = packageBytes(64 * 1024);
+    serveRelease(github, name, package, sumsFor(sha256Hex(package), name));
+    github.holdPath("/dl/package");
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString target = dir.filePath(QStringLiteral("app.AppImage"));
+    writeFile(target, "old");
+    UpdateController controller;
+    controller.setFeedUrl(github.feedUrl());
+    UpdateInstaller& installer = controller.installerForTests();
+    installer.setKind(Update::InstallKind::AppImage);
+    installer.setAppImagePath(target);
+    checkNow(controller);
+    controller.install();
+    QTRY_COMPARE(github.paths().size(), qsizetype(3));
+    QCOMPARE(controller.installState(), QStringLiteral("downloading"));
+    controller.cancelInstall();
+    QCOMPARE(controller.installState(), QStringLiteral("idle"));
+    // An answer after the cancel changes nothing.
+    github.answerNow();
+    QTest::qWait(300);
+    QCOMPARE(controller.installState(), QStringLiteral("idle"));
+    QCOMPARE(readFile(target), QByteArray("old"));
+    QCOMPARE(QDir(dir.path()).entryList(QDir::Files), QStringList{QStringLiteral("app.AppImage")});
+}
+
+void UpdateTest::installFollowsAnAllowedRedirect()
+{
+    // GitHub sends the file of a release to its storage: the installer
+    // follows a redirect to an allowed address (here the same server).
+    useProdApp();
+    FakeGitHub github;
+    QVERIFY(github.listening());
+    const QString name = QStringLiteral("FinanceDashboard-0.2.3-linux-x86_64.AppImage");
+    const QByteArray package = packageBytes(64 * 1024);
+    serveRelease(github, name, package, sumsFor(sha256Hex(package), name));
+    github.setRoute("/dl/package", "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:" + QByteArray::number(github.port())
+                                       + "/storage/abc?signature=1\r\nContent-Length: 5\r\nConnection: close\r\n\r\nmoved");
+    github.setRoute("/storage/abc?signature=1", httpAnswer(200, "OK", package, {}, "application/octet-stream"));
+    // SHA256SUMS.txt too.
+    github.setRoute("/dl/sums", "HTTP/1.1 302 Found\r\nLocation: /storage/sums\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+    github.setRoute("/storage/sums", httpAnswer(200, "OK", sumsFor(sha256Hex(package), name), {}, "text/plain"));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString target = dir.filePath(QStringLiteral("app.AppImage"));
+    writeFile(target, "old");
+    UpdateController controller;
+    controller.setFeedUrl(github.feedUrl());
+    UpdateInstaller& installer = controller.installerForTests();
+    installer.setKind(Update::InstallKind::AppImage);
+    installer.setAppImagePath(target);
+    checkNow(controller);
+    controller.install();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.installState(), QStringLiteral("installed"), 10000);
+    // The body of the redirect ("moved") is not in the file.
+    QCOMPARE(readFile(target), package);
+    QCOMPARE(github.paths(), (QList<QByteArray>{kFeedPath, "/dl/sums", "/storage/sums", "/dl/package",
+                                                "/storage/abc?signature=1"}));
+}
+
+void UpdateTest::installAgainAfterAFailure()
+{
+    useProdApp();
+    FakeGitHub github;
+    QVERIFY(github.listening());
+    const QString name = QStringLiteral("FinanceDashboard-0.2.3-linux-x86_64.AppImage");
+    const QByteArray package = packageBytes(64 * 1024);
+    serveRelease(github, name, package, sumsFor(sha256Hex(package), name));
+    github.setRoute("/dl/package", httpAnswer(500, "Internal Server Error", "{}"));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString target = dir.filePath(QStringLiteral("app.AppImage"));
+    writeFile(target, "old");
+    UpdateController controller;
+    controller.setFeedUrl(github.feedUrl());
+    UpdateInstaller& installer = controller.installerForTests();
+    installer.setKind(Update::InstallKind::AppImage);
+    installer.setAppImagePath(target);
+    checkNow(controller);
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("^\\[UpdateInstaller\\] ")));
+    controller.install();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.installState(), QStringLiteral("failed"), 10000);
+    // Closing the banner ends the failure, and closes the banner of 0.2.3.
+    controller.dismissBanner();
+    QCOMPARE(controller.installState(), QStringLiteral("idle"));
+    QVERIFY(!controller.bannerVisible());
+
+    // The server works again: "Install" on the Updates page.
+    github.setRoute("/dl/package", httpAnswer(200, "OK", package, {}, "application/octet-stream"));
+    controller.install();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.installState(), QStringLiteral("installed"), 10000);
+    QCOMPARE(readFile(target), package);
+}
+
+void UpdateTest::installStopsADownloadWithNoData()
+{
+    useProdApp();
+    FakeGitHub github;
+    QVERIFY(github.listening());
+    const QString name = QStringLiteral("FinanceDashboard-0.2.3-linux-x86_64.AppImage");
+    const QByteArray package = packageBytes(64 * 1024);
+    serveRelease(github, name, package, sumsFor(sha256Hex(package), name));
+    github.holdPath("/dl/package"); // never answers
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString target = dir.filePath(QStringLiteral("app.AppImage"));
+    writeFile(target, "old");
+    UpdateController controller;
+    controller.setFeedUrl(github.feedUrl());
+    UpdateInstaller& installer = controller.installerForTests();
+    installer.setKind(Update::InstallKind::AppImage);
+    installer.setAppImagePath(target);
+    installer.setTimeoutForTests(2000);
+    checkNow(controller);
+    // After the timeout Qt closes the reply: nothing reads it any more.
+    QTest::failOnWarning(QRegularExpression(QStringLiteral("device not open")));
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("^\\[UpdateInstaller\\] ")));
+    controller.install();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.installState(), QStringLiteral("failed"), 10000);
+    QVERIFY2(controller.installText().contains(QStringLiteral("no data came for 2 seconds")),
+             qPrintable(controller.installText()));
+    QCOMPARE(readFile(target), QByteArray("old"));
+    QCOMPARE(QDir(dir.path()).entryList(QDir::Files), QStringList{QStringLiteral("app.AppImage")});
+}
+
+void UpdateTest::installChecksTheSetupAgainBeforeItRuns()
+{
+    useProdApp();
+    FakeGitHub github;
+    QVERIFY(github.listening());
+    const QString name = QStringLiteral("FinanceDashboard-0.2.3-windows-x64.exe");
+    const QByteArray package = packageBytes(64 * 1024);
+    serveRelease(github, name, package, sumsFor(sha256Hex(package), name));
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString downloads = dir.filePath(QStringLiteral("FinanceDashboard-update"));
+    UpdateController controller;
+    controller.setFeedUrl(github.feedUrl());
+    UpdateInstaller& installer = controller.installerForTests();
+    installer.setKind(Update::InstallKind::WindowsSetup);
+    installer.setDownloadDir(downloads);
+    bool launched = false;
+    installer.setLauncherForTests([&launched](const QString&, const QStringList&, const QProcessEnvironment&) {
+        launched = true;
+        return true;
+    });
+    checkNow(controller);
+    controller.install();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.installState(), QStringLiteral("ready"), 10000);
+    // Something changes the setup while it waits.
+    QByteArray changed = package;
+    changed[100] = static_cast<char>(changed.at(100) ^ 0x55);
+    writeFile(QDir(downloads).filePath(name), changed);
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("^\\[UpdateInstaller\\] ")));
+    controller.restartNow();
+    QVERIFY(!launched);
+    QCOMPARE(controller.installState(), QStringLiteral("failed"));
+    QVERIFY2(controller.installText().contains(QStringLiteral("changed after the download")),
+             qPrintable(controller.installText()));
+}
+
+void UpdateTest::installWaitsForTheSetupThenOffersAgain()
+{
+    useProdApp();
+    FakeGitHub github;
+    QVERIFY(github.listening());
+    const QString name = QStringLiteral("FinanceDashboard-0.2.3-windows-x64.exe");
+    const QByteArray package = packageBytes(16 * 1024);
+    serveRelease(github, name, package, sumsFor(sha256Hex(package), name));
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    UpdateController controller;
+    controller.setFeedUrl(github.feedUrl());
+    UpdateInstaller& installer = controller.installerForTests();
+    installer.setKind(Update::InstallKind::WindowsSetup);
+    installer.setDownloadDir(dir.filePath(QStringLiteral("FinanceDashboard-update")));
+    installer.setLauncherForTests([](const QString&, const QStringList&, const QProcessEnvironment&) { return true; });
+    installer.setInstallWaitForTests(200);
+    checkNow(controller);
+    controller.install();
+    QTRY_COMPARE_WITH_TIMEOUT(controller.installState(), QStringLiteral("ready"), 10000);
+    controller.restartNow();
+    QCOMPARE(controller.installState(), QStringLiteral("installing"));
+    // The setup did not close the app (a refused administrator prompt).
+    QTRY_COMPARE_WITH_TIMEOUT(controller.installState(), QStringLiteral("ready"), 5000);
+    QVERIFY2(controller.installText().contains(QStringLiteral("has not closed the app yet")),
+             qPrintable(controller.installText()));
+}
+
+void UpdateTest::installTellsWhenTheNewVersionDoesNotStart()
+{
+    useProdApp();
+    for (const auto kind : {Update::InstallKind::WindowsSetup, Update::InstallKind::AppImage}) {
+        FakeGitHub github;
+        QVERIFY(github.listening());
+        const QString name = Update::packageFileName(kind, QStringLiteral("FinanceDashboard"), QStringLiteral("0.2.3"));
+        const QByteArray package = packageBytes(16 * 1024);
+        serveRelease(github, name, package, sumsFor(sha256Hex(package), name));
+        QTemporaryDir dir;
+        QVERIFY(dir.isValid());
+        const QString target = dir.filePath(QStringLiteral("app.AppImage"));
+        writeFile(target, "old");
+        UpdateController controller;
+        controller.setFeedUrl(github.feedUrl());
+        UpdateInstaller& installer = controller.installerForTests();
+        installer.setKind(kind);
+        installer.setAppImagePath(target);
+        installer.setDownloadDir(dir.filePath(QStringLiteral("FinanceDashboard-update")));
+        bool quit = false;
+        installer.setLauncherForTests([](const QString&, const QStringList&, const QProcessEnvironment&) { return false; });
+        installer.setQuitForTests([&quit]() { quit = true; });
+        checkNow(controller);
+        controller.install();
+        const QString waiting = kind == Update::InstallKind::AppImage ? QStringLiteral("installed") : QStringLiteral("ready");
+        QTRY_COMPARE_WITH_TIMEOUT(controller.installState(), waiting, 10000);
+        QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("^\\[UpdateInstaller\\] ")));
+        controller.restartNow();
+        QCOMPARE(controller.installState(), QStringLiteral("failed"));
+        QVERIFY2(controller.installText().contains(QStringLiteral("did not start")), qPrintable(controller.installText()));
+        QVERIFY(!quit); // the app stays open
+    }
+}
+
+void UpdateTest::installNeedsAWritableAppImage()
+{
+    useProdApp();
+    FakeGitHub github;
+    QVERIFY(github.listening());
+    const QString name = QStringLiteral("FinanceDashboard-0.2.3-linux-x86_64.AppImage");
+    const QByteArray package = packageBytes(16 * 1024);
+    serveRelease(github, name, package, sumsFor(sha256Hex(package), name));
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    UpdateController controller;
+    controller.setFeedUrl(github.feedUrl());
+    UpdateInstaller& installer = controller.installerForTests();
+    installer.setKind(Update::InstallKind::AppImage);
+    // A folder that does not exist: the app cannot write there (as with a
+    // folder of root, for a user).
+    installer.setAppImagePath(dir.filePath(QStringLiteral("gone/app.AppImage")));
+    checkNow(controller);
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("^\\[UpdateInstaller\\] ")));
+    controller.install();
+    QCOMPARE(controller.installState(), QStringLiteral("failed"));
+    QVERIFY2(controller.installText().contains(QStringLiteral("replace the file by hand")),
+             qPrintable(controller.installText()));
+    // It failed before any download.
+    QCOMPARE(github.paths(), QList<QByteArray>{kFeedPath});
+}
+
+void UpdateTest::installAllowsTheFeedServerOnlyOnThisComputer()
+{
+    // The list of GitHub is on api.github.com: a file there is not a file of
+    // a release, so the installer does not download it.
+    QNetworkAccessManager network;
+    UpdateInstaller installer(&network);
+    installer.setKind(Update::InstallKind::AppImage);
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString target = dir.filePath(QStringLiteral("app.AppImage"));
+    writeFile(target, "old");
+    installer.setAppImagePath(target);
+    installer.setAllowedOrigin(QUrl(QString::fromLatin1(UpdateController::kDefaultFeedUrl)));
+    Update::Release release;
+    release.assets = {{QStringLiteral("FinanceDashboard-0.2.3-linux-x86_64.AppImage"),
+                       QUrl(QStringLiteral("https://api.github.com/x.AppImage")), 10},
+                      {QStringLiteral("SHA256SUMS.txt"), QUrl(QStringLiteral("https://api.github.com/sums")), 10}};
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("not on the GitHub page")));
+    installer.start(release, QStringLiteral("FinanceDashboard-0.2.3-linux-x86_64.AppImage"), QStringLiteral("0.2.3"));
+    QCOMPARE(installer.state(), UpdateInstaller::State::Failed);
+}
+
+void UpdateTest::oldDownloadsGo()
+{
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const auto fill = [&dir]() {
+        writeFile(dir.filePath(QStringLiteral("FinanceDashboard-0.2.2-windows-x64.exe")), "setup");
+        writeFile(dir.filePath(QStringLiteral("FinanceDashboard-0.2.3-windows-x64.exe.Ab12Cd")), "part");
+        writeFile(dir.filePath(QStringLiteral("setup.log")), "log");
+    };
+    fill();
+    // At start: the log of a failed update stays.
+    UpdateInstaller::removeOldDownloads(dir.path(), true);
+    QCOMPARE(QDir(dir.path()).entryList(QDir::Files), QStringList{QStringLiteral("setup.log")});
+    fill();
+    // Before a new download: everything goes.
+    UpdateInstaller::removeOldDownloads(dir.path(), false);
+    QVERIFY(QDir(dir.path()).entryList(QDir::Files).isEmpty());
+}
+
+void UpdateTest::manualStepsForTheOtherCopies_data()
+{
+    QTest::addColumn<int>("kind");
+    QTest::addColumn<bool>("testApp");
+    QTest::addColumn<QString>("expected");
+
+    QTest::newRow("portable ZIP") << int(Update::InstallKind::WindowsPortable) << false
+                                  << QStringLiteral("Download FinanceDashboard-0.2.3-windows-x64.zip");
+    QTest::newRow(".deb") << int(Update::InstallKind::LinuxPackage) << false
+                          << QStringLiteral("sudo apt install ./finance-dashboard_0.2.3_amd64.deb");
+    QTest::newRow(".tar.gz") << int(Update::InstallKind::LinuxArchive) << false
+                             << QStringLiteral("Download FinanceDashboard-0.2.3-linux-x86_64.tar.gz");
+    QTest::newRow("Test app, not an AppImage") << int(Update::InstallKind::LinuxArchive) << true
+                                               << QStringLiteral("Download FinanceDashboardTest-0.2.2-rc.70-linux-x86_64.AppImage");
+}
+
+void UpdateTest::manualStepsForTheOtherCopies()
+{
+    QFETCH(int, kind);
+    QFETCH(bool, testApp);
+    QFETCH(QString, expected);
+    if (!testApp) {
+        useProdApp();
+        writeList(releaseJson(QStringLiteral("0.2.3"),
+                              {{QStringLiteral("FinanceDashboard-0.2.3-windows-x64.zip"),
+                                QStringLiteral("https://github.com/nicolas-goyon/FinanceDashboard/releases/download/v0.2.3/a.zip"),
+                                10}}));
+    }
+    UpdateController controller;
+    controller.setFeedUrl(QUrl::fromLocalFile(m_listPath));
+    controller.setTestApp(testApp);
+    controller.installerForTests().setKind(static_cast<Update::InstallKind>(kind));
+    checkNow(controller);
+    QVERIFY(controller.updateAvailable());
+    QVERIFY(!controller.installsItself());
+    QVERIFY2(controller.manualSteps().contains(expected), qPrintable(controller.manualSteps()));
+    controller.install(); // nothing for a copy that updates by hand
+    QCOMPARE(controller.installState(), QStringLiteral("idle"));
 }
 
 // A QGuiApplication: the QML Text of markdownImageIsNotDownloaded().

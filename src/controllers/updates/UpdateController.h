@@ -1,7 +1,9 @@
 #ifndef FINANCEDASHBOARD_CONTROLLERS_UPDATES_UPDATECONTROLLER_H
 #define FINANCEDASHBOARD_CONTROLLERS_UPDATES_UPDATECONTROLLER_H
 
+#include "UpdateInstaller.h"
 #include "update/ReleaseFeed.h"
+#include "update/UpdatePackage.h"
 
 #include <QDateTime>
 #include <QNetworkAccessManager>
@@ -18,8 +20,8 @@ class QNetworkReply;
 // ── UpdateController ─────────────────────────────────────────────────────────
 //
 // Backend of qml/pages/UpdatesPage.qml and of the update banner of Main.qml
-// (#117, first part: the check). A QML_SINGLETON: the page and the banner
-// show the same state.
+// (#117: the check, then the installation). A QML_SINGLETON: the page and the
+// banner show the same state.
 //
 // The check reads the releases of the project on GitHub (one GET of the REST
 // API, no token: the repository is public), keeps the releases of the channel
@@ -45,9 +47,12 @@ class QNetworkReply;
 // makes a Text read a file or an address, before QML shows them (on Windows,
 // file://server/... is a network share).
 //
-// The download and the installation come in the second part of #117: for
-// now, the page opens the release page of a version. openPage() opens the
-// pages of this project on GitHub only (isProjectPage()).
+// The installation (decisions of 2026-10-20): install() downloads the newest
+// version of the channel when the user clicks "Install", and restartNow()
+// installs it (UpdateInstaller). The setup and the AppImage update
+// themselves; the portable ZIP, the .deb and the .tar.gz update by hand
+// (manualSteps). openPage() opens the pages of this project on GitHub only
+// (isProjectPage()).
 
 class UpdateController : public QObject
 {
@@ -77,8 +82,25 @@ class UpdateController : public QObject
     Q_PROPERTY(QVariantList releases READ releases NOTIFY stateChanged)
     Q_PROPERTY(bool updateAvailable READ updateAvailable NOTIFY stateChanged)
     Q_PROPERTY(QString latestVersion READ latestVersion NOTIFY stateChanged)
-    // updateAvailable, unless the user closed the banner of that version.
+    // updateAvailable, unless the user closed the banner of that version; and
+    // always during an installation (installState is not "idle").
     Q_PROPERTY(bool bannerVisible READ bannerVisible NOTIFY stateChanged)
+
+    // How this copy of the app was installed: "setup", "portable",
+    // "appimage", "deb" or "archive".
+    Q_PROPERTY(QString installKind READ installKind NOTIFY installChanged)
+    // True for the setup and the AppImage: "Install" in the banner and on the page.
+    Q_PROPERTY(bool installsItself READ installsItself NOTIFY installChanged)
+    // "idle", "downloading", "ready" (the setup waits for "Install and
+    // restart"), "installed" (the AppImage waits for "Restart now"),
+    // "installing" or "failed".
+    Q_PROPERTY(QString installState READ installState NOTIFY installChanged)
+    Q_PROPERTY(double installProgress READ installProgress NOTIFY installChanged) // 0 to 1
+    Q_PROPERTY(QString installText READ installText NOTIFY installChanged)
+    // The version that the installation downloads or installed.
+    Q_PROPERTY(QString installVersion READ installVersion NOTIFY installChanged)
+    // The copies that update by hand: the steps for latestVersion.
+    Q_PROPERTY(QString manualSteps READ manualSteps NOTIFY stateChanged)
 
 public:
     explicit UpdateController(QObject* parent = nullptr);
@@ -87,7 +109,7 @@ public:
     static constexpr const char* kDefaultFeedUrl =
         "https://api.github.com/repos/nicolas-goyon/FinanceDashboard/releases?per_page=100";
     // The pages that openPage() opens: this project on GitHub.
-    static constexpr const char* kProjectPagePath = "/nicolas-goyon/FinanceDashboard";
+    static constexpr const char* kProjectPagePath = Update::kProjectPath;
     static constexpr int kStartupDelayMs = 3000; // the check at start waits for the window
     static constexpr int kTimeoutMs = 20000;     // a check that gets no data for 20 s fails
 
@@ -111,6 +133,14 @@ public:
     [[nodiscard]] QString latestVersion() const { return m_latestNewer; }
     [[nodiscard]] bool bannerVisible() const;
 
+    [[nodiscard]] QString installKind() const { return Update::installKindName(m_installer.kind()); }
+    [[nodiscard]] bool installsItself() const { return Update::installsItself(m_installer.kind()); }
+    [[nodiscard]] QString installState() const { return m_installer.stateName(); }
+    [[nodiscard]] double installProgress() const { return m_installer.progress(); }
+    [[nodiscard]] QString installText() const { return m_installer.message(); }
+    [[nodiscard]] QString installVersion() const { return m_installer.version(); }
+    [[nodiscard]] QString manualSteps() const;
+
     // Reads the list of releases now. Does nothing while a check runs.
     Q_INVOKABLE void check();
     // The check at start: once for each run of the app, a few seconds after
@@ -131,15 +161,26 @@ public:
     // Hides the banner until a newer version than latestVersion exists.
     Q_INVOKABLE void dismissBanner();
 
-    // The tests only: shorter times than kStartupDelayMs and kTimeoutMs.
+    // "Install": downloads and checks latestVersion (the setup, or the
+    // AppImage, which it replaces). Only when installsItself.
+    Q_INVOKABLE void install();
+    // Stops the download; after a failure, back to "Install".
+    Q_INVOKABLE void cancelInstall();
+    // "Install and restart" (the setup) or "Restart now" (the AppImage).
+    Q_INVOKABLE void restartNow();
+
+    // The tests only: shorter times than kStartupDelayMs and kTimeoutMs, and
+    // the installer (its kind, its folders, no process, no quit).
     void setStartupDelayForTests(int milliseconds) { m_startupDelayMs = milliseconds; }
     void setTimeoutForTests(int milliseconds) { m_timeoutMs = milliseconds; }
+    [[nodiscard]] UpdateInstaller& installerForTests() { return m_installer; }
 
 signals:
     void settingsChanged();
     void stateChanged();
     // After each check, also a failed one.
     void checkFinished();
+    void installChanged();
 
 private:
     void finish(QNetworkReply* reply);
@@ -150,6 +191,7 @@ private:
     [[nodiscard]] Update::Channel currentChannel() const;
 
     QNetworkAccessManager m_network;
+    UpdateInstaller m_installer{&m_network}; // after m_network: it uses it
     QNetworkReply* m_reply = nullptr;
     QUrl m_feedUrl;
     int m_startupDelayMs = kStartupDelayMs;
@@ -162,6 +204,7 @@ private:
     QVector<Update::Release> m_allReleases; // the last list, every channel
     QVariantList m_releaseRows;
     QString m_latestNewer;                 // the newest version of the channel, when newer
+    Update::Release m_latestRelease;       // its release (the files that install() downloads)
     QDateTime m_checkedAt;                 // the time of the last check that read the list
     QString m_statusText;
     bool m_statusIsError = false;

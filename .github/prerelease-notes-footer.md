@@ -8,7 +8,9 @@ folder, so a pre-release never touches the data of the prod app. Its icon has
 an orange "TEST" band, and its window title ends with "(Test)". To try a
 pre-release on your real data, use **Copy my prod database** on its Database
 Management page: the prod database is only read. Its Updates page tells when a
-newer pre-release of its channel exists (Experimental or Preprod).
+newer pre-release of its channel exists (Experimental or Preprod). With the
+setup and the AppImage, **Install** downloads it and checks its SHA-256, then
+**Install and restart** (setup) or **Restart now** (AppImage) opens it.
 
 ### Downloads
 

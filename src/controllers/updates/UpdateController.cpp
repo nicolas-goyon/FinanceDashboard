@@ -1,19 +1,23 @@
 #include "UpdateController.h"
 
+#include "UpdateInstaller.h"
 #include "update/ReleaseFeed.h"
 #include "update/SemVer.h"
+#include "update/UpdatePackage.h"
 
 #include <QByteArray>
 #include <QCoreApplication>
 #include <QDateTime>
 #include <QDebug>
 #include <QDesktopServices>
+#include <QDir>
 #include <QLatin1Char>
 #include <QLatin1String>
 #include <QList>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QString>
 #include <QTextBlock>
 #include <QTextCursor>
@@ -27,6 +31,7 @@
 #include <QVariantMap>
 #include <QVector>
 #include <Qt>
+#include <QtGlobal>
 #include <QtTypes>
 #include <QtLogging>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
@@ -154,7 +159,31 @@ UpdateController::UpdateController(QObject* parent)
     , m_feedUrl(QString::fromLatin1(kDefaultFeedUrl))
     , m_currentVersion(QCoreApplication::applicationVersion())
     , m_checkAtStart(QSettings().value(QLatin1String(kKeyCheckAtStart), true).toBool())
-{}
+{
+#ifdef Q_OS_WIN
+    constexpr bool kWindows = true;
+#else
+    constexpr bool kWindows = false;
+#endif
+    // How this copy was installed decides what "Install" does.
+    const QString appImage = qEnvironmentVariable("APPIMAGE");
+    m_installer.setKind(Update::installKindOf(QDir(QCoreApplication::applicationDirPath()), appImage, kWindows));
+    m_installer.setAppImagePath(appImage);
+    // The setup waits in a folder of the temporary folder, one for each
+    // identity. A setup of an earlier update goes now (or at the next start,
+    // when the setup still runs); its log stays until the next download.
+    m_installer.setDownloadDir(QStandardPaths::writableLocation(QStandardPaths::TempLocation) + QLatin1Char('/')
+                               + QCoreApplication::applicationName() + QLatin1String("-update"));
+    if (m_installer.kind() == Update::InstallKind::WindowsSetup) {
+        UpdateInstaller::removeOldDownloads(m_installer.downloadDir(), true);
+    }
+    m_installer.setUserAgent(QStringLiteral("FinanceDashboard/%1").arg(m_currentVersion).toUtf8());
+    m_installer.setAllowedOrigin(m_feedUrl);
+    connect(&m_installer, &UpdateInstaller::changed, this, [this]() {
+        emit installChanged();
+        emit stateChanged(); // bannerVisible
+    });
+}
 
 void UpdateController::setTestApp(bool testApp)
 {
@@ -226,11 +255,16 @@ void UpdateController::setFeedUrl(const QUrl& url)
         return;
     }
     m_feedUrl = url;
+    m_installer.setAllowedOrigin(url);
     emit settingsChanged();
 }
 
 bool UpdateController::bannerVisible() const
 {
+    // An installation in progress, or its failure, always shows.
+    if (m_installer.state() != UpdateInstaller::State::Idle) {
+        return true;
+    }
     if (!updateAvailable()) {
         return false;
     }
@@ -243,6 +277,13 @@ bool UpdateController::bannerVisible() const
 
 void UpdateController::dismissBanner()
 {
+    // A failed installation closes with its banner; an installation in
+    // progress does not.
+    if (m_installer.state() == UpdateInstaller::State::Failed) {
+        m_installer.cancel();
+    } else if (m_installer.state() != UpdateInstaller::State::Idle) {
+        return;
+    }
     if (!updateAvailable()) {
         return;
     }
@@ -357,6 +398,7 @@ void UpdateController::applyChannel()
 
     m_releaseRows.clear();
     m_latestNewer.clear();
+    m_latestRelease = {};
     for (const Update::Release& release : releases) {
         QString relation;
         if (current.valid) {
@@ -383,6 +425,7 @@ void UpdateController::applyChannel()
     }
     if (!releases.isEmpty() && current.valid && Update::compareSemVer(releases.first().version, current) > 0) {
         m_latestNewer = Update::semVerText(releases.first().version);
+        m_latestRelease = releases.first();
     }
 
     // During a check (the user changed the channel), "Checking…" stays until
@@ -457,6 +500,61 @@ QString UpdateController::safeNotes(const QString& markdown)
     // notes (&lt;img ...&gt;) can come back as HTML. Then the text only.
     const QString plain = plainMarkdown(document.toPlainText());
     return readsNoResource(plain) ? plain : QString();
+}
+
+void UpdateController::install()
+{
+    if (!updateAvailable() || !installsItself()) {
+        return;
+    }
+    m_installer.start(m_latestRelease,
+                      Update::packageFileName(m_installer.kind(), QCoreApplication::applicationName(), m_latestNewer),
+                      m_latestNewer);
+}
+
+void UpdateController::cancelInstall()
+{
+    m_installer.cancel();
+}
+
+void UpdateController::restartNow()
+{
+    m_installer.restart();
+}
+
+QString UpdateController::manualSteps() const
+{
+    if (!updateAvailable() || installsItself()) {
+        return {};
+    }
+    const QString appName = QCoreApplication::applicationName();
+    const Update::InstallKind kind = m_installer.kind();
+    switch (kind) {
+    case Update::InstallKind::WindowsPortable:
+        return QStringLiteral("This copy of the app is the portable ZIP: update it by hand. Download %1 from the "
+                              "release page, close the app, then extract the ZIP over the folder of the app. Your "
+                              "data is not in that folder.")
+            .arg(Update::packageFileName(kind, appName, m_latestNewer));
+    case Update::InstallKind::LinuxPackage:
+        return QStringLiteral("This copy of the app comes from the .deb: update it by hand. Download %1 from the "
+                              "release page, then run: sudo apt install ./%1")
+            .arg(Update::packageFileName(kind, appName, m_latestNewer));
+    case Update::InstallKind::LinuxArchive:
+        if (m_testApp) {
+            // The Test app has no .tar.gz: its Linux package is the AppImage.
+            return QStringLiteral("This copy of the Test app is not an AppImage: update it by hand. Download %1 from "
+                                  "the release page and start it.")
+                .arg(Update::packageFileName(Update::InstallKind::AppImage, appName, m_latestNewer));
+        }
+        return QStringLiteral("This copy of the app comes from the .tar.gz (or from a build): update it by hand. "
+                              "Download %1 from the release page, close the app, then extract it over the old "
+                              "folder. Your data is not in that folder.")
+            .arg(Update::packageFileName(kind, appName, m_latestNewer));
+    case Update::InstallKind::WindowsSetup:
+    case Update::InstallKind::AppImage:
+        break;
+    }
+    return {};
 }
 
 void UpdateController::openPage(const QString& url)

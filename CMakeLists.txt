@@ -167,12 +167,15 @@ set(FD_CORE_SOURCES
     src/import/ImportTemplateRegistry.cpp
     src/import/SumeriaCcpCsvExtractionTemplate.h
     src/import/SumeriaCcpCsvExtractionTemplate.cpp
-    # The update check (#117): versions and the list of releases. Qt Core only,
-    # no network — UpdateController below downloads the list.
+    # The update check (#117): versions, the list of releases, the kind of
+    # installation and the package of a new version. Qt Core only, no network
+    # — UpdateController and UpdateInstaller below download.
     src/update/SemVer.h
     src/update/SemVer.cpp
     src/update/ReleaseFeed.h
     src/update/ReleaseFeed.cpp
+    src/update/UpdatePackage.h
+    src/update/UpdatePackage.cpp
 )
 list(TRANSFORM FD_CORE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 
@@ -224,6 +227,8 @@ qt_add_qml_module(FinanceDashboard
         src/controllers/database/DatabaseManagementController.cpp
         src/controllers/updates/UpdateController.h
         src/controllers/updates/UpdateController.cpp
+        src/controllers/updates/UpdateInstaller.h
+        src/controllers/updates/UpdateInstaller.cpp
     QML_FILES
         qml/Main.qml
         qml/StartupErrorWindow.qml
@@ -558,6 +563,16 @@ if(WIN32)
     set(CPACK_INNOSETUP_PROGRAM_MENU_FOLDER "${FD_APP_DISPLAY_NAME}")
     # "Launch Finance Dashboard" check box on the last page of the setup.
     set(CPACK_INNOSETUP_RUN_EXECUTABLES "FinanceDashboard")
+    # The update from the app (#117): with /RESTARTAPP=1, the silent setup
+    # starts the new version when it ends (a [Run] entry and its check
+    # function). See UpdateInstaller::setupArguments().
+    # https://cmake.org/cmake/help/latest/cpack_gen/innosetup.html
+    set(CPACK_INNOSETUP_EXTRA_SCRIPTS "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/update-restart.iss")
+    set(CPACK_INNOSETUP_CODE_FILES "${CMAKE_CURRENT_SOURCE_DIR}/packaging/windows/update-restart.pas")
+    # One setup at a time for each identity: a second click on "Install and
+    # restart" starts a setup that stops at once while the first one runs.
+    # https://jrsoftware.org/ishelp/topic_setup_setupmutex.htm
+    set(CPACK_INNOSETUP_SETUP_SetupMutex "${FD_APP_NAME}Setup,Global\\${FD_APP_NAME}Setup")
 else()
     set(CPACK_GENERATOR "TGZ")
 endif()

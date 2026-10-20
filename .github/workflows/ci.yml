@@ -468,6 +468,72 @@ jobs:
             Write-Host "OK — $($m.Name): install, update in place and uninstall"
           }
 
+      # The update from the app (#117): the app runs the setup of the new
+      # version with the arguments of UpdateInstaller::setupArguments() (the
+      # same list here). With the app running, the setup must close it
+      # (Restart Manager), install, and start it again (packaging/windows/
+      # update-restart.iss); a silent setup without /RESTARTAPP=1 must not
+      # start it. In both install modes: "for all users" reuses the mode of
+      # the installed copy and runs elevated (the runner is an administrator,
+      # so there is no prompt), and the app starts again as the user.
+      - name: Test the update from the app (close, install, start again)
+        shell: pwsh
+        run: |
+          # As in the smoke test: the app uses only what it carries.
+          $env:QT_PLUGIN_PATH = ""
+          $env:QML2_IMPORT_PATH = ""
+          $env:QML_IMPORT_PATH = ""
+          $env:PATH = (($env:PATH -split ';') | Where-Object { $_ -notmatch '(?i)\\Qt\\' }) -join ';'
+          $setup = (Get-ChildItem "${{ github.workspace }}\dist\FinanceDashboard-*.exe" | Select-Object -First 1).FullName
+          $modes = @(
+            @{ Name = "for me only";   Flag = "/CURRENTUSER"; Dir = "$env:LOCALAPPDATA\Programs\FinanceDashboard"; Tag = "user" },
+            @{ Name = "for all users"; Flag = "/ALLUSERS";    Dir = "$env:ProgramFiles\FinanceDashboard";           Tag = "all" }
+          )
+          foreach ($m in $modes) {
+            $dir = $m.Dir
+            $p = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
+              "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", $m.Flag,
+              "/LOG=`"${{ github.workspace }}\dist\setup-update-$($m.Tag)-install.log`"")
+            if ($p.ExitCode -ne 0) { throw "$($m.Name), install: setup exit code $($p.ExitCode)" }
+            $app = Start-Process -FilePath "$dir\FinanceDashboard.exe" -PassThru
+            $null = $app.Handle # else ExitCode stays empty without -Wait
+            Start-Sleep -Seconds 10
+            if ($app.HasExited) { throw "$($m.Name): the installed app exited early with code $($app.ExitCode)" }
+            $log = "${{ github.workspace }}\dist\setup-update-$($m.Tag).log"
+            $s = Start-Process -FilePath $setup -PassThru -ArgumentList @(
+              "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CLOSEAPPLICATIONS", "/NORESTARTAPPLICATIONS",
+              "/RESTARTAPP=1", "/LOG=`"$log`"")
+            $null = $s.Handle
+            if (-not $s.WaitForExit(300000)) { throw "$($m.Name): the setup did not end in 5 minutes" }
+            if ($s.ExitCode -ne 0) { Get-Content $log -Tail 40; throw "$($m.Name), update: setup exit code $($s.ExitCode)" }
+            if (-not $app.HasExited) { throw "$($m.Name): the setup did not close the running app" }
+            # The [Run] entry starts the new version without waiting: find it.
+            $new = $null
+            for ($i = 0; $i -lt 30 -and -not $new; $i++) {
+              Start-Sleep -Seconds 1
+              $new = Get-Process -Name FinanceDashboard -ErrorAction SilentlyContinue |
+                Where-Object { $_.Path -eq "$dir\FinanceDashboard.exe" -and $_.Id -ne $app.Id } | Select-Object -First 1
+            }
+            if (-not $new) { Get-Content $log -Tail 40; throw "$($m.Name): the setup did not start the app again" }
+            Start-Sleep -Seconds 5
+            if ($new.HasExited) { throw "$($m.Name): the restarted app exited early" }
+            Stop-Process -Id $new.Id -Force
+            Start-Sleep -Seconds 2
+            $p = Start-Process -FilePath $setup -Wait -PassThru -ArgumentList @(
+              "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")
+            if ($p.ExitCode -ne 0) { throw "$($m.Name), silent setup: exit code $($p.ExitCode)" }
+            Start-Sleep -Seconds 5
+            if (Get-Process -Name FinanceDashboard -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq "$dir\FinanceDashboard.exe" }) {
+              throw "$($m.Name): a silent setup without /RESTARTAPP=1 started the app"
+            }
+            $p = Start-Process -FilePath "$dir\unins000.exe" -Wait -PassThru -ArgumentList @(
+              "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")
+            if ($p.ExitCode -ne 0) { throw "$($m.Name): uninstaller exit code $($p.ExitCode)" }
+            for ($i = 0; $i -lt 60 -and (Test-Path "$dir\FinanceDashboard.exe"); $i++) { Start-Sleep -Seconds 1 }
+            if (Test-Path "$dir\FinanceDashboard.exe") { throw "$($m.Name): FinanceDashboard.exe is still there after the uninstall" }
+            Write-Host "OK — $($m.Name): the setup closed the running app, updated it and started it again"
+          }
+
       # The Test app (#130): the same build directory, with the Test identity
       # (CMakeLists.txt § App identity). Only main.cpp, the icon resources and
       # the QML caches build again.
