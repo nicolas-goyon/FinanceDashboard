@@ -109,6 +109,14 @@ builds, source archives). Then CI opens a pull request that merges the release b
   the earmarked amount is above the target. A contribution below half a cent counts as none, a
   completion after 100 years shows "Never", and a new project with an amount that is not a
   number or a target date after 100 years is refused (#41).
+- Cash Flow page (mock data): in a month where the spending is more than the income, the money
+  flow gets an "Overspend" input (taken from the savings), so its two sides have the same
+  total. Before, the savings output went to 0, and the outputs were more than the inputs (#42).
+- Cash Flow page (mock data): the 3-month average line starts at the third month. Before, its
+  first two points were the averages of one and two months (#56).
+- Investments page (mock data): the monthly performance leaves out the deposit of the month.
+  Before, the 250 € deposit counted as a gain: the second month showed 4.95 % instead of 2.48 %
+  (#56).
 
 ---
 
