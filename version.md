@@ -31,6 +31,17 @@ builds, source archives). Then CI opens a pull request that merges the release b
 
 ## v0.2.2 (current)
 
+### Added
+- A Test app, "Finance Dashboard Test" (`cmake -DFD_APP_IDENTITY=test`), for the experimental
+  and preprod builds. It installs and runs next to the prod app, with its own data folder and
+  settings, its own Windows setup identity (AppId, install folder, Start menu folder, uninstall
+  entry) and Linux desktop entry, an icon with an orange "TEST" band, and "(Test)" in the
+  window title. The title of the start-up error window ends with the name of the app: "Can't
+  start — Finance Dashboard" (before, "Finance Dashboard — can't start"). Its packages are the
+  Windows setup and ZIP, and the AppImage. CI builds them, tests that the two Windows setups
+  install side by side and uninstall one at a time, and checks that the Test AppImage keeps its
+  data in its own folder (#130).
+
 ### Changed
 - The Git history on GitHub was rewritten on 2026-10-20 at 06:39 UTC to remove personal data. A
   clone made before that time still has the old history: delete it and clone the repository
@@ -129,6 +140,8 @@ builds, source archives). Then CI opens a pull request that merges the release b
   each statement is prepared and log the error of SQLite, instead of a misleading "Parameter
   count mismatch". The results of the WAL, secure_delete and checkpoint PRAGMAs are logged
   (#49).
+- Windows: `FinanceDashboard.exe` has its icon (Explorer, the shortcuts, the taskbar), and the
+  window shows the app icon on Windows and Linux. Before, only the setup had the icon (#111).
 
 ---
 

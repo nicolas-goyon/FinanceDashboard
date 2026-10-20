@@ -17,6 +17,42 @@ message(STATUS "FinanceDashboard version ${PROJECT_VERSION} (from version.json)"
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ── App identity — prod or test (#130) ────────────────────────────────────────
+# The Test app ("Finance Dashboard Test") installs next to the prod app and
+# runs at the same time, with its own:
+#   - application name: its data folder and settings are separate
+#     (QStandardPaths::AppDataLocation, QSettings);
+#   - Windows setup identity: AppId, install folder, Start menu folder,
+#     shortcuts and uninstall entry;
+#   - Linux desktop entry, icon and AppStream id (the AppImage);
+#   - icon (an orange "TEST" band, packaging/icons/make-icons.py) and window
+#     title ("Finance Dashboard (Test)").
+# The experimental and preprod builds use it (#129). One identity for each
+# build directory:  cmake -B build-test -DFD_APP_IDENTITY=test
+# The .deb and the .tar.gz are for the prod app only.
+set(FD_APP_IDENTITY "prod" CACHE STRING "The identity of the app: prod or test (#130)")
+set_property(CACHE FD_APP_IDENTITY PROPERTY STRINGS prod test)
+if(FD_APP_IDENTITY STREQUAL "prod")
+    set(FD_APP_NAME         "FinanceDashboard")        # data folder, settings, package and file names
+    set(FD_APP_DISPLAY_NAME "Finance Dashboard")       # shortcuts, Start menu folder
+    set(FD_APP_WINDOW_TITLE "Finance Dashboard")
+    set(FD_APP_FILE_ID      "finance-dashboard")       # desktop entry and icon files
+    set(FD_APP_METAINFO_ID  "io.github.nicolas_goyon.FinanceDashboard")
+    # The AppId MUST stay the same for the lifetime of the product: see the
+    # CPack part below.
+    set(FD_INNOSETUP_APP_ID "9F2B4E7C-3A61-4C0D-9E8B-5D7A1C46F0B3")
+elseif(FD_APP_IDENTITY STREQUAL "test")
+    set(FD_APP_NAME         "FinanceDashboardTest")
+    set(FD_APP_DISPLAY_NAME "Finance Dashboard Test")
+    set(FD_APP_WINDOW_TITLE "Finance Dashboard (Test)")
+    set(FD_APP_FILE_ID      "finance-dashboard-test")
+    set(FD_APP_METAINFO_ID  "io.github.nicolas_goyon.FinanceDashboardTest")
+    set(FD_INNOSETUP_APP_ID "30296817-401F-4AB5-8B40-42BF8DC81C7F")
+else()
+    message(FATAL_ERROR "FD_APP_IDENTITY is \"${FD_APP_IDENTITY}\": use prod or test.")
+endif()
+message(STATUS "App identity: ${FD_APP_IDENTITY} (${FD_APP_DISPLAY_NAME})")
+
 include(GNUInstallDirs)
 
 # Windows installs/portable ZIPs are flat: FinanceDashboard.exe sits at the root
@@ -230,6 +266,30 @@ target_compile_definitions(FinanceDashboard PRIVATE
     FD_VERSION_STRING="${PROJECT_VERSION}"
 )
 
+# The identity of the app (#130), for main.cpp only: the application name (the
+# data folder and the settings), the window title and the desktop entry. On
+# main.cpp alone, a switch of FD_APP_IDENTITY in a build directory rebuilds one
+# file, not the whole app (CI builds both identities in one directory).
+set_source_files_properties(src/main.cpp PROPERTIES COMPILE_DEFINITIONS
+    "FD_APP_NAME=\"${FD_APP_NAME}\";FD_APP_WINDOW_TITLE=\"${FD_APP_WINDOW_TITLE}\";FD_APP_FILE_ID=\"${FD_APP_FILE_ID}\"")
+
+# The icon of the identity, for the window and the taskbar (main.cpp sets it
+# from this resource) and, on Windows, for the .exe (app.rc).
+set_source_files_properties("packaging/icons/${FD_APP_FILE_ID}-256.png"
+    PROPERTIES QT_RESOURCE_ALIAS "app-icon.png")
+qt_add_resources(FinanceDashboard "app_icon"
+    PREFIX "/"
+    FILES "packaging/icons/${FD_APP_FILE_ID}-256.png"
+)
+if(WIN32)
+    # The icon resource of the .exe: Explorer, the shortcuts of the setup and
+    # the taskbar show it. Qt names it IDI_ICON1.
+    # https://doc.qt.io/qt-6/appicon.html
+    set(FD_APP_ICO "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/${FD_APP_FILE_ID}.ico")
+    configure_file(packaging/windows/app.rc.in "${CMAKE_CURRENT_BINARY_DIR}/app.rc" @ONLY)
+    target_sources(FinanceDashboard PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app.rc")
+endif()
+
 # Windows: hide the console window in Release builds
 if(WIN32)
     set_target_properties(FinanceDashboard PROPERTIES
@@ -331,13 +391,15 @@ endif()
 
 # Linux desktop-integration files. Harmless on Windows (the block is skipped),
 # used by both the .deb and the AppImage. See packaging/linux/.
+# Those of the identity of the build (#130): make-appimage.sh takes them from
+# the install tree.
 if(UNIX AND NOT APPLE)
-    install(FILES packaging/linux/finance-dashboard.desktop
+    install(FILES packaging/linux/${FD_APP_FILE_ID}.desktop
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
-    install(FILES packaging/icons/finance-dashboard-256.png
+    install(FILES packaging/icons/${FD_APP_FILE_ID}-256.png
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps
-            RENAME finance-dashboard.png)
-    install(FILES packaging/linux/io.github.nicolas_goyon.FinanceDashboard.metainfo.xml
+            RENAME ${FD_APP_FILE_ID}.png)
+    install(FILES packaging/linux/${FD_APP_METAINFO_ID}.metainfo.xml
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo)
 endif()
 
@@ -365,14 +427,14 @@ install(SCRIPT ${deploy_script})
 # no AppImage generator and its DEB generator can't produce the /opt layout
 # this app wants, so those two live in scripts where they can be read and run
 # by hand. See CI-CD.md.
-set(CPACK_PACKAGE_NAME              "FinanceDashboard")
+set(CPACK_PACKAGE_NAME              "${FD_APP_NAME}")
 set(CPACK_PACKAGE_VENDOR            "DataAnalysis")
 set(CPACK_PACKAGE_CONTACT           "Nicolas Goyon <https://github.com/nicolas-goyon>")
 set(CPACK_PACKAGE_VERSION           "${PROJECT_VERSION}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "Local-first personal finance dashboard — import statements, categorize, track net worth")
 set(CPACK_PACKAGE_HOMEPAGE_URL      "https://github.com/nicolas-goyon/FinanceDashboard")
-set(CPACK_PACKAGE_INSTALL_DIRECTORY "FinanceDashboard")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "${FD_APP_NAME}")
 # The setup's licence page needs a .txt or a .rtf; the repo's LICENSE has no
 # extension, so copy it to one CPack recognises rather than keeping a second,
 # hand-maintained copy of the licence text that can silently drift from it.
@@ -387,7 +449,7 @@ endif()
 # Inno Setup generator makes a shortcut for each .exe with this base name,
 # anywhere in the install tree, so the flat Windows layout set at the top of
 # this file is fine.
-set(CPACK_PACKAGE_EXECUTABLES       "FinanceDashboard" "Finance Dashboard")
+set(CPACK_PACKAGE_EXECUTABLES       "FinanceDashboard" "${FD_APP_DISPLAY_NAME}")
 set(CPACK_CREATE_DESKTOP_LINKS      "FinanceDashboard")
 
 if(WIN32)
@@ -395,7 +457,7 @@ if(WIN32)
 else()
     set(CPACK_SYSTEM_NAME "linux-${CMAKE_SYSTEM_PROCESSOR}")
 endif()
-set(CPACK_PACKAGE_FILE_NAME "FinanceDashboard-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}")
+set(CPACK_PACKAGE_FILE_NAME "${FD_APP_NAME}-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "FinanceDashboard-${PROJECT_VERSION}-source")
 
 if(WIN32)
@@ -417,8 +479,10 @@ if(WIN32)
     # folder name), so set it explicitly. No braces: Inno Setup reads "{" as the
     # start of a constant, and UsePreviousPrivileges (default yes) needs an AppId
     # without constants.
+    # The Test app has its own AppId (#130): its setup installs, updates and
+    # uninstalls it without touching the prod app.
     # https://jrsoftware.org/ishelp/topic_setup_appid.htm
-    set(CPACK_INNOSETUP_SETUP_AppId "9F2B4E7C-3A61-4C0D-9E8B-5D7A1C46F0B3")
+    set(CPACK_INNOSETUP_SETUP_AppId "${FD_INNOSETUP_APP_ID}")
 
     # The person who installs chooses "for me only" (the default, no
     # administrator rights, %LOCALAPPDATA%\Programs) or "for all users"
@@ -436,9 +500,9 @@ if(WIN32)
     set(CPACK_INNOSETUP_SETUP_ArchitecturesAllowed "x64compatible")
     set(CPACK_INNOSETUP_SETUP_ArchitecturesInstallIn64BitMode "x64compatible")
 
-    set(CPACK_INNOSETUP_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/finance-dashboard.ico")
+    set(CPACK_INNOSETUP_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/${FD_APP_FILE_ID}.ico")
     set(CPACK_INNOSETUP_USE_MODERN_WIZARD ON)
-    set(CPACK_INNOSETUP_PROGRAM_MENU_FOLDER "Finance Dashboard")
+    set(CPACK_INNOSETUP_PROGRAM_MENU_FOLDER "${FD_APP_DISPLAY_NAME}")
     # "Launch Finance Dashboard" check box on the last page of the setup.
     set(CPACK_INNOSETUP_RUN_EXECUTABLES "FinanceDashboard")
 else()

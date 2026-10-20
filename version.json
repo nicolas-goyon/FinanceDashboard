@@ -8,6 +8,17 @@
       "summary": "",
       "sections": [
         {
+          "name": "Added",
+          "groups": [
+            {
+              "title": null,
+              "entries": [
+                "A Test app, \"Finance Dashboard Test\" (`cmake -DFD_APP_IDENTITY=test`), for the experimental and preprod builds. It installs and runs next to the prod app, with its own data folder and settings, its own Windows setup identity (AppId, install folder, Start menu folder, uninstall entry) and Linux desktop entry, an icon with an orange \"TEST\" band, and \"(Test)\" in the window title. The title of the start-up error window ends with the name of the app: \"Can't start — Finance Dashboard\" (before, \"Finance Dashboard — can't start\"). Its packages are the Windows setup and ZIP, and the AppImage. CI builds them, tests that the two Windows setups install side by side and uninstall one at a time, and checks that the Test AppImage keeps its data in its own folder (#130)."
+              ]
+            }
+          ]
+        },
+        {
           "name": "Changed",
           "groups": [
             {
@@ -43,7 +54,8 @@
                 "Cash Flow page (mock data): the 3-month average line starts at the third month. Before, its first two points were the averages of one and two months (#56).",
                 "Investments page (mock data): the monthly performance leaves out the deposit of the month. Before, the 250 € deposit counted as a gain: the second month showed 4.95 % instead of 2.48 % (#56).",
                 "Money: an amount is rounded to cents before its sign is set, so a very small negative value shows \"0,00 €\", not \"-0,00 €\". NaN and an infinity show \"—\" (before, they reached a conversion with undefined behaviour). The pages of one account (transactions, balance checkpoints, balance history and its chart, category totals) show the amounts of a USD account in $, not in €; the other pages keep the currency of the app (#48).",
-                "Database: a failed BEGIN or COMMIT is no longer ignored. \"Reset Database\", the save of a snapshot and the removal of a category or an account fail with a message when their SQL transaction cannot start or commit. Before, a failed commit counted as a success, and a reset without its transaction committed each table drop on its own. The table classes check that each statement is prepared and log the error of SQLite, instead of a misleading \"Parameter count mismatch\". The results of the WAL, secure_delete and checkpoint PRAGMAs are logged (#49)."
+                "Database: a failed BEGIN or COMMIT is no longer ignored. \"Reset Database\", the save of a snapshot and the removal of a category or an account fail with a message when their SQL transaction cannot start or commit. Before, a failed commit counted as a success, and a reset without its transaction committed each table drop on its own. The table classes check that each statement is prepared and log the error of SQLite, instead of a misleading \"Parameter count mismatch\". The results of the WAL, secure_delete and checkpoint PRAGMAs are logged (#49).",
+                "Windows: `FinanceDashboard.exe` has its icon (Explorer, the shortcuts, the taskbar), and the window shows the app icon on Windows and Linux. Before, only the setup had the icon (#111)."
               ]
             }
           ]

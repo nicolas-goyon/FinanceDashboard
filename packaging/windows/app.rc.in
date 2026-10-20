@@ -1,0 +1,4 @@
+// The icon of FinanceDashboard.exe, for the identity of the build (#130).
+// CMakeLists.txt configures this file into the build directory.
+// https://doc.qt.io/qt-6/appicon.html
+IDI_ICON1 ICON "@FD_APP_ICO@"

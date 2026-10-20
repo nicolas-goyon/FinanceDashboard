@@ -44,6 +44,11 @@ INSTALL_TREE="${1:-}"
 VERSION="${2:-}"
 OUT_DIR="${3:-dist}"
 [[ -n "$INSTALL_TREE" && -n "$VERSION" ]] || usage
+# The .deb is for the prod app only (#130): the Test app is an AppImage.
+if [[ -f "$INSTALL_TREE/share/applications/finance-dashboard-test.desktop" ]]; then
+    echo "error: $INSTALL_TREE is a Test app build (FD_APP_IDENTITY=test); the .deb is for the prod app only" >&2
+    exit 1
+fi
 [[ -x "$INSTALL_TREE/bin/FinanceDashboard" ]] || {
     echo "error: $INSTALL_TREE/bin/FinanceDashboard not found or not executable" >&2
     exit 1

@@ -37,7 +37,10 @@ ApplicationWindow {
     visible: true
     width: 1280
     height: 780
-    title: "Finance Dashboard"
+    // "Finance Dashboard", or "Finance Dashboard (Test)" for the Test app (#130):
+    // main.cpp sets it from the identity of the build (QtQuick Application
+    // singleton: https://doc.qt.io/qt-6/qml-qtquick-application.html).
+    title: Application.displayName
     color: "#11111b"
 
     property string currentViewId: "overview"

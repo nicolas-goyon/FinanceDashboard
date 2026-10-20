@@ -41,6 +41,8 @@ QList<StartupStep> StartupChecks::runInitialization(QString& dbPath)
     //   Windows : %APPDATA%\DataAnalysis\FinanceDashboard
     //   Linux   : ~/.local/share/DataAnalysis/FinanceDashboard
     //   macOS   : ~/Library/Application Support/DataAnalysis/FinanceDashboard
+    // FinanceDashboardTest for the Test app (#130): main.cpp sets the
+    // application name from the identity of the build.
     const QString dbDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     dbPath = dbDir + QDir::separator() + QStringLiteral("finance_dashboard.db");
 
