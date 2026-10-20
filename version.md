@@ -80,6 +80,24 @@ builds, source archives). Then CI opens a pull request that merges the release b
   failed the write with "NOT NULL constraint failed". The database now refuses an empty name,
   currency, account hash or hash source, and an invalid checkpoint date, before any write, with
   a message (#125).
+- "Reset Database" now stays empty: the default categories, account types, account categories
+  and demo accounts no longer come back at the next start, or when a page opens after the
+  reset. A new settings table of the database records that its defaults were written. The
+  defaults and this record are written in one SQL transaction: if a write fails, nothing is
+  written, and the next start tries again. The upgrade to schema version 3 records the defaults
+  of a database that has data: the category defaults when it has categories, the account
+  defaults when it has accounts, account types or account categories. A database that a reset
+  emptied before this version gets the defaults one more time, at the first start after the
+  upgrade: reset it again to empty it. After the upgrade, v0.2.1 cannot open the database ("a
+  newer version of the app saved the file"); it can open the copy that the upgrade saves next
+  to the file (#37).
+- "Reset to Mock Data" now writes the sample transactions: the code looked for the demo account
+  by a name with an em dash in QLatin1String, which never matched. A write that fails now shows
+  an error instead of a success (#38).
+- Accounts: after "Reset Database", "Add" in the account dialog saves the account without a
+  type, and the dialog tells that there is no account type. Before, nothing happened: the empty
+  list of types gave a TypeError. An edit of an account whose type or category is not in the
+  list keeps it, instead of giving it the first type (#62).
 
 ---
 

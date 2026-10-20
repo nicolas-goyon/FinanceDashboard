@@ -90,8 +90,9 @@ set_tests_properties(db_migration_test PROPERTIES
 # db_write_test
 #   The writes of the table classes: a null optional text, and the empty required
 #   values that the Database refuses (#125); renames that reach every row that
-#   uses the name, with the duplicate checks of the controllers (#34). It
-#   compiles the core sources plus the two controllers.
+#   uses the name, with the duplicate checks of the controllers (#34); the
+#   default data written once per database (#37) and the mock data (#38). It
+#   compiles the core sources plus three controllers.
 
 qt_add_executable(db_write_test
     db_write_test.cpp
@@ -100,10 +101,13 @@ qt_add_executable(db_write_test
     ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/AccountController.cpp
     ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/CategoryController.h
     ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/CategoryController.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/database/DatabaseManagementController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/database/DatabaseManagementController.cpp
 )
 target_include_directories(db_write_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/controllers/dataentry
+    ${CMAKE_SOURCE_DIR}/src/controllers/database
 )
 # Qt6::Qml for the QML_ELEMENT macros in the controller headers; Qt6::Gui for
 # QColor in CategoryController.

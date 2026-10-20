@@ -33,8 +33,8 @@
 // resetToMock() seeds its own copy of the default categories/account-
 // categories/account-types/demo-accounts/sample-transactions rather than
 // calling into CategoryController::seedDefaults()/AccountController::
-// seedDefaults() (both private, and both also run automatically on first
-// launch against an empty DB) — some duplication of the seed *values*, but
+// seedDefaults() (both private, and both run once per database, the first
+// time that it is used — #37) — some duplication of the seed *values*, but
 // it keeps this controller from needing a back-reference into two unrelated
 // singletons just to trigger their private seeding logic.
 
@@ -60,9 +60,9 @@ public:
 
     // Wipes every table, then reseeds the same default categories/account-
     // categories/account-types/demo-accounts used on a fresh first launch,
-    // plus a handful of fabricated sample transactions against the demo
-    // checking accounts so the transactions views have something to show
-    // right away.
+    // plus a handful of fabricated sample transactions on the first demo
+    // account ("Checking — Bank A") so the transactions views have something
+    // to show right away.
     Q_INVOKABLE void resetToMock();
 
     // ── Per-account cleanup (see ARCHITECTURE.MD § Database Management) ────────
@@ -76,14 +76,18 @@ public:
 
 signals:
     void statusChanged();
-    // Emitted after either action completes successfully. QML listens for
-    // this to refresh CategoryController/AccountController (see class
-    // comment) — this controller does not call into them itself.
+    // Emitted after the reset of either action, also when resetToMock()
+    // could not write all the mock data (#38): the pages then show what was
+    // written. QML listens for this to refresh CategoryController/
+    // AccountController (see class comment) — this controller does not call
+    // into them itself.
     void databaseReset();
 
 private:
     void setStatus(StatusMessage::Level level, const QString& msg);
-    static void seedMockData();
+    // False when a write failed (the application log has which one): the
+    // status then says it, instead of a success (#38).
+    static bool seedMockData();
 
     StatusMessage m_status;
 };

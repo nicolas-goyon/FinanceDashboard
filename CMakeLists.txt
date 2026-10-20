@@ -78,6 +78,8 @@ set(FD_CORE_SOURCES
     src/db/tables/AccountBalanceCheckpointsTable.cpp
     src/db/tables/CategoryRulesTable.h
     src/db/tables/CategoryRulesTable.cpp
+    src/db/tables/SettingsTable.h
+    src/db/tables/SettingsTable.cpp
     src/db/tables/SqlText.h
     src/db/Database.h
     src/db/Database.cpp

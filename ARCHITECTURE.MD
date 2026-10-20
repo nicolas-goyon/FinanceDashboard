@@ -43,6 +43,12 @@ same SQL transaction (`Database::renameCategory()`, `renameSubcategory()`, `rena
 `renameAccountCategory()`). A subcategory rename changes only the rows of its own category. The
 controllers refuse a rename to a name that exists, in any case, as `add` does.
 
+The controllers write their default data (categories, account types, account categories, demo
+accounts) the first time that a database is used, and record it in the `settings` table, in one
+SQL transaction (`Database::writeDefaults()`). So an empty table is not a first run, and a write
+that fails leaves nothing: the next start tries again. "Reset Database" keeps the records, so
+the default data does not come back, across restarts too.
+
 The schema has a version (`PRAGMA user_version`, `Database::kSchemaVersion`). `createTable()`
 is the base schema and does not change; each change after it is one migration step in
 `Database::upgrade()`, written with its own SQL, with a test in `tests/db_migration_test.cpp`.

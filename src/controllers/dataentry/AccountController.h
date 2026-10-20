@@ -229,11 +229,13 @@ signals:
 private:
     void setStatus(StatusMessage::Level level, const QString& msg);
     void loadFromDb();
-    // Seeds the default account types (CCP, Livret A, LDDS, PEL, Assurance
+    // Writes the default account types (CCP, Livret A, LDDS, PEL, Assurance
     // Vie, PEA, CTO, Other), the 4 default account categories (Day-to-day,
-    // Savings, Investments, Urgent savings), and 6 demo accounts, the first
-    // time the app runs against an empty DB (or after a reset — see
-    // reload()).
+    // Savings, Investments, Urgent savings) and 6 demo accounts to the DB, all
+    // or nothing, with their record (Database::writeDefaults()). Called from
+    // the constructor only: when the three tables are empty and the database
+    // has no record of its defaults — not after a reset (#37). The
+    // constructor then loads them.
     void seedDefaults();
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — private helper,
     // both call sites (addHash/linkAccountHash below) pass a literal source

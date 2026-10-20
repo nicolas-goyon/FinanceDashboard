@@ -27,8 +27,9 @@
 // DB-backed (categories/subcategories tables — see db/tables/CategoriesTable.h,
 // db/tables/SubcategoriesTable.h, Database::loadCategories() and friends):
 // the constructor loads the current list from Database::instance(), or seeds
-// the original mock defaults (and persists them) the very first time the app
-// runs against an empty DB. Every CRUD method here writes through to the DB
+// the original mock defaults (and persists them) the first time that a
+// database is used: once per database, so an empty table after "Reset
+// Database" stays empty (#37). Every CRUD method here writes through to the DB
 // first and only updates the in-memory list (m_categories) if that write
 // succeeded, so a failed DB write never produces a phantom in-memory-only
 // entry that would vanish on the next reload.
@@ -117,10 +118,10 @@ signals:
     void statusChanged();
 
 private:
-    // Seeds the original mock category/subcategory list into the DB (and
-    // m_categories) the first time the app runs against an empty categories
-    // table. Called from the constructor, and from reload(), whenever
-    // Database::loadCategories() comes back empty.
+    // Writes the original mock category/subcategory list to the DB, all or
+    // nothing, with its record (Database::writeDefaults()). Called from the
+    // constructor only: when the categories table is empty and the database
+    // has no record of its defaults (#37). The constructor then loads them.
     void seedDefaults();
 
     // Sets a transient status message (e.g. "duplicate name" / "removed")

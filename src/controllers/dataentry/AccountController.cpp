@@ -7,12 +7,14 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QDebug>
 #include <QMap>
 #include <QObject>
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
 #include <Qt>
+#include <QtLogging>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
 
 #include <algorithm>
@@ -27,8 +29,12 @@ AccountController::AccountController(QObject* parent)
     , m_status(this, kStatusClearDelayMs, [this]() { emit statusChanged(); })
 {
     loadFromDb();
-    if (m_accounts.isEmpty() && m_accountCategories.isEmpty() && m_accountTypes.isEmpty()) {
+    // Only once per database: empty tables after "Reset Database" are not a
+    // fresh DB, and stay empty (#37).
+    if (m_accounts.isEmpty() && m_accountCategories.isEmpty() && m_accountTypes.isEmpty()
+        && !Database::instance().defaultsWritten(Database::Defaults::Accounts)) {
         seedDefaults();
+        loadFromDb(); // all of them, or none
     }
 }
 
@@ -50,20 +56,12 @@ void AccountController::reload()
 
 void AccountController::seedDefaults()
 {
-    Database& database = Database::instance();
-
     // Fixed list of banking/financial products, now DB-managed like
     // category (see models/Account.h) — same defaults as the old hardcoded
     // QStringList this replaced.
     static const QVector<QString> kTypeSeed = {
         "CCP", "Livret A", "LDDS", "PEL", "Assurance Vie", "PEA", "CTO", "Other",
     };
-    for (const QString& name : kTypeSeed) {
-        const int typeId = database.addAccountType(name);
-        if (typeId >= 0) {
-            m_accountTypes.append(Data::AccountType{ typeId, name });
-        }
-    }
 
     // Same 4 usage buckets named in the product request: day-to-day basis,
     // savings, investments, urgent saving.
@@ -74,13 +72,6 @@ void AccountController::seedDefaults()
         { "Investments",    "#cba6f7" },
         { "Urgent savings", "#f9e2af" },
     };
-    for (const SeedCat& seedCat : kCatSeed) {
-        const int categoryId = database.addAccountCategory(seedCat.name, seedCat.color);
-        if (categoryId < 0) {
-            continue;
-        }
-        m_accountCategories.append(Data::AccountCategory{ categoryId, seedCat.name, seedCat.color });
-    }
 
     // Same accounts as before, minus iban/bic/number (no longer stored — see
     // models/Account.h). Accounts start with zero hashes now (nothing to
@@ -97,20 +88,30 @@ void AccountController::seedDefaults()
         { "Assurance Vie",     "Assurance Vie", "Investments", "EUR", "" },
         { "Trading account",  "CTO",           "Investments", "EUR", "" },
     };
-    for (const SeedAcc& seedAcc : kAccSeed) {
-        const int accountId = database.addAccount(seedAcc.name, seedAcc.type, seedAcc.category, seedAcc.currency, seedAcc.notes);
-        if (accountId < 0) {
-            continue;
-        }
 
-        Data::Account acc;
-        acc.id       = accountId;
-        acc.name     = seedAcc.name;
-        acc.type     = seedAcc.type;
-        acc.category = seedAcc.category;
-        acc.currency = seedAcc.currency;
-        acc.notes    = seedAcc.notes;
-        m_accounts.append(acc);
+    // All the defaults and their record in one SQL transaction: when a write
+    // fails, nothing is written, and the next start tries again (#37).
+    Database& database = Database::instance();
+    const bool written = database.writeDefaults(Database::Defaults::Accounts, [&database]() {
+        for (const QString& name : kTypeSeed) {
+            if (database.addAccountType(name) < 0) {
+                return false;
+            }
+        }
+        for (const SeedCat& seedCat : kCatSeed) {
+            if (database.addAccountCategory(seedCat.name, seedCat.color) < 0) {
+                return false;
+            }
+        }
+        for (const SeedAcc& seedAcc : kAccSeed) {
+            if (database.addAccount(seedAcc.name, seedAcc.type, seedAcc.category, seedAcc.currency, seedAcc.notes) < 0) {
+                return false;
+            }
+        }
+        return true;
+    });
+    if (!written) {
+        qWarning() << "[AccountController] could not write the default accounts:" << database.lastError();
     }
 }
 

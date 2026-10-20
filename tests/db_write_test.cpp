@@ -8,9 +8,14 @@
 //   #34   a rename of a category, a subcategory, an account type or an account
 //         category reaches every row that uses the name, all or nothing; the
 //         controllers refuse a rename to a name that exists (any case)
+//   #37   the controllers write their defaults once per database: not again
+//         after "Reset Database", across restarts too; all or nothing, and a
+//         write that fails is tried again at the next start
+//   #38   "Reset to Mock Data" writes the sample transactions
 
 #include "AccountController.h"
 #include "CategoryController.h"
+#include "DatabaseManagementController.h"
 #include "db/Database.h"
 #include "models/Account.h"
 #include "models/AssetEntry.h"
@@ -19,6 +24,7 @@
 #include "models/Transaction.h"
 
 #include <QDate>
+#include <QScopeGuard>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QTemporaryDir>
@@ -107,6 +113,9 @@ private slots:
     void renameIsAllOrNothing();
     void categoryControllerRefusesADuplicateName();
     void accountControllerRefusesADuplicateName();
+    void defaultsAreWrittenOncePerDatabase();
+    void defaultsAreAllOrNothing();
+    void mockDataHasTheSampleTransactions();
 
 private:
     QTemporaryDir m_dir;
@@ -371,6 +380,92 @@ void DbWriteTest::accountControllerRefusesADuplicateName()
     const QVariantMap shares = controller.accounts().at(indexOfName(controller.accounts(), QStringLiteral("Shares"))).toMap();
     QCOMPARE(shares.value(QStringLiteral("type")).toString(), QStringLiteral("Stocks"));
     QCOMPARE(shares.value(QStringLiteral("category")).toString(), QStringLiteral("Markets"));
+}
+
+void DbWriteTest::defaultsAreWrittenOncePerDatabase()
+{
+    Database& db = Database::instance();
+    db.close();
+    // Back to the file of the other tests at the end, also when a check fails.
+    const auto reopen = qScopeGuard([this, &db]() {
+        db.close();
+        db.open(m_dir.filePath(QStringLiteral("test.db")));
+    });
+    const QString path = m_dir.filePath(QStringLiteral("first-run.db"));
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+
+    {
+        // First run: the defaults are written.
+        CategoryController categories;
+        AccountController accounts;
+        QVERIFY(!categories.categories().isEmpty());
+        QVERIFY(!accounts.accounts().isEmpty());
+        QVERIFY(!accounts.accountTypes().isEmpty());
+    }
+
+    QVERIFY(db.resetAll());
+    {
+        // The same session after "Reset Database": a controller made now
+        // (a page opened after the reset) does not write them again.
+        CategoryController categories;
+        AccountController accounts;
+        QVERIFY(categories.categories().isEmpty());
+        QVERIFY(accounts.accounts().isEmpty());
+        QVERIFY(accounts.accountTypes().isEmpty());
+    }
+
+    // The next start.
+    db.close();
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    {
+        CategoryController categories;
+        AccountController accounts;
+        QVERIFY(categories.categories().isEmpty());
+        QVERIFY(accounts.accounts().isEmpty());
+    }
+}
+
+void DbWriteTest::defaultsAreAllOrNothing()
+{
+    Database& db = Database::instance();
+    db.close();
+    const auto reopen = qScopeGuard([this, &db]() {
+        db.close();
+        db.open(m_dir.filePath(QStringLiteral("test.db")));
+    });
+    QVERIFY2(db.open(m_dir.filePath(QStringLiteral("failed-first-run.db"))), qPrintable(db.lastError()));
+
+    {
+        // The account categories are written after the account types. Their
+        // write fails, as a full disk would make it.
+        QSqlQuery query(db.sqlDatabase());
+        QVERIFY2(query.exec(QStringLiteral("CREATE TRIGGER fd_test_fail BEFORE INSERT ON account_categories"
+                                           " BEGIN SELECT RAISE(ABORT, 'forced by the test'); END;")),
+                 qPrintable(query.lastError().text()));
+        AccountController accounts;
+        QVERIFY(accounts.accountTypes().isEmpty());
+        QVERIFY(db.loadAccountTypes().isEmpty());   // rolled back
+        QVERIFY(!db.defaultsWritten(Database::Defaults::Accounts));
+        QVERIFY(query.exec(QStringLiteral("DROP TRIGGER fd_test_fail;")));
+    }
+
+    // The next start tries again, and writes all of them.
+    AccountController accounts;
+    QCOMPARE(accounts.accountTypes().size(), qsizetype(8));
+    QCOMPARE(accounts.accountCategories().size(), qsizetype(4));
+    QCOMPARE(accounts.accounts().size(), qsizetype(6));
+    QVERIFY(db.defaultsWritten(Database::Defaults::Accounts));
+}
+
+void DbWriteTest::mockDataHasTheSampleTransactions()
+{
+    DatabaseManagementController controller;
+    controller.resetToMock();
+    QCOMPARE(controller.statusLevel(), QStringLiteral("success"));
+    const QVector<Data::Account> accounts = Database::instance().loadAccounts();
+    QCOMPARE(accounts.size(), qsizetype(6));
+    QCOMPARE(accounts.at(0).name, QStringLiteral("Checking — Bank A"));
+    QCOMPARE(Database::instance().transactionCountForAccount(accounts.at(0).id), 6);
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)

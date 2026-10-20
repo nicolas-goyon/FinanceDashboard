@@ -343,7 +343,8 @@ Item {
         function openForNew() {
             editIndex = -1
             accNameRow.text = ""
-            accTypeBox.currentIndex = 0
+            // -1 when there is no type, after "Reset Database" (#62).
+            accTypeBox.currentIndex = AccountController.accountTypes.length > 0 ? 0 : -1
             accCategoryBox.currentIndex = -1
             accCurrencyBox.currentIndex = 0
             accNotesRow.text = ""
@@ -354,8 +355,9 @@ Item {
             var acc = AccountController.accounts[idx]
             editIndex = idx
             accNameRow.text = acc.name
-            var ti = typeNames().indexOf(acc.type)
-            accTypeBox.currentIndex = ti >= 0 ? ti : 0
+            // -1 when the type of the account is not in the list (no type, or
+            // a removed one): Save then keeps it, instead of the first type.
+            accTypeBox.currentIndex = typeNames().indexOf(acc.type)
             var ci = categoryNames().indexOf(acc.category)
             accCategoryBox.currentIndex = ci
             accCurrencyBox.currentIndex = currencyIndexForCode(acc.currency)
@@ -373,6 +375,16 @@ Item {
                 model: AccountController.accountTypes
                 textRole: "name"
             }
+        }
+        // After "Reset Database" the list of types is empty (#62).
+        Text {
+            visible: AccountController.accountTypes.length === 0
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            text: "There is no account type. The account is saved without a type. To add types, go to "
+                + "Account Management → \"Account types & categories\"."
+            font.pixelSize: 13
+            color: "#f9e2af"
         }
         RowLayout {
             spacing: 10
@@ -400,10 +412,18 @@ Item {
             var trimmed = accNameRow.text.trim()
             if (trimmed.length === 0)
                 return
-            var category = accCategoryBox.currentIndex >= 0
-                ? AccountController.accountCategories[accCategoryBox.currentIndex].name : ""
-            var type = accTypeBox.currentIndex >= 0
-                ? AccountController.accountTypes[accTypeBox.currentIndex].name : ""
+            // An index outside the list is not read: before #62, openForNew()
+            // set index 0 on the empty list of types, and Save read types[0]
+            // (TypeError). With no selection, a new account gets no type or
+            // category, and an edited account keeps its own.
+            var categories = AccountController.accountCategories
+            var types = AccountController.accountTypes
+            var ci = accCategoryBox.currentIndex
+            var ti = accTypeBox.currentIndex
+            var current = editIndex >= 0 ? AccountController.accounts[editIndex] : null
+            var category = ci >= 0 && ci < categories.length ? categories[ci].name
+                                                             : (current ? current.category : "")
+            var type = ti >= 0 && ti < types.length ? types[ti].name : (current ? current.type : "")
             var currency = accountDialog.currencyOptions[accCurrencyBox.currentIndex].code
             if (editIndex < 0) {
                 AccountController.addAccount(trimmed, type, category, currency, accNotesRow.text.trim())
