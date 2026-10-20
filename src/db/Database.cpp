@@ -39,6 +39,30 @@ QString sentence(const QString& text)
     return trimmed.endsWith(QLatin1Char('.')) ? trimmed : trimmed + QLatin1Char('.');
 }
 
+// A new file next to `path`: <name>.<tag>-<date and time>.<suffix>, then
+// <name>.<tag>-<date and time>-2.<suffix>, -3… when that file exists.
+// A private helper: its callers pass the open path and a literal tag.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+QString siblingPath(const QString& path, const QString& tag)
+{
+    const QFileInfo info(path);
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
+    QString sibling = info.dir().filePath(
+        QStringLiteral("%1.%2-%3.%4").arg(info.completeBaseName(), tag, stamp, info.suffix()));
+    for (int n = 2; QFileInfo::exists(sibling); ++n) {
+        sibling = info.dir().filePath(QStringLiteral("%1.%2-%3-%4.%5")
+                                          .arg(info.completeBaseName(), tag, stamp)
+                                          .arg(n)
+                                          .arg(info.suffix()));
+    }
+    return sibling;
+}
+
+QString native(const QString& path)
+{
+    return QDir::toNativeSeparators(path);
+}
+
 } // namespace
 
 // ── Singleton ─────────────────────────────────────────────────────────────────
@@ -301,14 +325,7 @@ bool Database::createBaseTables()
 // outside a transaction, and the target must not exist yet.
 bool Database::backUp(const QString& path, QString& backupPath)
 {
-    const QFileInfo info(path);
-    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss"));
-    backupPath = info.dir().filePath(
-        QStringLiteral("%1.backup-%2.%3").arg(info.completeBaseName(), stamp, info.suffix()));
-    for (int n = 2; QFileInfo::exists(backupPath); ++n) {
-        backupPath = info.dir().filePath(
-            QStringLiteral("%1.backup-%2-%3.%4").arg(info.completeBaseName(), stamp).arg(n).arg(info.suffix()));
-    }
+    backupPath = siblingPath(path, QStringLiteral("backup"));
     QSqlQuery backup(m_db);
     // prepare() is checked too: its error is the real one (#49).
     bool done = backup.prepare(QStringLiteral("VACUUM INTO ?;"));
@@ -1221,4 +1238,172 @@ bool Database::resetAll()
         return false;
     }
     return true;
+}
+
+// ── Copy of another database (#130) ───────────────────────────────────────────
+//
+// The Test app replaces its database with a copy of the prod database, to try
+// a new version (and its schema upgrade) on the real data. The copy comes
+// first and changes nothing; then the open file is closed and renamed (kept),
+// the copy takes its name, and open() opens it as at a start. Every failure
+// puts the file from before back.
+
+bool Database::replaceWithCopyOf(const QString& sourcePath, QString& keptPath)
+{
+    keptPath.clear();
+    if (!isOpen()) {
+        m_lastError = QStringLiteral("The database is not open.");
+        return false;
+    }
+    const QString path = m_db.databaseName();
+    const QFileInfo source(sourcePath);
+    if (!source.isFile()) {
+        m_lastError = QStringLiteral("There is no database at %1.").arg(native(sourcePath));
+        return false;
+    }
+    if (source.canonicalFilePath() == QFileInfo(path).canonicalFilePath()) {
+        m_lastError = QStringLiteral("%1 is the open database.").arg(native(sourcePath));
+        return false;
+    }
+
+    // The copy, next to the open file. A failure changes nothing.
+    const QString copyPath = siblingPath(path, QStringLiteral("copy"));
+    if (!copyReadOnly(sourcePath, copyPath)) {
+        QFile::remove(copyPath); // a partial copy, if any
+        return false;
+    }
+
+    // After a failure: the file from before is open again, and `error` is in
+    // lastError(). With `reopen` false (the file in its place is not the file
+    // from before), or when no file is in its place (a rename failed), nothing
+    // is opened: open() would open the wrong file, or make a new, empty
+    // database there.
+    const auto fail = [this, &path, &sourcePath](const QString& error, bool reopen = true) {
+        QString message = error;
+        if (!reopen || !QFileInfo::exists(path)) {
+            message += QStringLiteral(" Then restart the app.");
+        } else if (!open(path)) {
+            message += QStringLiteral(" The database could not be opened again (%1) Restart the app.")
+                           .arg(sentence(m_lastError));
+        }
+        m_lastError = message;
+        m_upgradeReport.clear();
+        qWarning().noquote() << "[Database] copy of" << native(sourcePath) << "failed:" << message;
+        return false;
+    };
+
+    // The close of the last connection writes the WAL into the file and
+    // deletes the -wal and -shm files. A -wal file that stays means that
+    // another connection uses the file (the app is open twice): a rename
+    // would separate the file from its WAL.
+    close();
+    if (QFileInfo::exists(path + QStringLiteral("-wal"))) {
+        QFile::remove(copyPath);
+        return fail(QStringLiteral("Another connection uses the database (is the app open twice?). "
+                                   "Nothing was changed."));
+    }
+    keptPath = siblingPath(path, QStringLiteral("before-copy"));
+    if (!moveFile(path, keptPath)) {
+        keptPath.clear();
+        QFile::remove(copyPath);
+        return fail(m_lastError + QStringLiteral(" Nothing was changed."));
+    }
+    if (!moveFile(copyPath, path)) {
+        const QString error = m_lastError;
+        QFile::remove(copyPath);
+        if (moveFile(keptPath, path)) {
+            keptPath.clear();
+            return fail(error + QStringLiteral(" Nothing was changed."));
+        }
+        return fail(QStringLiteral("%1 The database from before is in %2: rename it to %3.")
+                        .arg(sentence(error), native(keptPath), QFileInfo(path).fileName()));
+    }
+
+    if (open(path)) {
+        qInfo().noquote() << "[Database] the database is now a copy of" << native(sourcePath)
+                          << "— the database from before is in" << native(keptPath);
+        return true;
+    }
+
+    // The copy does not open (an upgrade that failed): keep it, for the
+    // maintainer, and put the file from before back.
+    const QString error = m_lastError;
+    const QString failedPath = siblingPath(path, QStringLiteral("copy-failed"));
+    if (!moveFile(path, failedPath)) {
+        // The copy that does not open is still in place: do not open it again.
+        return fail(QStringLiteral("The copy was made, but it does not open: %1 It could not be moved away "
+                                   "(%2) Move %3 out of its folder, and rename %4 to %5.")
+                        .arg(sentence(error), sentence(m_lastError), native(path), native(keptPath),
+                             QFileInfo(path).fileName()),
+                    false);
+    }
+    if (!moveFile(keptPath, path)) {
+        return fail(QStringLiteral("The copy was made, but it does not open: %1 The copy is in %2. The "
+                                   "database from before is in %3: rename it to %4.")
+                        .arg(sentence(error), native(failedPath), native(keptPath), QFileInfo(path).fileName()));
+    }
+    keptPath.clear();
+    return fail(QStringLiteral("The copy was made, but it does not open: %1 The database from before is "
+                               "back. The copy is in %2.")
+                    .arg(sentence(error), native(failedPath)));
+}
+
+// Its own connection, read-only: SQLite does not write to the source and does
+// not create it. VACUUM INTO reads the WAL of the source too, so the copy has
+// what the prod app committed, also while it runs. The copy is checked again
+// by open(): a source that a newer version upgraded between the two
+// statements is refused there.
+bool Database::copyReadOnly(const QString& sourcePath, const QString& copyPath)
+{
+    static const QLatin1String kSourceConnection("finance_dashboard_source");
+    QString error;
+    {
+        QSqlDatabase source = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), kSourceConnection);
+        source.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
+        source.setDatabaseName(sourcePath);
+        if (!source.open()) {
+            error = QStringLiteral("Cannot open %1: %2").arg(native(sourcePath), sentence(sqlText(source.lastError())));
+        } else {
+            QSqlQuery query(source);
+            if (!query.exec(QStringLiteral("PRAGMA user_version;")) || !query.next()) {
+                error = QStringLiteral("Cannot read %1: %2").arg(native(sourcePath), sentence(sqlText(query.lastError())));
+            } else if (const int version = query.value(0).toInt(); version > kSchemaVersion) {
+                error = QStringLiteral("%1 uses schema version %2. This version of the app knows schema "
+                                       "version %3 at most: use a newer version of the app.")
+                            .arg(native(sourcePath))
+                            .arg(version)
+                            .arg(kSchemaVersion);
+            } else {
+                query.finish();
+                bool copied = query.prepare(QStringLiteral("VACUUM INTO ?;"));
+                if (copied) {
+                    query.addBindValue(native(copyPath));
+                    copied = query.exec();
+                }
+                if (!copied) {
+                    error = QStringLiteral("Cannot copy %1: %2").arg(native(sourcePath), sentence(sqlText(query.lastError())));
+                }
+            }
+            query.finish();
+            source.close();
+        }
+    }
+    QSqlDatabase::removeDatabase(kSourceConnection);
+    if (!error.isEmpty()) {
+        m_lastError = error + QStringLiteral(" Nothing was changed.");
+        qWarning().noquote() << "[Database]" << m_lastError;
+        return false;
+    }
+    return true;
+}
+
+bool Database::moveFile(const QString& source, const QString& target)
+{
+    QFile file(source);
+    if (file.rename(target)) {
+        return true;
+    }
+    m_lastError = QStringLiteral("Cannot move %1 to %2: %3").arg(native(source), native(target), sentence(file.errorString()));
+    qWarning().noquote() << "[Database]" << m_lastError;
+    return false;
 }

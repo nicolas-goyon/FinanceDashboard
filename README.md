@@ -97,8 +97,11 @@ installs and runs next to the prod app, with its own data folder
 (`%APPDATA%\DataAnalysis\FinanceDashboardTest\`, `~/.local/share/DataAnalysis/FinanceDashboardTest/`)
 and settings, an icon with an orange "TEST" band and "(Test)" in the window title. It is for the
 experimental and preprod builds. Its packages are the Windows setup and ZIP, and the AppImage
-(`FinanceDashboardTest-*`); the `.deb` and the `.tar.gz` are for the prod app only. Use one build
-directory for each identity:
+(`FinanceDashboardTest-*`); the `.deb` and the `.tar.gz` are for the prod app only. On its Database
+Management page, **Copy my prod database** replaces the Test data with a copy of the prod database,
+to try a new version (and its database upgrade) on the real data. The prod database is only read,
+and the Test data from before is kept in a file next to the Test database. Use one build directory
+for each identity:
 
 ```powershell
 cmake -B build-test -DFD_APP_IDENTITY=test -DCMAKE_PREFIX_PATH="C:/Qt/6.11.1/msvc2022_64"
@@ -115,8 +118,9 @@ ctest --test-dir build --output-on-failure
 `ctest` runs `predictor_selftest` (category prediction), `import_save_test` (the statement
 import, saved to a temporary database), `db_migration_test` (the schema upgrades),
 `db_write_test` (the writes of the table classes, the renames, the default data, the mock data,
-the balance history, the currency of an account and the checked database results) and `calc_test`
-(the calculations behind the texts and charts of the pages, and the money format).
+the balance history, the currency of an account and the checked database results), `db_copy_test`
+(the copy of the prod database in the Test app) and `calc_test` (the calculations behind the texts
+and charts of the pages, and the money format).
 `cmake --build build --target fd_tests` builds only the tests. The release tools have their own
 tests: `python -m unittest discover -s tools -p "test_*.py"`.
 

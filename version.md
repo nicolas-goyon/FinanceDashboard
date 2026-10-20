@@ -41,6 +41,14 @@ builds, source archives). Then CI opens a pull request that merges the release b
   Windows setup and ZIP, and the AppImage. CI builds them, tests that the two Windows setups
   install side by side and uninstall one at a time, and checks that the Test AppImage keeps its
   data in its own folder (#130).
+- The Test app: "Copy my prod database" on the Database Management page replaces the Test data
+  with a copy of the prod database, after a confirmation, so that a new version and its
+  database upgrade can be tried on the real data. The prod database is only read (SQLite can
+  leave its -wal and -shm files next to it). The Test data from before is kept in a file next
+  to the Test database. An older copy is upgraded, with its backup copy and the upgrade report.
+  A copy with a newer schema is refused, and a copy that does not open is kept while the Test
+  data comes back. The Test database is not replaced while another window of the Test app uses
+  it. The page scrolls when it is higher than the window (#130).
 
 ### Changed
 - The Git history on GitHub was rewritten on 2026-10-20 at 06:39 UTC to remove personal data. A

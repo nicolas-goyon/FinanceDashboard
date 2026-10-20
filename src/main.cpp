@@ -22,10 +22,23 @@
 int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays,misc-include-cleaner)
 {
     QGuiApplication app(argc, argv);
+    // With the application name below, it gives the data folder.
+    QGuiApplication::setOrganizationName("DataAnalysis");
+
+    // The Test app only (#130): the prod database, which "Copy my prod
+    // database" (Database Management page) copies. The prod app finds it with
+    // its own application name, so ask for the path with that name, before the
+    // name of the Test app is set. Empty in the prod app.
+    QString prodDatabasePath;
+#if FD_APP_IS_TEST
+    QGuiApplication::setApplicationName(QStringLiteral(FD_PROD_APP_NAME));
+    prodDatabasePath = Startup::StartupChecks::databasePath();
+#endif
+
     // The identity of the build (#130), from CMakeLists.txt: "FinanceDashboard"
     // or "FinanceDashboardTest". The application name gives the data folder
     // (QStandardPaths::AppDataLocation) and the settings, so the Test app never
-    // reads or writes the data of the prod app. The display name is the window
+    // writes the data of the prod app. The display name is the window
     // title (Application.displayName in QML), and the desktop file name
     // lets a Linux desktop match the window with its menu entry and icon.
     QGuiApplication::setApplicationName(QStringLiteral(FD_APP_NAME));
@@ -37,7 +50,6 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
     // it here: this is the number the About/window title and any future update
     // check would report, and it has to match the installer and the release tag.
     QGuiApplication::setApplicationVersion(QStringLiteral(FD_VERSION_STRING));
-    QGuiApplication::setOrganizationName("DataAnalysis");
 
     // Must be set before any QML importing Qt Quick Controls is loaded
     // (QQuickStyle docs: "before loading QML that imports Qt Quick Controls").
@@ -78,9 +90,12 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
             {{QStringLiteral("steps"), Startup::StartupChecks::toVariantList(steps)}});
         engine.loadFromModule("FinanceDashboard", "StartupErrorWindow");
     } else {
-        // Main.qml shows it once when this start upgraded the database.
-        engine.setInitialProperties(
-            {{QStringLiteral("databaseNotice"), Database::instance().upgradeReport()}});
+        // Main.qml shows the notice once when this start upgraded the
+        // database. The prod database path is empty in the prod app.
+        engine.setInitialProperties({
+            {QStringLiteral("databaseNotice"), Database::instance().upgradeReport()},
+            {QStringLiteral("prodDatabasePath"), prodDatabasePath},
+        });
         engine.loadFromModule("FinanceDashboard", "Main");
     }
 

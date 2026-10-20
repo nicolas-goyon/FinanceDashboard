@@ -122,6 +122,33 @@ set_tests_properties(db_write_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# db_copy_test
+#   "Copy my prod database" of the Test app (#130): Database::replaceWithCopyOf()
+#   and DatabaseManagementController::copyProdDatabase(), with a prod and a Test
+#   database in a temporary folder. The prod file does not change; an older one
+#   is upgraded in the copy; a newer one, a file that is not a database and a
+#   missing file are refused; a copy that does not open is kept and the Test
+#   data comes back; a Test database that another connection uses is not
+#   replaced. It compiles the core sources plus the controller.
+qt_add_executable(db_copy_test
+    db_copy_test.cpp
+    ${FD_CORE_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/controllers/database/DatabaseManagementController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/database/DatabaseManagementController.cpp
+)
+target_include_directories(db_copy_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/controllers/database
+)
+# Qt6::Qml for the QML_ELEMENT macro in the controller header.
+target_link_libraries(db_copy_test PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Test)
+set_target_properties(db_copy_test PROPERTIES WIN32_EXECUTABLE OFF)
+add_test(NAME db_copy_test COMMAND db_copy_test)
+set_tests_properties(db_copy_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # calc_test
 #   The calculations behind the texts and charts of the pages: the Projects page
 #   (#41), the money flow and the rolling average of the Cash Flow page (#42,
@@ -156,4 +183,4 @@ set_tests_properties(calc_test PROPERTIES
 
 # Every test target, so that CI and a local build need one target name:
 #   cmake --build build --target fd_tests
-add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test calc_test)
+add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test db_copy_test calc_test)

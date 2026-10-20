@@ -32,8 +32,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # The .deb and the .tar.gz are for the prod app only.
 set(FD_APP_IDENTITY "prod" CACHE STRING "The identity of the app: prod or test (#130)")
 set_property(CACHE FD_APP_IDENTITY PROPERTY STRINGS prod test)
+# The application name of the prod app: its data folder. The Test app copies
+# the prod database from there ("Copy my prod database", #130).
+set(FD_PROD_APP_NAME "FinanceDashboard")
 if(FD_APP_IDENTITY STREQUAL "prod")
-    set(FD_APP_NAME         "FinanceDashboard")        # data folder, settings, package and file names
+    set(FD_APP_IS_TEST      0)
+    set(FD_APP_NAME         "${FD_PROD_APP_NAME}")     # data folder, settings, package and file names
     set(FD_APP_DISPLAY_NAME "Finance Dashboard")       # shortcuts, Start menu folder
     set(FD_APP_WINDOW_TITLE "Finance Dashboard")
     set(FD_APP_FILE_ID      "finance-dashboard")       # desktop entry and icon files
@@ -42,6 +46,7 @@ if(FD_APP_IDENTITY STREQUAL "prod")
     # CPack part below.
     set(FD_INNOSETUP_APP_ID "9F2B4E7C-3A61-4C0D-9E8B-5D7A1C46F0B3")
 elseif(FD_APP_IDENTITY STREQUAL "test")
+    set(FD_APP_IS_TEST      1)
     set(FD_APP_NAME         "FinanceDashboardTest")
     set(FD_APP_DISPLAY_NAME "Finance Dashboard Test")
     set(FD_APP_WINDOW_TITLE "Finance Dashboard (Test)")
@@ -267,11 +272,12 @@ target_compile_definitions(FinanceDashboard PRIVATE
 )
 
 # The identity of the app (#130), for main.cpp only: the application name (the
-# data folder and the settings), the window title and the desktop entry. On
+# data folder and the settings), the window title and the desktop entry, and
+# for the Test app the application name of the prod app (its database). On
 # main.cpp alone, a switch of FD_APP_IDENTITY in a build directory rebuilds one
 # file, not the whole app (CI builds both identities in one directory).
 set_source_files_properties(src/main.cpp PROPERTIES COMPILE_DEFINITIONS
-    "FD_APP_NAME=\"${FD_APP_NAME}\";FD_APP_WINDOW_TITLE=\"${FD_APP_WINDOW_TITLE}\";FD_APP_FILE_ID=\"${FD_APP_FILE_ID}\"")
+    "FD_APP_NAME=\"${FD_APP_NAME}\";FD_APP_WINDOW_TITLE=\"${FD_APP_WINDOW_TITLE}\";FD_APP_FILE_ID=\"${FD_APP_FILE_ID}\";FD_APP_IS_TEST=${FD_APP_IS_TEST};FD_PROD_APP_NAME=\"${FD_PROD_APP_NAME}\"")
 
 # The icon of the identity, for the window and the taskbar (main.cpp sets it
 # from this resource) and, on Windows, for the .exe (app.rc).

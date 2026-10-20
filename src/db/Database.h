@@ -253,6 +253,24 @@ public:
     // controllers do not write them again (#37).
     bool resetAll();
 
+    // ── Copy of another database (the Test app, #130) ──────────────────────────
+    // Replaces the open database with a copy of the database at `sourcePath`
+    // (the database of the prod app, for "Copy my prod database"), then opens
+    // the copy. open() upgrades it when its schema is older, with its backup
+    // copy and its upgradeReport(), as at a start of a new version.
+    //   - The source is opened read-only, and VACUUM INTO makes a consistent
+    //     copy, also while the prod app writes to it. SQLite can leave the
+    //     -wal and -shm files of the source next to it; the prod app removes
+    //     them when it closes.
+    //   - The open database is kept: renamed to <name>.before-copy-<date>.db,
+    //     in `keptPath`.
+    //   - A source with a newer schema, or that cannot be copied, is refused
+    //     before any change. A copy that cannot be opened (a failed upgrade)
+    //     is kept as <name>.copy-failed-<date>.db, and the database from
+    //     before comes back.
+    // Returns false on failure, with the cause in lastError().
+    bool replaceWithCopyOf(const QString& sourcePath, QString& keptPath);
+
 private:
     static constexpr const char* kConnection = "finance_dashboard";
 
@@ -264,6 +282,12 @@ private:
     bool failOpen(OpenError error, const QString& message);
     // A copy of the open file next to it (VACUUM INTO), before an upgrade.
     bool backUp(const QString& path, QString& backupPath);
+    // For replaceWithCopyOf(): a copy of `sourcePath`, opened read-only, in
+    // `copyPath` (VACUUM INTO). Refuses a source with a newer schema.
+    bool copyReadOnly(const QString& sourcePath, const QString& copyPath);
+    // For replaceWithCopyOf(): moves the file `source` to `target`; a
+    // failure is logged and set in m_lastError.
+    bool moveFile(const QString& source, const QString& target);
     // createTable() of every table class: the base schema (version 0).
     bool createBaseTables();
     // What the migration steps did, for the upgrade report.

@@ -4,7 +4,10 @@
 #include "models/Transaction.h"
 
 #include <QDate>
+#include <QDateTime>
 #include <QDebug>
+#include <QDir>
+#include <QFileInfo>
 #include <QObject>
 #include <QString>
 #include <QVector>
@@ -61,6 +64,74 @@ bool DatabaseManagementController::clearTransactionsForAccount(int accountId)
     }
     setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Cleared transactions for this account"));
     return true;
+}
+
+void DatabaseManagementController::setProdDatabasePath(const QString& path)
+{
+    if (path == m_prodDatabasePath) {
+        return;
+    }
+    m_prodDatabasePath = path;
+    emit prodDatabaseChanged();
+}
+
+bool DatabaseManagementController::prodDatabaseFound() const
+{
+    return !m_prodDatabasePath.isEmpty() && QFileInfo(m_prodDatabasePath).isFile();
+}
+
+QString DatabaseManagementController::prodDatabaseText() const
+{
+    if (m_prodDatabasePath.isEmpty()) {
+        return {};
+    }
+    const QString path = QDir::toNativeSeparators(m_prodDatabasePath);
+    if (!prodDatabaseFound()) {
+        return QStringLiteral("There is no prod database at %1. Start Finance Dashboard once, then come back "
+                              "to this page.")
+            .arg(path);
+    }
+    // While the prod app runs, its last changes can be in the -wal file only.
+    QDateTime changed = QFileInfo(m_prodDatabasePath).lastModified();
+    const QFileInfo wal(m_prodDatabasePath + QStringLiteral("-wal"));
+    if (wal.exists() && wal.size() > 0 && wal.lastModified() > changed) {
+        changed = wal.lastModified();
+    }
+    return QStringLiteral("Prod database: %1 — last change on %2")
+        .arg(path, changed.toString(QStringLiteral("yyyy-MM-dd HH:mm")));
+}
+
+void DatabaseManagementController::refreshProdDatabase()
+{
+    emit prodDatabaseChanged();
+}
+
+void DatabaseManagementController::copyProdDatabase()
+{
+    if (m_prodDatabasePath.isEmpty()) {
+        return;
+    }
+    Database& database = Database::instance();
+    QString keptPath;
+    m_copyFailed = !database.replaceWithCopyOf(m_prodDatabasePath, keptPath);
+    if (m_copyFailed) {
+        m_copyReport = database.lastError();
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  The copy failed — see below"));
+    } else {
+        m_copyReport = QStringLiteral("The Test app now uses a copy of the prod database.\n\n"
+                                      "The Test data from before the copy is in:\n%1")
+                           .arg(QDir::toNativeSeparators(keptPath));
+        const QString upgrade = database.upgradeReport();
+        if (!upgrade.isEmpty()) {
+            m_copyReport += QStringLiteral("\n\n") + upgrade;
+        }
+        setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Prod database copied"));
+    }
+    emit copyReportChanged();
+    emit prodDatabaseChanged();
+    if (!m_copyFailed) {
+        emit databaseReset();
+    }
 }
 
 bool DatabaseManagementController::seedMockData() // static, see header

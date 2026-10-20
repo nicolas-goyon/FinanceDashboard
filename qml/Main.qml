@@ -67,6 +67,11 @@ ApplicationWindow {
     // databaseNoticePopup below shows it once.
     property string databaseNotice: ""
 
+    // Set by main.cpp in the Test app only (#130): the database of the prod
+    // app, for "Copy my prod database" on the Database Management page. Empty
+    // in the prod app, which then has no such action.
+    property string prodDatabasePath: ""
+
     // Overlay views: full-content pages reached from a sidebar action (or,
     // for "accountTransactions", from a button inside another overlay) that
     // replace the StackLayout rather than living in it — see the Loaders
@@ -322,7 +327,7 @@ ApplicationWindow {
         ProjectsPage                  {}
         TransactionsManagementPage    {}
         AccountManagementLandingPage  {}
-        DatabaseManagementPage        {}
+        DatabaseManagementPage        { prodDatabasePath: root.prodDatabasePath }
     }
 
     // ── Overlay — Import Transactions (see SidebarCategory.actionTriggered
