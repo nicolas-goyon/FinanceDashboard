@@ -1,8 +1,10 @@
 #include "db/Database.h"
+#include "startup/LocalOnlyNetwork.h"
 #include "startup/StartupChecks.h"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QList>
 #include <QObject>
 #include <QQmlApplicationEngine>
@@ -21,13 +23,36 @@
 int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays,misc-include-cleaner)
 {
     QGuiApplication app(argc, argv);
-    QGuiApplication::setApplicationName("FinanceDashboard");
-    // The version string comes from version.json, via the FD_VERSION_STRING
-    // compile definition set in CMakeLists.txt — see CI-CD.md. Never hard-code
-    // it here: this is the number the About/window title and any future update
-    // check would report, and it has to match the installer and the release tag.
-    QGuiApplication::setApplicationVersion(QStringLiteral(FD_VERSION_STRING));
+    // With the application name below, it gives the data folder.
     QGuiApplication::setOrganizationName("DataAnalysis");
+
+    // The Test app only (#130): the prod database, which "Copy my prod
+    // database" (Database Management page) copies. The prod app finds it with
+    // its own application name, so ask for the path with that name, before the
+    // name of the Test app is set. Empty in the prod app.
+    QString prodDatabasePath;
+#if FD_APP_IS_TEST
+    QGuiApplication::setApplicationName(QStringLiteral(FD_PROD_APP_NAME));
+    prodDatabasePath = Startup::StartupChecks::databasePath();
+#endif
+
+    // The identity of the build (#130), from CMakeLists.txt: "FinanceDashboard"
+    // or "FinanceDashboardTest". The application name gives the data folder
+    // (QStandardPaths::AppDataLocation) and the settings, so the Test app never
+    // writes the data of the prod app. The display name is the window
+    // title (Application.displayName in QML), and the desktop file name
+    // lets a Linux desktop match the window with its menu entry and icon.
+    QGuiApplication::setApplicationName(QStringLiteral(FD_APP_NAME));
+    QGuiApplication::setApplicationDisplayName(QStringLiteral(FD_APP_WINDOW_TITLE));
+    QGuiApplication::setDesktopFileName(QStringLiteral(FD_APP_FILE_ID));
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/app-icon.png")));
+    // The version string comes from version.json, via the FD_VERSION_STRING
+    // compile definition set in CMakeLists.txt — see CI-CD.md. A pre-release
+    // of the Test app adds its suffix: 0.2.2-exp.57, 0.2.2-rc.3 (#129). Never
+    // hard-code it here: this is the number the About/window title and the
+    // update check (#117) report, and it has to match the installer and the
+    // release tag.
+    QGuiApplication::setApplicationVersion(QStringLiteral(FD_VERSION_STRING));
 
     // Must be set before any QML importing Qt Quick Controls is loaded
     // (QQuickStyle docs: "before loading QML that imports Qt Quick Controls").
@@ -53,7 +78,13 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
     Startup::StartupChecks::log(steps);
 
     // ── QML engine ────────────────────────────────────────────────────────────
+    // The network access of QML reads local files and resources only: an
+    // image in the Markdown of release notes is not downloaded (#117,
+    // ARCHITECTURE.MD § Network rule). The engine does not own the factory,
+    // so the factory is made first and deleted after the engine.
+    Startup::LocalOnlyNetworkFactory localOnlyNetwork;
     QQmlApplicationEngine engine;
+    engine.setNetworkAccessManagerFactory(&localOnlyNetwork);
 
     QObject::connect(
         &engine,
@@ -68,9 +99,14 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
             {{QStringLiteral("steps"), Startup::StartupChecks::toVariantList(steps)}});
         engine.loadFromModule("FinanceDashboard", "StartupErrorWindow");
     } else {
-        // Main.qml shows it once when this start upgraded the database.
-        engine.setInitialProperties(
-            {{QStringLiteral("databaseNotice"), Database::instance().upgradeReport()}});
+        // Main.qml shows the notice once when this start upgraded the
+        // database. The prod database path is empty in the prod app. The
+        // update check follows the channels of the identity (#117).
+        engine.setInitialProperties({
+            {QStringLiteral("databaseNotice"), Database::instance().upgradeReport()},
+            {QStringLiteral("prodDatabasePath"), prodDatabasePath},
+            {QStringLiteral("isTestApp"), FD_APP_IS_TEST != 0},
+        });
         engine.loadFromModule("FinanceDashboard", "Main");
     }
 

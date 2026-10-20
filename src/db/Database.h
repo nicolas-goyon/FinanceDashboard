@@ -12,6 +12,7 @@
 #include "db/tables/TransactionsTable.h"
 #include "db/tables/AccountBalanceCheckpointsTable.h"
 #include "db/tables/CategoryRulesTable.h"
+#include "db/tables/SettingsTable.h"
 #include "models/Category.h"
 #include "models/CategoryRule.h"
 #include "models/Account.h"
@@ -21,6 +22,8 @@
 #include <QSet>
 #include <QStringList>
 
+#include <cstdint>
+#include <functional>
 #include <optional>
 #include <QString>
 #include <QDate>
@@ -49,6 +52,10 @@ public:
     // Closes the connection; open() can then open another file (tests).
     void    close();
     [[nodiscard]] bool    isOpen() const;
+    // A message for the last failure, when the method sets one. The write
+    // methods refuse an empty name, currency, account hash or hash source, and
+    // an invalid checkpoint date, before any write, with a message here (#34,
+    // #125).
     [[nodiscard]] QString lastError() const;
 
     // Why the last open() failed, for the hint of the fatal start-up step
@@ -64,7 +71,7 @@ public:
     // ── Schema version (PRAGMA user_version) ─────────────────────────────────
     // The schema version that this app writes. Each version after 0 is one
     // ordered migration step in upgrade().
-    static constexpr int kSchemaVersion = 2;
+    static constexpr int kSchemaVersion = 3;
     [[nodiscard]] int schemaVersion() const;
     // Empty, unless the last open() upgraded an existing database: then one
     // or two sentences for the user (old and new version, where the backup
@@ -185,7 +192,7 @@ public:
     // Database Management (see ARCHITECTURE.MD § Database Management),
     // distinct from removeAccount()'s full cascade below.
     bool clearTransactionsForAccount(int accountId);
-    // Most recent transaction for `accountId` on or before `date` — see
+    // Last transaction of `accountId` booked on or before `date` — see
     // TransactionsTable::latestOnOrBefore(). Used by
     // SnapshotImportController::checkReconciliation() as the fallback
     // "previously recorded balance" reference when there's no closer
@@ -223,13 +230,46 @@ public:
     // AccountBalanceCheckpointsTable::latestOnOrBefore().
     [[nodiscard]] std::optional<Data::AccountBalanceCheckpoint> latestCheckpointOnOrBefore(int accountId, const QDate& date) const;
 
+    // ── Default data (#37) ─────────────────────────────────────────────────────
+    // The controllers write their default data the first time that a database
+    // is used, and the settings table records it, so that an empty table is
+    // not taken for a first run: after "Reset Database", the lists stay empty,
+    // across restarts too.
+    enum class Defaults : std::uint8_t { Categories, Accounts };
+    [[nodiscard]] bool defaultsWritten(Defaults set) const;
+    // Runs `write` (the add*() calls of the defaults of `set`; false when one
+    // fails) and records the defaults as written, in one SQL transaction. If a
+    // write fails, nothing is written or recorded, and the next start tries
+    // again. Returns false then (lastError() tells why).
+    bool writeDefaults(Defaults set, const std::function<bool()>& write);
+
     // ── Whole-database reset (see ARCHITECTURE.MD § Database Management) ────────
     // Drops every table this app owns and recreates them empty, in one
     // transaction. Intended for DatabaseManagementController — lets the
     // developer/user wipe the SQLite file back to a blank slate without
     // deleting the file itself (useful whenever the schema changes during
-    // development, and as a user-facing "start over" action).
+    // development, and as a user-facing "start over" action). The settings
+    // table stays, and records that the defaults were written: the
+    // controllers do not write them again (#37).
     bool resetAll();
+
+    // ── Copy of another database (the Test app, #130) ──────────────────────────
+    // Replaces the open database with a copy of the database at `sourcePath`
+    // (the database of the prod app, for "Copy my prod database"), then opens
+    // the copy. open() upgrades it when its schema is older, with its backup
+    // copy and its upgradeReport(), as at a start of a new version.
+    //   - The source is opened read-only, and VACUUM INTO makes a consistent
+    //     copy, also while the prod app writes to it. SQLite can leave the
+    //     -wal and -shm files of the source next to it; the prod app removes
+    //     them when it closes.
+    //   - The open database is kept: renamed to <name>.before-copy-<date>.db,
+    //     in `keptPath`.
+    //   - A source with a newer schema, or that cannot be copied, is refused
+    //     before any change. A copy that cannot be opened (a failed upgrade)
+    //     is kept as <name>.copy-failed-<date>.db, and the database from
+    //     before comes back.
+    // Returns false on failure, with the cause in lastError().
+    bool replaceWithCopyOf(const QString& sourcePath, QString& keptPath);
 
 private:
     static constexpr const char* kConnection = "finance_dashboard";
@@ -242,6 +282,12 @@ private:
     bool failOpen(OpenError error, const QString& message);
     // A copy of the open file next to it (VACUUM INTO), before an upgrade.
     bool backUp(const QString& path, QString& backupPath);
+    // For replaceWithCopyOf(): a copy of `sourcePath`, opened read-only, in
+    // `copyPath` (VACUUM INTO). Refuses a source with a newer schema.
+    bool copyReadOnly(const QString& sourcePath, const QString& copyPath);
+    // For replaceWithCopyOf(): moves the file `source` to `target`; a
+    // failure is logged and set in m_lastError.
+    bool moveFile(const QString& source, const QString& target);
     // createTable() of every table class: the base schema (version 0).
     bool createBaseTables();
     // What the migration steps did, for the upgrade report.
@@ -262,7 +308,17 @@ private:
     bool upgrade(int from, UpgradeStats& stats);
     bool migrateTo1(UpgradeStats& stats); // accounts: drop iban / bic / number
     bool migrateTo2(UpgradeStats& stats); // transactions: fingerprint + UNIQUE index
+    bool migrateTo3();                    // settings table, with the defaults already written
+    // Records in the settings table that the defaults of `set` are written.
+    // In the SQL transaction of writeDefaults() or resetAll().
+    bool recordDefaults(Defaults set);
     [[nodiscard]] QStringList columnsOf(const QString& table) const;
+    // Runs `steps` in one SQL transaction: commit when they return true, roll
+    // back otherwise. `what` names the operation in m_lastError and the log;
+    // the message keeps what a failed step put in m_lastError. A BEGIN or a
+    // COMMIT that fails makes it fail too (#49): inside an open transaction,
+    // BEGIN fails, as SQLite has no nested transactions.
+    bool inTransaction(const QString& what, const std::function<bool()>& steps);
 
     QSqlDatabase            m_db;
     QString                 m_lastError;
@@ -279,6 +335,7 @@ private:
     TransactionsTable       m_transactionsTable;
     AccountBalanceCheckpointsTable m_balanceCheckpointsTable;
     CategoryRulesTable      m_categoryRulesTable;
+    SettingsTable           m_settingsTable;
 };
 
 #endif // FINANCEDASHBOARD_DB_DATABASE_H

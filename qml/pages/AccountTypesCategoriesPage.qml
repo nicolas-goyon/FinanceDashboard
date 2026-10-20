@@ -48,6 +48,12 @@ Item {
                 title: "Account Types & Categories"
                 onBackClicked: page.closeRequested()
 
+                // A rename to a name that exists is refused with a message (#34).
+                StatusBadge {
+                    visible: AccountController.statusText.length > 0
+                    text: AccountController.statusText
+                    variant: AccountController.statusLevel
+                }
                 PillButton {
                     text: "＋  Add type"
                     variant: "primary"

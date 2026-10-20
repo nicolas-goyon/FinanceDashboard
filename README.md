@@ -3,8 +3,9 @@
 A desktop finance analytics application built with **C++17**, **Qt Quick / QML**, and **Qt
 Graphs**. It's a personal finance dashboard: import bank statements, categorize transactions,
 track accounts, and (as the analytics layer is wired up) see net worth, cash flow, savings, and
-investment trends over time — all data stays local in a SQLite file, with no bank connectivity
-or external data fetching.
+investment trends over time — all data stays local in a SQLite file, with no bank connectivity.
+The one network call is the update check: at each start the app asks GitHub for the list of
+releases (you can turn it off on the Updates page, see "Updates" below).
 
 For what the app is trying to do product-wise, see `PROJECT.md`. For how it's built, see
 `ARCHITECTURE.MD`. For how it's tested, packaged and released, see `CI-CD.md`. For the current
@@ -31,6 +32,9 @@ rights). To update, run the setup of the new version. It keeps the install mode,
 and your data.
 
 A release is published when a `release/<x.y.z>` branch is merged into `main` — see `CI-CD.md`.
+The [pre-releases](https://github.com/nicolas-goyon/FinanceDashboard/releases) (`-exp`, `-rc`)
+are builds of the Test app (`FinanceDashboardTest-*`, see "The Test app" below): it installs next
+to Finance Dashboard, with its own data.
 Linux builds need glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+); on anything older, build
 from source below.
 
@@ -40,6 +44,29 @@ Your data lives in one local SQLite file and never leaves the machine:
 database format, the app first saves a copy next to it (`finance_dashboard.backup-<date>.db`) and
 tells you. If the upgrade fails, the app does not start, tells you why, and leaves the file as it
 was.
+
+### Updates
+
+At each start, the app asks GitHub for the list of releases (one call to `api.github.com`, without
+a token). When a newer version exists, a banner tells it. The **Updates** page (ADMIN part of the
+sidebar) shows the version of the app, the versions of its channel with their notes and release
+pages, and a "Check now" button. GitHub sees the internet address of your computer and the version
+of the app; the app sends nothing else (no cookie, no token, and English as the language, not the
+language of your computer). The app loads nothing else from the network or from another computer:
+it removes the images from the notes of a version before it shows them. To turn the check off,
+clear "Check for a new version when the app starts" on that page. Without a network, when GitHub
+does not answer within 20 seconds, or when GitHub refuses the call (60 calls an hour for each
+internet address), the page tells why and the app works as usual. On Linux, the check uses the
+OpenSSL 3 of the system (`libssl.so.3`, in the distributions above).
+
+The prod app follows the releases. The Test app follows the Experimental channel (the `-exp` and
+`-rc` pre-releases) or the Preprod channel (`-rc` only), chosen on the Updates page.
+
+For now, the app tells that a new version exists and opens its release page; install it as
+above. With the setup, run the setup of the new version; with the AppImage, replace the file;
+with the portable ZIP, extract the new ZIP over the old folder (your data is not in it); with the
+`.deb`, `sudo apt install ./finance-dashboard_<version>_amd64.deb`; with the `.tar.gz`, extract it
+over the old folder.
 
 ---
 
@@ -92,6 +119,21 @@ version number comes from `version.json`, not from `CMakeLists.txt`. The release
 (see `CI-CD.md`); to make the in-progress version a minor or major one, use
 `python tools/version.py bump minor` (or `major`).
 
+**The Test app.** `-DFD_APP_IDENTITY=test` at configure time builds "Finance Dashboard Test". It
+installs and runs next to the prod app, with its own data folder
+(`%APPDATA%\DataAnalysis\FinanceDashboardTest\`, `~/.local/share/DataAnalysis/FinanceDashboardTest/`)
+and settings, an icon with an orange "TEST" band and "(Test)" in the window title. It is for the
+experimental and preprod builds. Its packages are the Windows setup and ZIP, and the AppImage
+(`FinanceDashboardTest-*`); the `.deb` and the `.tar.gz` are for the prod app only. On its Database
+Management page, **Copy my prod database** replaces the Test data with a copy of the prod database,
+to try a new version (and its database upgrade) on the real data. The prod database is only read,
+and the Test data from before is kept in a file next to the Test database. Use one build directory
+for each identity:
+
+```powershell
+cmake -B build-test -DFD_APP_IDENTITY=test -DCMAKE_PREFIX_PATH="C:/Qt/6.11.1/msvc2022_64"
+```
+
 ### Tests
 
 ```bash
@@ -100,9 +142,15 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-`ctest` runs `predictor_selftest` (category prediction) and `import_save_test` (the statement
-import, saved to a temporary database). `cmake --build build --target fd_tests` builds only the
-tests.
+`ctest` runs `predictor_selftest` (category prediction), `import_save_test` (the statement
+import, saved to a temporary database), `db_migration_test` (the schema upgrades),
+`db_write_test` (the writes of the table classes, the renames, the default data, the mock data,
+the balance history, the currency of an account and the checked database results), `db_copy_test`
+(the copy of the prod database in the Test app), `update_test` (the versions and the update check,
+with a local test server instead of GitHub, and the QML engine that reads no file from the network)
+and `calc_test` (the calculations behind the texts and charts of the pages, and the money format).
+`cmake --build build --target fd_tests` builds only the tests. The release tools have their own
+tests: `python -m unittest discover -s tools -p "test_*.py"`.
 
 ---
 
@@ -138,7 +186,7 @@ documented in `.env.example`.
 ```
 FinanceDashboard/
 ├── qml/        — UI only (QML). No business logic.
-├── src/        — Controllers, database layer, models, statement-import templates (all C++).
+├── src/        — Controllers, database layer, models, statement-import templates, update check (all C++).
 ├── tests/      — CTest registration for the predictor self-test harness.
 ├── tools/      — Static-analysis runners, the doc generator, version.py (version/changelog),
 │                 release_flow.py (the branches that CI makes for a release) and their tests,

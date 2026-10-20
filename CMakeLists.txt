@@ -17,6 +17,71 @@ message(STATUS "FinanceDashboard version ${PROJECT_VERSION} (from version.json)"
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# ── App identity — prod or test (#130) ────────────────────────────────────────
+# The Test app ("Finance Dashboard Test") installs next to the prod app and
+# runs at the same time, with its own:
+#   - application name: its data folder and settings are separate
+#     (QStandardPaths::AppDataLocation, QSettings);
+#   - Windows setup identity: AppId, install folder, Start menu folder,
+#     shortcuts and uninstall entry;
+#   - Linux desktop entry, icon and AppStream id (the AppImage);
+#   - icon (an orange "TEST" band, packaging/icons/make-icons.py) and window
+#     title ("Finance Dashboard (Test)").
+# The experimental and preprod builds use it (#129). One identity for each
+# build directory:  cmake -B build-test -DFD_APP_IDENTITY=test
+# The .deb and the .tar.gz are for the prod app only.
+set(FD_APP_IDENTITY "prod" CACHE STRING "The identity of the app: prod or test (#130)")
+set_property(CACHE FD_APP_IDENTITY PROPERTY STRINGS prod test)
+# The application name of the prod app: its data folder. The Test app copies
+# the prod database from there ("Copy my prod database", #130).
+set(FD_PROD_APP_NAME "FinanceDashboard")
+if(FD_APP_IDENTITY STREQUAL "prod")
+    set(FD_APP_IS_TEST      0)
+    set(FD_APP_NAME         "${FD_PROD_APP_NAME}")     # data folder, settings, package and file names
+    set(FD_APP_DISPLAY_NAME "Finance Dashboard")       # shortcuts, Start menu folder
+    set(FD_APP_WINDOW_TITLE "Finance Dashboard")
+    set(FD_APP_FILE_ID      "finance-dashboard")       # desktop entry and icon files
+    set(FD_APP_METAINFO_ID  "io.github.nicolas_goyon.FinanceDashboard")
+    # The AppId MUST stay the same for the lifetime of the product: see the
+    # CPack part below.
+    set(FD_INNOSETUP_APP_ID "9F2B4E7C-3A61-4C0D-9E8B-5D7A1C46F0B3")
+elseif(FD_APP_IDENTITY STREQUAL "test")
+    set(FD_APP_IS_TEST      1)
+    set(FD_APP_NAME         "FinanceDashboardTest")
+    set(FD_APP_DISPLAY_NAME "Finance Dashboard Test")
+    set(FD_APP_WINDOW_TITLE "Finance Dashboard (Test)")
+    set(FD_APP_FILE_ID      "finance-dashboard-test")
+    set(FD_APP_METAINFO_ID  "io.github.nicolas_goyon.FinanceDashboardTest")
+    set(FD_INNOSETUP_APP_ID "30296817-401F-4AB5-8B40-42BF8DC81C7F")
+else()
+    message(FATAL_ERROR "FD_APP_IDENTITY is \"${FD_APP_IDENTITY}\": use prod or test.")
+endif()
+message(STATUS "App identity: ${FD_APP_IDENTITY} (${FD_APP_DISPLAY_NAME})")
+
+# ── Pre-release suffix (#129) ─────────────────────────────────────────────────
+# The experimental and preprod pre-releases of the Test app add a SemVer
+# suffix to the version of version.json: 0.2.2-exp.57, 0.2.2-exp.61.pr12,
+# 0.2.2-rc.70 (the number is the run number of the CI workflow). CI computes
+# it (tools/release_flow.py channel) and passes it with
+# -DFD_VERSION_SUFFIX=-exp.57. It goes into the version of the app
+# (QCoreApplication::applicationVersion(), which the updater compares, #117),
+# the setup and the package file names. Empty for a release and a local build.
+set(FD_VERSION_SUFFIX "" CACHE STRING "Pre-release suffix of the version (#129): -exp.<run>, -exp.<run>.pr<number> or -rc.<run>")
+if(NOT FD_VERSION_SUFFIX STREQUAL "")
+    # SemVer identifiers: a number with no leading zero, or digits and letters
+    # with at least one letter.
+    if(NOT FD_VERSION_SUFFIX MATCHES "^-(exp|rc)(\\.(0|[1-9][0-9]*|[0-9A-Za-z]*[A-Za-z][0-9A-Za-z]*))+$")
+        message(FATAL_ERROR "FD_VERSION_SUFFIX is \"${FD_VERSION_SUFFIX}\": use -exp.<run>, -exp.<run>.pr<number> or -rc.<run>.")
+    endif()
+    if(NOT FD_APP_IDENTITY STREQUAL "test")
+        message(FATAL_ERROR "FD_VERSION_SUFFIX is for the pre-releases, which are Test app builds: add "
+                            "-DFD_APP_IDENTITY=test, or clear the suffix with -DFD_VERSION_SUFFIX= (a build "
+                            "directory keeps it).")
+    endif()
+endif()
+set(FD_FULL_VERSION "${PROJECT_VERSION}${FD_VERSION_SUFFIX}")
+message(STATUS "Version of the packages: ${FD_FULL_VERSION}")
+
 include(GNUInstallDirs)
 
 # Windows installs/portable ZIPs are flat: FinanceDashboard.exe sits at the root
@@ -28,7 +93,7 @@ if(WIN32)
 endif()
 
 # Qt Quick / QML + Qt Graphs (2D). Qt Charts and Widgets are no longer used.
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2 Network)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -78,6 +143,9 @@ set(FD_CORE_SOURCES
     src/db/tables/AccountBalanceCheckpointsTable.cpp
     src/db/tables/CategoryRulesTable.h
     src/db/tables/CategoryRulesTable.cpp
+    src/db/tables/SettingsTable.h
+    src/db/tables/SettingsTable.cpp
+    src/db/tables/SqlPrepare.h
     src/db/tables/SqlText.h
     src/db/Database.h
     src/db/Database.cpp
@@ -99,6 +167,12 @@ set(FD_CORE_SOURCES
     src/import/ImportTemplateRegistry.cpp
     src/import/SumeriaCcpCsvExtractionTemplate.h
     src/import/SumeriaCcpCsvExtractionTemplate.cpp
+    # The update check (#117): versions and the list of releases. Qt Core only,
+    # no network — UpdateController below downloads the list.
+    src/update/SemVer.h
+    src/update/SemVer.cpp
+    src/update/ReleaseFeed.h
+    src/update/ReleaseFeed.cpp
 )
 list(TRANSFORM FD_CORE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 
@@ -109,6 +183,10 @@ qt_add_executable(FinanceDashboard
     # window loads (see docs/startup.md).
     src/startup/StartupChecks.h
     src/startup/StartupChecks.cpp
+    # The network access of the QML engine: local files and resources only
+    # (#117, ARCHITECTURE.MD § Network rule).
+    src/startup/LocalOnlyNetwork.h
+    src/startup/LocalOnlyNetwork.cpp
     ${FD_CORE_SOURCES}
 )
 
@@ -144,6 +222,8 @@ qt_add_qml_module(FinanceDashboard
         src/controllers/dataentry/AccountController.cpp
         src/controllers/database/DatabaseManagementController.h
         src/controllers/database/DatabaseManagementController.cpp
+        src/controllers/updates/UpdateController.h
+        src/controllers/updates/UpdateController.cpp
     QML_FILES
         qml/Main.qml
         qml/StartupErrorWindow.qml
@@ -172,6 +252,7 @@ qt_add_qml_module(FinanceDashboard
         qml/pages/TransactionsManagementPage.qml
         qml/pages/AccountManagementLandingPage.qml
         qml/pages/DatabaseManagementPage.qml
+        qml/pages/UpdatesPage.qml
         qml/pages/ImportSnapshotPage.qml
         qml/pages/CategoriesManagePage.qml
         qml/pages/AccountsManagePage.qml
@@ -207,6 +288,7 @@ target_include_directories(FinanceDashboard PRIVATE
     src/controllers/projects
     src/controllers/dataentry
     src/controllers/database
+    src/controllers/updates
 )
 
 target_link_libraries(FinanceDashboard PRIVATE
@@ -217,15 +299,43 @@ target_link_libraries(FinanceDashboard PRIVATE
     Qt6::Graphs
     Qt6::Sql
     Qt6::QuickControls2
+    # The update check (#117): QNetworkAccessManager, HTTPS to api.github.com.
+    Qt6::Network
 )
 
 target_compile_definitions(FinanceDashboard PRIVATE
     $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:QT_QML_DEBUG>
-    # main.cpp passes this to QGuiApplication::setApplicationVersion() so the
-    # running app reports the same number as version.json / the installer /
-    # the release tag. Never hard-code a version string in C++.
-    FD_VERSION_STRING="${PROJECT_VERSION}"
 )
+
+# For main.cpp only:
+#   - FD_VERSION_STRING, the version with its pre-release suffix (#129):
+#     main.cpp passes it to QGuiApplication::setApplicationVersion(), so the
+#     running app reports the same number as version.json, the installer and
+#     the release tag. Never hard-code a version string in C++.
+#   - the identity of the app (#130): the application name (the data folder
+#     and the settings), the window title and the desktop entry, and for the
+#     Test app the application name of the prod app (its database).
+# On main.cpp alone, a new identity or suffix in a build directory rebuilds one
+# file, not the whole app (CI builds both identities in one directory).
+set_source_files_properties(src/main.cpp PROPERTIES COMPILE_DEFINITIONS
+    "FD_VERSION_STRING=\"${FD_FULL_VERSION}\";FD_APP_NAME=\"${FD_APP_NAME}\";FD_APP_WINDOW_TITLE=\"${FD_APP_WINDOW_TITLE}\";FD_APP_FILE_ID=\"${FD_APP_FILE_ID}\";FD_APP_IS_TEST=${FD_APP_IS_TEST};FD_PROD_APP_NAME=\"${FD_PROD_APP_NAME}\"")
+
+# The icon of the identity, for the window and the taskbar (main.cpp sets it
+# from this resource) and, on Windows, for the .exe (app.rc).
+set_source_files_properties("packaging/icons/${FD_APP_FILE_ID}-256.png"
+    PROPERTIES QT_RESOURCE_ALIAS "app-icon.png")
+qt_add_resources(FinanceDashboard "app_icon"
+    PREFIX "/"
+    FILES "packaging/icons/${FD_APP_FILE_ID}-256.png"
+)
+if(WIN32)
+    # The icon resource of the .exe: Explorer, the shortcuts of the setup and
+    # the taskbar show it. Qt names it IDI_ICON1.
+    # https://doc.qt.io/qt-6/appicon.html
+    set(FD_APP_ICO "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/${FD_APP_FILE_ID}.ico")
+    configure_file(packaging/windows/app.rc.in "${CMAKE_CURRENT_BINARY_DIR}/app.rc" @ONLY)
+    target_sources(FinanceDashboard PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/app.rc")
+endif()
 
 # Windows: hide the console window in Release builds
 if(WIN32)
@@ -328,13 +438,15 @@ endif()
 
 # Linux desktop-integration files. Harmless on Windows (the block is skipped),
 # used by both the .deb and the AppImage. See packaging/linux/.
+# Those of the identity of the build (#130): make-appimage.sh takes them from
+# the install tree.
 if(UNIX AND NOT APPLE)
-    install(FILES packaging/linux/finance-dashboard.desktop
+    install(FILES packaging/linux/${FD_APP_FILE_ID}.desktop
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/applications)
-    install(FILES packaging/icons/finance-dashboard-256.png
+    install(FILES packaging/icons/${FD_APP_FILE_ID}-256.png
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/256x256/apps
-            RENAME finance-dashboard.png)
-    install(FILES packaging/linux/io.github.nicolas_goyon.FinanceDashboard.metainfo.xml
+            RENAME ${FD_APP_FILE_ID}.png)
+    install(FILES packaging/linux/${FD_APP_METAINFO_ID}.metainfo.xml
             DESTINATION ${CMAKE_INSTALL_DATAROOTDIR}/metainfo)
 endif()
 
@@ -362,14 +474,16 @@ install(SCRIPT ${deploy_script})
 # no AppImage generator and its DEB generator can't produce the /opt layout
 # this app wants, so those two live in scripts where they can be read and run
 # by hand. See CI-CD.md.
-set(CPACK_PACKAGE_NAME              "FinanceDashboard")
+set(CPACK_PACKAGE_NAME              "${FD_APP_NAME}")
 set(CPACK_PACKAGE_VENDOR            "DataAnalysis")
 set(CPACK_PACKAGE_CONTACT           "Nicolas Goyon <https://github.com/nicolas-goyon>")
-set(CPACK_PACKAGE_VERSION           "${PROJECT_VERSION}")
+# With the pre-release suffix (#129): Inno Setup's AppVersion, and the file
+# names below.
+set(CPACK_PACKAGE_VERSION           "${FD_FULL_VERSION}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "Local-first personal finance dashboard — import statements, categorize, track net worth")
 set(CPACK_PACKAGE_HOMEPAGE_URL      "https://github.com/nicolas-goyon/FinanceDashboard")
-set(CPACK_PACKAGE_INSTALL_DIRECTORY "FinanceDashboard")
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "${FD_APP_NAME}")
 # The setup's licence page needs a .txt or a .rtf; the repo's LICENSE has no
 # extension, so copy it to one CPack recognises rather than keeping a second,
 # hand-maintained copy of the licence text that can silently drift from it.
@@ -384,7 +498,7 @@ endif()
 # Inno Setup generator makes a shortcut for each .exe with this base name,
 # anywhere in the install tree, so the flat Windows layout set at the top of
 # this file is fine.
-set(CPACK_PACKAGE_EXECUTABLES       "FinanceDashboard" "Finance Dashboard")
+set(CPACK_PACKAGE_EXECUTABLES       "FinanceDashboard" "${FD_APP_DISPLAY_NAME}")
 set(CPACK_CREATE_DESKTOP_LINKS      "FinanceDashboard")
 
 if(WIN32)
@@ -392,7 +506,7 @@ if(WIN32)
 else()
     set(CPACK_SYSTEM_NAME "linux-${CMAKE_SYSTEM_PROCESSOR}")
 endif()
-set(CPACK_PACKAGE_FILE_NAME "FinanceDashboard-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}")
+set(CPACK_PACKAGE_FILE_NAME "${FD_APP_NAME}-${FD_FULL_VERSION}-${CPACK_SYSTEM_NAME}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "FinanceDashboard-${PROJECT_VERSION}-source")
 
 if(WIN32)
@@ -414,8 +528,14 @@ if(WIN32)
     # folder name), so set it explicitly. No braces: Inno Setup reads "{" as the
     # start of a constant, and UsePreviousPrivileges (default yes) needs an AppId
     # without constants.
+    # The Test app has its own AppId (#130): its setup installs, updates and
+    # uninstalls it without touching the prod app.
     # https://jrsoftware.org/ishelp/topic_setup_appid.htm
-    set(CPACK_INNOSETUP_SETUP_AppId "9F2B4E7C-3A61-4C0D-9E8B-5D7A1C46F0B3")
+    set(CPACK_INNOSETUP_SETUP_AppId "${FD_INNOSETUP_APP_ID}")
+    # AppVersion is CPACK_PACKAGE_VERSION, with the pre-release suffix (#129).
+    # The version resource of the setup takes numbers only: up to four,
+    # missing ones are zeros (https://jrsoftware.org/ishelp/topic_setup_versioninfoversion.htm).
+    set(CPACK_INNOSETUP_SETUP_VersionInfoVersion "${PROJECT_VERSION}")
 
     # The person who installs chooses "for me only" (the default, no
     # administrator rights, %LOCALAPPDATA%\Programs) or "for all users"
@@ -433,9 +553,9 @@ if(WIN32)
     set(CPACK_INNOSETUP_SETUP_ArchitecturesAllowed "x64compatible")
     set(CPACK_INNOSETUP_SETUP_ArchitecturesInstallIn64BitMode "x64compatible")
 
-    set(CPACK_INNOSETUP_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/finance-dashboard.ico")
+    set(CPACK_INNOSETUP_ICON_FILE "${CMAKE_CURRENT_SOURCE_DIR}/packaging/icons/${FD_APP_FILE_ID}.ico")
     set(CPACK_INNOSETUP_USE_MODERN_WIZARD ON)
-    set(CPACK_INNOSETUP_PROGRAM_MENU_FOLDER "Finance Dashboard")
+    set(CPACK_INNOSETUP_PROGRAM_MENU_FOLDER "${FD_APP_DISPLAY_NAME}")
     # "Launch Finance Dashboard" check box on the last page of the setup.
     set(CPACK_INNOSETUP_RUN_EXECUTABLES "FinanceDashboard")
 else()

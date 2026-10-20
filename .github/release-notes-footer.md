@@ -32,8 +32,8 @@ Get-FileHash .\FinanceDashboard-*-windows-x64.* -Algorithm SHA256
 
 ### Your data
 
-Finance Dashboard keeps everything in a local SQLite file and talks to no
-network service of any kind:
+Finance Dashboard keeps everything in a local SQLite file. Your data never
+leaves your computer:
 
 - Windows — `%APPDATA%\DataAnalysis\FinanceDashboard\finance_dashboard.db`
 - Linux — `~/.local/share/DataAnalysis/FinanceDashboard/finance_dashboard.db`
@@ -42,5 +42,13 @@ When a new version changes the database format, the app first saves a copy
 next to it (`finance_dashboard.backup-<date>.db`) and tells you. If the upgrade
 fails, the app does not start, tells you why, and leaves the file as it was.
 
-Uninstalling does not delete it. Back that one file up and you have backed up
-everything.
+Uninstalling does not delete the database. Back that one file up and you have
+backed up everything.
+
+### The update check
+
+The app connects to one network service only: at each start, it asks GitHub
+for the list of releases, to tell you when a new version exists. GitHub sees
+the internet address of your computer and the version of the app; the app
+sends nothing else. Turn the check off on the Updates page. On Linux, the check
+uses the OpenSSL 3 of the system (`libssl.so.3`).

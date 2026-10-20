@@ -7,12 +7,14 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QDebug>
 #include <QMap>
 #include <QObject>
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
 #include <Qt>
+#include <QtLogging>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
 
 #include <algorithm>
@@ -27,8 +29,12 @@ AccountController::AccountController(QObject* parent)
     , m_status(this, kStatusClearDelayMs, [this]() { emit statusChanged(); })
 {
     loadFromDb();
-    if (m_accounts.isEmpty() && m_accountCategories.isEmpty() && m_accountTypes.isEmpty()) {
+    // Only once per database: empty tables after "Reset Database" are not a
+    // fresh DB, and stay empty (#37).
+    if (m_accounts.isEmpty() && m_accountCategories.isEmpty() && m_accountTypes.isEmpty()
+        && !Database::instance().defaultsWritten(Database::Defaults::Accounts)) {
         seedDefaults();
+        loadFromDb(); // all of them, or none
     }
 }
 
@@ -50,20 +56,12 @@ void AccountController::reload()
 
 void AccountController::seedDefaults()
 {
-    Database& database = Database::instance();
-
     // Fixed list of banking/financial products, now DB-managed like
     // category (see models/Account.h) — same defaults as the old hardcoded
     // QStringList this replaced.
     static const QVector<QString> kTypeSeed = {
         "CCP", "Livret A", "LDDS", "PEL", "Assurance Vie", "PEA", "CTO", "Other",
     };
-    for (const QString& name : kTypeSeed) {
-        const int typeId = database.addAccountType(name);
-        if (typeId >= 0) {
-            m_accountTypes.append(Data::AccountType{ typeId, name });
-        }
-    }
 
     // Same 4 usage buckets named in the product request: day-to-day basis,
     // savings, investments, urgent saving.
@@ -74,13 +72,6 @@ void AccountController::seedDefaults()
         { "Investments",    "#cba6f7" },
         { "Urgent savings", "#f9e2af" },
     };
-    for (const SeedCat& seedCat : kCatSeed) {
-        const int categoryId = database.addAccountCategory(seedCat.name, seedCat.color);
-        if (categoryId < 0) {
-            continue;
-        }
-        m_accountCategories.append(Data::AccountCategory{ categoryId, seedCat.name, seedCat.color });
-    }
 
     // Same accounts as before, minus iban/bic/number (no longer stored — see
     // models/Account.h). Accounts start with zero hashes now (nothing to
@@ -97,20 +88,30 @@ void AccountController::seedDefaults()
         { "Assurance Vie",     "Assurance Vie", "Investments", "EUR", "" },
         { "Trading account",  "CTO",           "Investments", "EUR", "" },
     };
-    for (const SeedAcc& seedAcc : kAccSeed) {
-        const int accountId = database.addAccount(seedAcc.name, seedAcc.type, seedAcc.category, seedAcc.currency, seedAcc.notes);
-        if (accountId < 0) {
-            continue;
-        }
 
-        Data::Account acc;
-        acc.id       = accountId;
-        acc.name     = seedAcc.name;
-        acc.type     = seedAcc.type;
-        acc.category = seedAcc.category;
-        acc.currency = seedAcc.currency;
-        acc.notes    = seedAcc.notes;
-        m_accounts.append(acc);
+    // All the defaults and their record in one SQL transaction: when a write
+    // fails, nothing is written, and the next start tries again (#37).
+    Database& database = Database::instance();
+    const bool written = database.writeDefaults(Database::Defaults::Accounts, [&database]() {
+        for (const QString& name : kTypeSeed) {
+            if (database.addAccountType(name) < 0) {
+                return false;
+            }
+        }
+        for (const SeedCat& seedCat : kCatSeed) {
+            if (database.addAccountCategory(seedCat.name, seedCat.color) < 0) {
+                return false;
+            }
+        }
+        for (const SeedAcc& seedAcc : kAccSeed) {
+            if (database.addAccount(seedAcc.name, seedAcc.type, seedAcc.category, seedAcc.currency, seedAcc.notes) < 0) {
+                return false;
+            }
+        }
+        return true;
+    });
+    if (!written) {
+        qWarning() << "[AccountController] could not write the default accounts:" << database.lastError();
     }
 }
 
@@ -293,16 +294,33 @@ void AccountController::renameAccountCategory(int index, const QString& newName)
         return;
     }
     const QString trimmed = newName.trimmed();
-    if (trimmed.isEmpty() || trimmed == m_accountCategories.at(index).name) {
+    const QString oldName = m_accountCategories.at(index).name;
+    if (trimmed.isEmpty() || trimmed == oldName) {
         return;
     }
+    // Same check as addAccountCategory() (#34). A change of case only is a rename.
+    for (qsizetype i = 0; i < m_accountCategories.size(); ++i) {
+        if (i != index && m_accountCategories.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  An account category with this name already exists"));
+            return;
+        }
+    }
+    // The rename also reaches the accounts in this category.
     if (!Database::instance().renameAccountCategory(m_accountCategories.at(index).id, trimmed)) {
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the account category"));
         return;
     }
     // index bounds-checked above; QList's at() is const-only, so mutating
     // through operator[] is genuinely required here.
     m_accountCategories[index].name = trimmed; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (Data::Account& account : m_accounts) {
+        if (account.category == oldName) {
+            account.category = trimmed;
+        }
+    }
     emit accountCategoriesChanged();
+    emit accountsChanged();
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account category renamed"));
 }
 
 void AccountController::setAccountCategoryColor(int index, const QString& color)
@@ -364,16 +382,33 @@ void AccountController::renameAccountType(int index, const QString& newName)
         return;
     }
     const QString trimmed = newName.trimmed();
-    if (trimmed.isEmpty() || trimmed == m_accountTypes.at(index).name) {
+    const QString oldName = m_accountTypes.at(index).name;
+    if (trimmed.isEmpty() || trimmed == oldName) {
         return;
     }
+    // Same check as addAccountType() (#34). A change of case only is a rename.
+    for (qsizetype i = 0; i < m_accountTypes.size(); ++i) {
+        if (i != index && m_accountTypes.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  An account type with this name already exists"));
+            return;
+        }
+    }
+    // The rename also reaches the accounts of this type.
     if (!Database::instance().renameAccountType(m_accountTypes.at(index).id, trimmed)) {
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the account type"));
         return;
     }
     // index bounds-checked above; QList's at() is const-only, so mutating
     // through operator[] is genuinely required here.
     m_accountTypes[index].name = trimmed; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    for (Data::Account& account : m_accounts) {
+        if (account.type == oldName) {
+            account.type = trimmed;
+        }
+    }
     emit accountTypesChanged();
+    emit accountsChanged();
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account type renamed"));
 }
 
 void AccountController::removeAccountType(int index)
@@ -484,6 +519,7 @@ QVariantList AccountController::transactionsForAccount(int accountIndex) const
     }
 
     const auto txs = Database::instance().transactionsForAccount(m_accounts.at(accountIndex).id);
+    const Fmt::Currency unit = currencyOf(accountIndex);
     rows.reserve(txs.size());
     for (const Data::Transaction& transaction : txs) {
         rows.append(QVariantMap{
@@ -494,11 +530,11 @@ QVariantList AccountController::transactionsForAccount(int accountIndex) const
             { "operationDateIso",    transaction.operationDate.isValid() ? transaction.operationDate.toString(Qt::ISODate) : QString() },
             { "name",                transaction.name },
             { "description",        transaction.description },
-            { "debitText",          transaction.debit  > 0.0 ? Fmt::money(-transaction.debit) : QStringLiteral("—") },
+            { "debitText",          transaction.debit  > 0.0 ? Fmt::money(-transaction.debit, unit) : QStringLiteral("—") },
             { "debit",              transaction.debit },
-            { "creditText",         transaction.credit > 0.0 ? Fmt::money(transaction.credit, true) : QStringLiteral("—") },
+            { "creditText",         transaction.credit > 0.0 ? Fmt::money(transaction.credit, unit, true) : QStringLiteral("—") },
             { "credit",             transaction.credit },
-            { "balanceText",        Fmt::money(transaction.balanceAfter) },
+            { "balanceText",        Fmt::money(transaction.balanceAfter, unit) },
             { "category",           transaction.category },
             { "subcategory",        transaction.subcategory },
         });
@@ -557,7 +593,7 @@ QVariantList AccountController::balanceCheckpoints(int accountIndex) const
             { "date",         checkpoint.date.isValid() ? checkpoint.date.toString(Qt::ISODate) : QString() },
             { "dateText",     Fmt::dateOrDash(checkpoint.date) },
             { "balance",      checkpoint.balance },
-            { "balanceText",  Fmt::money(checkpoint.balance) },
+            { "balanceText",  Fmt::money(checkpoint.balance, currencyOf(accountIndex)) },
             { "note",         checkpoint.note },
         });
     }
@@ -606,11 +642,18 @@ QVariantList AccountController::accountBalanceHistory(int accountIndex) const
     }
     const int accountId = m_accounts.at(accountIndex).id;
 
+    // The bank's running balance (balanceAfter) follows the booking order:
+    // the confirmation date, not the operation date. A card payment made on
+    // 02/27 and booked on 03/02 comes after a transfer booked on 03/01. So the
+    // replay goes in booking order, and each point is a booking date (#36). A
+    // row with no confirmation date uses its operation date
+    // (Data::bookingDate()).
+
     QVector<Data::Transaction> txs = Database::instance().transactionsForAccount(accountId);
     QVector<Data::Transaction> dated;
     dated.reserve(txs.size());
     for (const Data::Transaction& tx : txs) {
-        if (tx.operationDate.isValid()) {
+        if (Data::bookingDate(tx).isValid()) {
             dated.append(tx);
         }
     }
@@ -619,14 +662,17 @@ QVariantList AccountController::accountBalanceHistory(int accountIndex) const
     }
     // Database::transactionsForAccount()/TransactionsTable::allForAccount()
     // orders most-recent-first (for the read-only tables); a running-balance
-    // walk needs chronological order instead.
+    // walk needs booking order instead. On one day, the rows keep the order
+    // of the statement (the order in which they were saved, so the id).
     std::sort(dated.begin(), dated.end(), [](const Data::Transaction& a, const Data::Transaction& b) {
-        return a.operationDate < b.operationDate;
+        const QDate dateA = Data::bookingDate(a);
+        const QDate dateB = Data::bookingDate(b);
+        return dateA != dateB ? dateA < dateB : a.id < b.id;
     });
 
     double running = 0.0;
     const std::optional<Data::AccountBalanceCheckpoint> checkpoint =
-        Database::instance().latestCheckpointOnOrBefore(accountId, dated.first().operationDate);
+        Database::instance().latestCheckpointOnOrBefore(accountId, Data::bookingDate(dated.first()));
     if (checkpoint.has_value()) {
         running = checkpoint->balance;
     } else {
@@ -637,21 +683,22 @@ QVariantList AccountController::accountBalanceHistory(int accountIndex) const
         running = first.balanceAfter - (first.credit - first.debit);
     }
 
-    auto pushPoint = [&points](const QDate& date, double balance) {
+    const Fmt::Currency unit = currencyOf(accountIndex);
+    auto pushPoint = [&points, unit](const QDate& date, double balance) {
         points.append(QVariantMap{
             { "dateIso",     date.toString(Qt::ISODate) },
             { "dateText",    Fmt::dateOrDash(date) },
             { "timeMs",      static_cast<double>(date.startOfDay().toMSecsSinceEpoch()) },
             { "balance",     balance },
-            { "balanceText", Fmt::money(balance) },
+            { "balanceText", Fmt::money(balance, unit) },
         });
     };
 
-    QDate day = dated.first().operationDate;
+    QDate day = Data::bookingDate(dated.first());
     for (const Data::Transaction& tx : dated) {
-        if (tx.operationDate != day) {
+        if (Data::bookingDate(tx) != day) {
             pushPoint(day, running);
-            day = tx.operationDate;
+            day = Data::bookingDate(tx);
         }
         running += (tx.credit - tx.debit);
     }
@@ -686,8 +733,9 @@ QVariantMap AccountController::accountBalanceSummary(int accountIndex) const
         }
     }
 
-    result["currentBalanceText"] = Fmt::money(currentBalance);
+    result["currentBalanceText"] = Fmt::money(currentBalance, currencyOf(accountIndex));
     result["currentBalanceRaw"]  = currentBalance;
+    result["currencySymbol"]     = Fmt::currencySymbol(currencyOf(accountIndex));
     result["asOfDateText"]       = asOfText;
     result["transactionCount"]   = Database::instance().transactionCountForAccount(accountId);
     result["hasHistory"]         = !history.isEmpty();
@@ -728,8 +776,9 @@ QVariantMap AccountController::accountCategoryBreakdown(int accountIndex) const
         }
     }
 
-    auto buildList = [](const QMap<QString, double>& categoryTotals,
-                         const QMap<QString, QMap<QString, double>>& subTotals) {
+    const Fmt::Currency unit = currencyOf(accountIndex);
+    auto buildList = [unit](const QMap<QString, double>& categoryTotals,
+                             const QMap<QString, QMap<QString, double>>& subTotals) {
         QVariantList list;
         for (auto categoryIt = categoryTotals.constBegin(); categoryIt != categoryTotals.constEnd(); ++categoryIt) {
             QVariantList subcategories;
@@ -738,13 +787,13 @@ QVariantMap AccountController::accountCategoryBreakdown(int accountIndex) const
                 subcategories.append(QVariantMap{
                     { "subcategory", subIt.key() },
                     { "totalRaw",    subIt.value() },
-                    { "totalText",   Fmt::money(subIt.value()) },
+                    { "totalText",   Fmt::money(subIt.value(), unit) },
                 });
             }
             list.append(QVariantMap{
                 { "category",      categoryIt.key() },
                 { "totalRaw",      categoryIt.value() },
-                { "totalText",     Fmt::money(categoryIt.value()) },
+                { "totalText",     Fmt::money(categoryIt.value(), unit) },
                 { "subcategories", subcategories },
             });
         }
@@ -754,6 +803,14 @@ QVariantMap AccountController::accountCategoryBreakdown(int accountIndex) const
     result["income"]   = buildList(incomeCategoryTotals, incomeSubTotals);
     result["expenses"] = buildList(expenseCategoryTotals, expenseSubTotals);
     return result;
+}
+
+Fmt::Currency AccountController::currencyOf(int accountIndex) const
+{
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
+        return Fmt::currency();
+    }
+    return Fmt::currencyFromCode(m_accounts.at(accountIndex).currency);
 }
 
 void AccountController::setStatus(StatusMessage::Level level, const QString& msg)

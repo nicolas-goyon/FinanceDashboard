@@ -4,12 +4,14 @@
 #include "models/Category.h"
 
 #include <QColor>
+#include <QDebug>
 #include <QObject>
 #include <QSet>
 #include <QString>
 #include <QVariantList>
 #include <QVariantMap>
 #include <Qt>
+#include <QtLogging>
 #include <QtMinMax>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
 
@@ -24,9 +26,12 @@ CategoryController::CategoryController(QObject* parent)
 {
     // DB-backed (see ARCHITECTURE.MD § Category Management): load whatever is
     // already persisted, or seed the original mock defaults on a fresh DB.
+    // Only once per database: an empty table after "Reset Database" is not a
+    // fresh DB, and stays empty (#37).
     m_categories = Database::instance().loadCategories();
-    if (m_categories.isEmpty()) {
+    if (m_categories.isEmpty() && !Database::instance().defaultsWritten(Database::Defaults::Categories)) {
         seedDefaults();
+        m_categories = Database::instance().loadCategories(); // all of them, or none
     }
 }
 
@@ -80,27 +85,25 @@ void CategoryController::seedDefaults()
         { "Other", "#6c7086", {} },
     };
 
+    // All the defaults and their record in one SQL transaction: when a write
+    // fails, nothing is written, and the next start tries again (#37).
     Database& database = Database::instance();
-    for (const SeedCat& seedCat : kSeed) {
-        const int catId = database.addCategory(seedCat.name, seedCat.color);
-        if (catId < 0) {
-            continue; // DB not open / insert failed — skip, retried next launch
-        }
-
-        Data::Category cat;
-        cat.id    = catId;
-        cat.name  = seedCat.name;
-        cat.color = seedCat.color;
-
-        for (const SeedSub& seedSub : seedCat.subs) {
-            const int subId = database.addSubcategory(catId, seedSub.name, seedSub.color);
-            if (subId < 0) {
-                continue;
+    const bool written = database.writeDefaults(Database::Defaults::Categories, [&database]() {
+        for (const SeedCat& seedCat : kSeed) {
+            const int catId = database.addCategory(seedCat.name, seedCat.color);
+            if (catId < 0) {
+                return false;
             }
-            cat.subcategories.append(Data::Subcategory{ subId, seedSub.name, seedSub.color });
+            for (const SeedSub& seedSub : seedCat.subs) {
+                if (database.addSubcategory(catId, seedSub.name, seedSub.color) < 0) {
+                    return false;
+                }
+            }
         }
-
-        m_categories.append(cat);
+        return true;
+    });
+    if (!written) {
+        qWarning() << "[CategoryController] could not write the default categories:" << database.lastError();
     }
 }
 
@@ -240,6 +243,14 @@ void CategoryController::renameCategory(int index, const QString& newName)
     if (trimmed.isEmpty() || trimmed == m_categories.at(index).name) {
         return;
     }
+    // Same check as addCategory() (#34). A change of case only is a rename.
+    for (qsizetype i = 0; i < m_categories.size(); ++i) {
+        if (i != index && m_categories.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  A category with this name already exists"));
+            return;
+        }
+    }
+    // The rename also reaches the transactions and the rules that use the name.
     if (!Database::instance().renameCategory(m_categories.at(index).id, trimmed)) {
         setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the category"));
         return;
@@ -331,6 +342,14 @@ void CategoryController::renameSubcategory(int categoryIndex, int subIndex, cons
     if (trimmed.isEmpty() || trimmed == cat.subcategories.at(subIndex).name) {
         return;
     }
+    // Same check as addSubcategory(), in this category (#34).
+    for (qsizetype i = 0; i < cat.subcategories.size(); ++i) {
+        if (i != subIndex && cat.subcategories.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  A subcategory with this name already exists"));
+            return;
+        }
+    }
+    // The rename also reaches the transactions and the rules of this category.
     if (!Database::instance().renameSubcategory(cat.subcategories.at(subIndex).id, trimmed)) {
         setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the subcategory"));
         return;

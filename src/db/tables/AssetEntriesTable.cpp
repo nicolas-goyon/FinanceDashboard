@@ -1,4 +1,5 @@
 #include "AssetEntriesTable.h"
+#include "SqlPrepare.h"
 #include "models/AssetEntry.h"
 
 #include <QLatin1String>
@@ -53,9 +54,12 @@ bool AssetEntriesTable::createTable()
 bool AssetEntriesTable::deleteForSnapshot(int snapshotId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "DELETE FROM asset_entries WHERE snapshot_id = ?;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AssetEntriesTable] deleteForSnapshot");
+        return false;
+    }
     query.addBindValue(snapshotId);
 
     const bool success = query.exec();
@@ -72,10 +76,13 @@ bool AssetEntriesTable::insertBatch(int snapshotId,
     if (entries.isEmpty()) { return true; }
 
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "INSERT INTO asset_entries (snapshot_id, category, name, value)"
         " VALUES (?, ?, ?, ?);"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AssetEntriesTable] insertBatch");
+        return false;
+    }
 
     for (const Data::AssetEntry& entry : entries) {
         query.addBindValue(snapshotId);
@@ -96,12 +103,15 @@ std::optional<Data::FinancialSnapshot>
 AssetEntriesTable::loadForSnapshot(int snapshotId, const QDate& date) const
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "SELECT category, name, value"
         " FROM asset_entries"
         " WHERE snapshot_id = ?"
         " ORDER BY id ASC;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AssetEntriesTable] loadForSnapshot");
+        return std::nullopt;
+    }
     query.addBindValue(snapshotId);
 
     if (!query.exec()) {

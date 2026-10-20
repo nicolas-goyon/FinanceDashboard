@@ -32,6 +32,8 @@
 //        filled
 //   #54  a status message has a level, and a new message stays for the whole
 //        delay
+//   #133 the start check takes the last saved row in booking order (the
+//        confirmation date), not in operation-date order
 
 #include "SnapshotImportController.h"
 #include "db/Database.h"
@@ -42,6 +44,7 @@
 #include "models/CategoryRule.h"
 #include "models/Transaction.h"
 #include "utils/AccountHashing.h"
+#include "utils/Formatter.h"
 #include "utils/StatusMessage.h"
 
 #include <QFile>
@@ -211,6 +214,7 @@ private slots:
     void resetClearsTheLastReport();
     void manualPicksAreNotAutoFilled();
     void newStatusMessageStaysForTheWholeDelay();
+    void startCheckUsesTheBookingOrder();
 
 private:
     // Runs the template alone on `csv`: the statement as it reads it, and its log.
@@ -983,6 +987,47 @@ void ImportSaveTest::newStatusMessageStaysForTheWholeDelay()
     QCOMPARE(status.text(), QStringLiteral("failure"));
     status.show(StatusMessage::Level::Success, QStringLiteral("next"));
     QCOMPARE(status.text(), QStringLiteral("next"));
+}
+
+void ImportSaveTest::startCheckUsesTheBookingOrder()
+{
+    // The account has a row booked on 02/20 (balance 1 000) and a card
+    // payment made on 02/27 but booked on 03/02 (balance 850).
+    Data::Transaction salary;
+    salary.operationDate = QDate(2026, 2, 20);
+    salary.confirmationDate = QDate(2026, 2, 20);
+    salary.name = salary.description = QStringLiteral("Salary");
+    salary.credit = 1000.0;
+    salary.balanceAfter = 1000.0;
+    Data::Transaction card;
+    card.operationDate = QDate(2026, 2, 27);
+    card.confirmationDate = QDate(2026, 3, 2);
+    card.name = card.description = QStringLiteral("Card payment");
+    card.debit = 150.0;
+    card.balanceAfter = 850.0;
+    QVERIFY(Database::instance().insertTransactions(m_account, {salary, card}));
+
+    // A statement that starts on 02/28 with 1 000: the card payment is not
+    // booked yet. Before the fix, check 1 took the card payment (the latest
+    // operation date), expected 850 and showed a gap of +150.
+    SnapshotImportController controller;
+    parse(controller, statement("From 02/28/2026 to 03/31/2026", "02/28/2026,1000.00 \xE2\x82\xAC",
+                                "03/31/2026,1010.00 \xE2\x82\xAC",
+                                "03/05,03/05,\"Transfer: GIFT\nInternal ref.: B1\",,10.00,1010.00\n"));
+    const QVariantMap check = controller.checkReconciliation(m_account);
+    QVERIFY(check.value(QStringLiteral("hasStartReference")).toBool());
+    QVERIFY2(check.value(QStringLiteral("startOk")).toBool(),
+             qPrintable(check.value(QStringLiteral("startDiffText")).toString()));
+    QCOMPARE(check.value(QStringLiteral("startSourceDateText")).toString(), Fmt::dateOrDash(QDate(2026, 2, 20)));
+
+    // A statement that starts after the booking of the card payment: that row.
+    SnapshotImportController later;
+    parse(later, statement("From 03/03/2026 to 03/31/2026", "03/03/2026,850.00 \xE2\x82\xAC",
+                           "03/31/2026,860.00 \xE2\x82\xAC",
+                           "03/05,03/05,\"Transfer: GIFT\nInternal ref.: B1\",,10.00,860.00\n"));
+    const QVariantMap laterCheck = later.checkReconciliation(m_account);
+    QVERIFY(laterCheck.value(QStringLiteral("startOk")).toBool());
+    QCOMPARE(laterCheck.value(QStringLiteral("startSourceDateText")).toString(), Fmt::dateOrDash(QDate(2026, 3, 2)));
 }
 
 QTEST_GUILESS_MAIN(ImportSaveTest)

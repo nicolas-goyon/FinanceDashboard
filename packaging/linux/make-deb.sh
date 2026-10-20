@@ -28,7 +28,9 @@
 # libraries that are not bundled, and asks dpkg which package installed each
 # one on the build machine. Build on the oldest system the package is for (CI:
 # Ubuntu 24.04). Optional plugins (other SQL drivers, the GTK theme, eglfs) are
-# left out: Qt skips a plugin whose libraries are missing.
+# left out: Qt skips a plugin whose libraries are missing. The TLS backend of
+# the update check (#117) loads OpenSSL at run time, with no NEEDED entry: its
+# packages are added by name below.
 # packaging/linux/test-deb.sh checks the result in a clean container.
 #
 # Why not CPack's DEB generator: it installs under a single prefix, so the
@@ -44,6 +46,11 @@ INSTALL_TREE="${1:-}"
 VERSION="${2:-}"
 OUT_DIR="${3:-dist}"
 [[ -n "$INSTALL_TREE" && -n "$VERSION" ]] || usage
+# The .deb is for the prod app only (#130): the Test app is an AppImage.
+if [[ -f "$INSTALL_TREE/share/applications/finance-dashboard-test.desktop" ]]; then
+    echo "error: $INSTALL_TREE is a Test app build (FD_APP_IDENTITY=test); the .deb is for the prod app only" >&2
+    exit 1
+fi
 [[ -x "$INSTALL_TREE/bin/FinanceDashboard" ]] || {
     echo "error: $INSTALL_TREE/bin/FinanceDashboard not found or not executable" >&2
     exit 1
@@ -100,6 +107,7 @@ mapfile -d '' ELF_FILES < <(find "$APP_ROOT/bin" "$APP_ROOT/lib" "$APP_ROOT/qml"
         "$APP_ROOT/plugins/platforms" "$APP_ROOT/plugins/xcbglintegrations" \
         "$APP_ROOT/plugins/platforminputcontexts" "$APP_ROOT/plugins/imageformats" \
         "$APP_ROOT/plugins"/wayland-* "$APP_ROOT/plugins/sqldrivers/libqsqlite.so" \
+        "$APP_ROOT/plugins/tls" \
         -type f \( -name '*.so*' -o -name FinanceDashboard \) -print0 2>/dev/null || true)
 declare -A DEP_PACKAGES=()
 # Read once. awk reads all its input below (no early `exit`, no `head`): under
@@ -126,6 +134,17 @@ for elf in "${ELF_FILES[@]}"; do
     done < <(objdump -p "$elf" 2>/dev/null | awk '/NEEDED/ {print $2}')
 done
 DEPENDS="$(printf '%s\n' "${!DEP_PACKAGES[@]}" | sort | paste -sd, - | sed 's/,/, /g')"
+# The update check (#117) uses HTTPS: Qt's TLS backend
+# (plugins/tls/libqopensslbackend.so) loads libssl.so.3 when it starts (dlopen),
+# and OpenSSL verifies the certificate of api.github.com with the certificates
+# of ca-certificates. No NEEDED entry shows them, so name them here. libssl3t64
+# on Ubuntu 24.04 and Debian 13; libssl3 is the name before the 64-bit time_t
+# change.
+[[ -f "$APP_ROOT/plugins/tls/libqopensslbackend.so" ]] || {
+    echo "error: plugins/tls/libqopensslbackend.so is not in the install tree (the update check needs it)" >&2
+    exit 1
+}
+DEPENDS="$DEPENDS, libssl3t64 | libssl3, ca-certificates"
 echo "    Depends: $DEPENDS"
 
 cat > "$ROOT/DEBIAN/control" <<EOF
@@ -143,7 +162,9 @@ Description: Local-first personal finance dashboard
  flow, savings and investments over time.
  .
  All data stays on this machine in a local SQLite file — there is no bank
- connectivity, no account linking and no external data fetching.
+ connectivity and no account linking. The only network call is the update
+ check: at each start, the app asks GitHub for the list of releases. The
+ check can be turned off.
  .
  The Qt runtime this application needs is bundled inside the package, so it
  does not depend on the distribution's Qt version.

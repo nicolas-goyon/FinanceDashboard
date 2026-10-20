@@ -43,6 +43,12 @@ public:
     // database file path that was used.
     static QList<StartupStep> runInitialization(QString& dbPath);
 
+    // The database file of the app: finance_dashboard.db in its data folder
+    // (QStandardPaths::AppDataLocation, from the organization and application
+    // names). main.cpp also uses it in the Test app, with the application name
+    // of the prod app, to find the prod database (#130).
+    [[nodiscard]] static QString databasePath();
+
     [[nodiscard]] static bool hasFatalFailure(const QList<StartupStep>& steps);
 
     // For qml/StartupErrorWindow.qml: list of { name, ok, fatal, detail, hint } maps.

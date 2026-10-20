@@ -3,6 +3,7 @@
 
 #include "models/Account.h"
 #include "models/Transaction.h"
+#include "utils/Formatter.h"
 #include "utils/StatusMessage.h"
 
 #include <QObject>
@@ -165,12 +166,14 @@ public:
     // ── Account History (AccountHistoryPage.qml — read-only, see
     //    ARCHITECTURE.MD § Account History) ─────────────────────────────────
     // Day-by-day running balance, computed by replaying every persisted
-    // transaction with a valid operation date in chronological order (one
-    // point per calendar day that has at least one transaction, cumulative
-    // through that day's last transaction) — the "using each transaction to
-    // compute the balance each day" line chart from the product request.
+    // transaction with a valid booking date (the confirmation date, else the
+    // operation date) in booking order, the order of the bank's own running
+    // balance (#36) — one point per booking day that has at least one
+    // transaction, cumulative through that day's last transaction — the
+    // "using each transaction to compute the balance each day" line chart
+    // from the product request.
     // Seeded from the latest AccountBalanceCheckpoint on or before the
-    // first transaction's date if one exists; otherwise inferred by
+    // first transaction's booking date if one exists; otherwise inferred by
     // subtracting the first transaction's own (credit - debit) from its own
     // declared balanceAfter, so the line starts somewhere plausible instead
     // of at a misleading 0 (product decision — see ARCHITECTURE.MD).
@@ -180,7 +183,10 @@ public:
     // Current balance = the last point of accountBalanceHistory(), or (if
     // there are no dated transactions at all) the latest balance checkpoint
     // on or before today, or empty/zero if neither exists.
-    // { currentBalanceText, currentBalanceRaw, asOfDateText, transactionCount, hasHistory }
+    // { currentBalanceText, currentBalanceRaw, currencySymbol, asOfDateText,
+    //   transactionCount, hasHistory }. The texts of the amounts of an account
+    //   use its currency, and currencySymbol is "€" or "$" for the labels of
+    //   the page (#48).
     Q_INVOKABLE [[nodiscard]] QVariantMap accountBalanceSummary(int accountIndex) const;
 
     // Category/subcategory breakdown for the account's two new "Income by
@@ -229,11 +235,16 @@ signals:
 private:
     void setStatus(StatusMessage::Level level, const QString& msg);
     void loadFromDb();
-    // Seeds the default account types (CCP, Livret A, LDDS, PEL, Assurance
+    // The currency of the account at `accountIndex` (its `currency` column),
+    // or the app's currency for an index out of the list (#48).
+    [[nodiscard]] Fmt::Currency currencyOf(int accountIndex) const;
+    // Writes the default account types (CCP, Livret A, LDDS, PEL, Assurance
     // Vie, PEA, CTO, Other), the 4 default account categories (Day-to-day,
-    // Savings, Investments, Urgent savings), and 6 demo accounts, the first
-    // time the app runs against an empty DB (or after a reset — see
-    // reload()).
+    // Savings, Investments, Urgent savings) and 6 demo accounts to the DB, all
+    // or nothing, with their record (Database::writeDefaults()). Called from
+    // the constructor only: when the three tables are empty and the database
+    // has no record of its defaults — not after a reset (#37). The
+    // constructor then loads them.
     void seedDefaults();
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — private helper,
     // both call sites (addHash/linkAccountHash below) pass a literal source

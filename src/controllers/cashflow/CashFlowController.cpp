@@ -97,11 +97,14 @@ CashFlowController::CashFlowController(QObject* parent)
     m_minTimeMs = m_timestamps.first().toDouble();
     m_maxTimeMs = m_timestamps.last().toDouble();
 
-    // Rolling 3-month average of expenses
-    for (int monthIdx = 0; monthIdx < kMonths; ++monthIdx) {
-        double sum = 0; int count = 0;
-        for (int k = qMax(0, monthIdx - 2); k <= monthIdx; ++k) { sum += expenses.at(k); ++count; }
-        m_rollingValues.append(sum / count);
+    // Rolling 3-month average of expenses, from the third month: before it,
+    // the window has only 1 or 2 months (#56).
+    constexpr int kWindow = 3;
+    for (int monthIdx = kWindow - 1; monthIdx < kMonths; ++monthIdx) {
+        double sum = 0;
+        for (int k = monthIdx - (kWindow - 1); k <= monthIdx; ++k) { sum += expenses.at(k); }
+        m_rollingTimestamps.append(m_timestamps.at(monthIdx));
+        m_rollingValues.append(sum / kWindow);
     }
 
     for (const Category& category : kCats) {
@@ -150,37 +153,56 @@ QVariantList CashFlowController::biggestRows() const
     return rows;
 }
 
+CashFlowController::FlowSides CashFlowController::moneyFlow(double income,
+                                                            const std::array<double, kCategories>& spending)
+{
+    FlowSides sides;
+    // MOCK: one salary input.
+    if (income > 0.0) {
+        sides.inputs.append(QVariantMap{ { "name", "Salary" }, { "value", income }, { "color", "#a6e3a1" } });
+    }
+    // Only the parts that are drawn count: a negative value (a refund) is
+    // left out of the chart, so it is left out of the total too.
+    double spent = 0;
+    for (int catIdx = 0; catIdx < kCategories; ++catIdx) {
+        const double value = spending.at(catIdx);
+        if (value > 0.0) {
+            spent += value;
+            sides.outputs.append(QVariantMap{
+                { "name", kCats.at(catIdx).name },
+                { "value", value },
+                { "color", kCats.at(catIdx).color },
+            });
+        }
+    }
+    // The leftover goes to the savings; an overspend comes from them. Both
+    // keep the totals of the two sides equal.
+    const double leftover = income - spent;
+    if (leftover > 0.0) {
+        sides.outputs.append(QVariantMap{ { "name", "Savings" }, { "value", leftover }, { "color", "#94e2d5" } });
+    } else if (leftover < 0.0) {
+        sides.inputs.append(QVariantMap{ { "name", "Overspend" }, { "value", -leftover }, { "color", "#f38ba8" } });
+    }
+    return sides;
+}
+
 QVariantList CashFlowController::flowInputs() const
 {
-    // MOCK: one salary input; totals match flowOutputs()
-    double income = m_incomeValues.at(m_selectedMonth).toDouble();
-    return {
-        QVariantMap{ { "name", "Salary" }, { "value", income }, { "color", "#a6e3a1" } },
-    };
+    return moneyFlow(m_incomeValues.at(m_selectedMonth).toDouble(), monthSpending(m_selectedMonth)).inputs;
 }
 
 QVariantList CashFlowController::flowOutputs() const
 {
-    QVariantList out;
-    const int month = m_selectedMonth;
-    double spent = 0;
+    return moneyFlow(m_incomeValues.at(m_selectedMonth).toDouble(), monthSpending(m_selectedMonth)).outputs;
+}
+
+std::array<double, CashFlowController::kCategories> CashFlowController::monthSpending(int month) const
+{
+    std::array<double, kCategories> spending = {};
     for (int catIdx = 0; catIdx < kCategories; ++catIdx) {
-        const double value = m_categoryData.at(catIdx).at(month);
-        spent += value;
-        out.append(QVariantMap{
-            { "name", kCats.at(catIdx).name },
-            { "value", value },
-            { "color", kCats.at(catIdx).color },
-        });
+        spending.at(catIdx) = m_categoryData.at(catIdx).at(month);
     }
-    // Leftover = savings — keeps input and output totals equal.
-    const double leftover = m_incomeValues.at(month).toDouble() - spent;
-    out.append(QVariantMap{
-        { "name", "Savings" },
-        { "value", qMax(leftover, 0.0) },
-        { "color", "#94e2d5" },
-    });
-    return out;
+    return spending;
 }
 
 QVariantList CashFlowController::categoryValues(int index) const

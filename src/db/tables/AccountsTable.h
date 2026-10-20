@@ -53,6 +53,12 @@ public:
     // Database::removeAccount(), which does all three in one transaction).
     bool remove(int accountId);
 
+    // Renames (#34). The accounts store their type and category names as
+    // text, not as ids: Database::renameAccountType()/renameAccountCategory()
+    // call these in the same SQL transaction as the rename itself.
+    bool renameType(const QString& oldName, const QString& newName);
+    bool renameCategory(const QString& oldName, const QString& newName);
+
     // All accounts, oldest first (insertion order via row id). Hashes left empty.
     [[nodiscard]] QVector<Data::Account> all() const;
 

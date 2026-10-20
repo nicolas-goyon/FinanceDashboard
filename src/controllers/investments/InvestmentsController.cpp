@@ -45,7 +45,9 @@ InvestmentsController::InvestmentsController(QObject* parent)
         m_valueMax = qMax(m_valueMax, portfolio.at(monthIdx));
 
         if (monthIdx > 0) {
-            const double pct = (portfolio.at(monthIdx) - prev) / prev * 100.0;
+            // The deposit of the month is not a gain: performance is the change
+            // of the value without it (#56).
+            const double pct = (portfolio.at(monthIdx) - prev - monthlyDeposit) / prev * 100.0;
             m_perfGains.append(pct >= 0 ? pct : 0.0);
             m_perfLosses.append(pct < 0 ? pct : 0.0);
             m_perfMax = qMax(m_perfMax, pct);

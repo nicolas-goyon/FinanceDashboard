@@ -4,9 +4,9 @@
 #  Full documentation: CI-CD.md. The short version:
 #
 #  * Every job is self-contained. None of them `needs:` another (the
-#    exceptions are `release`, which by definition cannot run before the things
-#    it publishes exist, and must not run when a blocking job failed, and
-#    `open-next-version`, which waits for the Changelog job). A job that fails
+#    exceptions are `release` and `prerelease`, which by definition cannot run
+#    before the things they publish exist, and must not run when a blocking
+#    job failed, and `open-next-version`, which waits for the Changelog job). A job that fails
 #    can be re-run on its own from the GitHub UI without dragging five other
 #    jobs along, and a broken linter never blocks a build. Each job checks out,
 #    sets up Qt and reads the version itself.
@@ -18,6 +18,12 @@
 #    (`version.py release`) before the merge. A push to main publishes that
 #    version: tag vX.Y.Z and a GitHub release, with no commit to main. Then CI
 #    opens a pull request that merges main back into develop.
+#
+#  * Release channels (#129). A push to develop, or a pull request with the
+#    label "experimental", publishes an experimental pre-release of the Test
+#    app (vX.Y.Z-exp.<run>, vX.Y.Z-exp.<run>.pr<number>); a push to
+#    release/** publishes a release candidate (vX.Y.Z-rc.<run>). See the
+#    prerelease job and CI-CD.md.
 #
 #  * The end products are meant to be plug and play. A user downloads one file:
 #      Windows  FinanceDashboard-<v>-windows-x64.exe   setup, shortcuts,
@@ -33,7 +39,12 @@ on:
   # to them does not start a second run.
   push:
     branches: [main, develop, "release/**", "hotfix/**"]
+  # "labeled" too: the label "experimental" makes a pull request publish a
+  # pre-release (#129), so adding it starts a run. Another label also starts
+  # one, which cancels the run in progress (see concurrency), but publishes
+  # nothing.
   pull_request:
+    types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
 
 # Read-only by default; the release job asks for more for itself.
@@ -298,6 +309,22 @@ jobs:
         shell: bash
         run: echo "version=$(python tools/version.py current)" >> "$GITHUB_OUTPUT"
 
+      # The pre-release of this run (#129): the Test packages get its version
+      # suffix (-exp.<run>, -exp.<run>.pr<number>, -rc.<run>).
+      - name: Channel
+        id: channel
+        # bash with pipefail: a failure of the command fails the step, not tee.
+        shell: bash
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          args=(--event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF" --run "$GITHUB_RUN_NUMBER")
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            args+=(--pr "$PR_NUMBER" --labels "$LABELS")
+          fi
+          python tools/release_flow.py channel "${args[@]}" | tee -a "$GITHUB_OUTPUT"
+
       - uses: ./.github/actions/setup-qt
         with:
           qt-version: ${{ env.QT_VERSION }}
@@ -328,6 +355,19 @@ jobs:
       # DLL it actually uses, the plugins, the QML modules and a qt.conf.
       - name: Install (self-contained tree)
         run: cmake --install build --config Release --prefix "${{ github.workspace }}/stage"
+
+      # The update check (#117) uses HTTPS. On Windows, Qt's Schannel backend
+      # uses the TLS of the system: no OpenSSL DLL to ship, but the plugin must
+      # be in the tree.
+      - name: The deployed tree has the TLS backend
+        shell: pwsh
+        run: |
+          $stage = "${{ github.workspace }}\stage"
+          $tls = @(Get-ChildItem -Path $stage -Recurse -Filter "*.dll" | Where-Object { $_.Directory.Name -eq "tls" })
+          $tls | ForEach-Object { Write-Host "  $($_.FullName.Substring($stage.Length + 1))" }
+          if (-not ($tls | Where-Object { $_.Name -eq "qschannelbackend.dll" })) {
+            throw "tls\qschannelbackend.dll is not in the deployed tree: the update check cannot use HTTPS"
+          }
 
       # Does the thing actually start? A missing QML module or platform plugin
       # only shows up at runtime, and shipping an installer that opens to a
@@ -363,6 +403,28 @@ jobs:
           }
           Stop-Process -Id $p.Id -Force
           Write-Host "OK — app stayed up for 15s on the windows platform plugin"
+
+      # The icon resource IDI_ICON1 (packaging/windows/app.rc.in, #111):
+      # Explorer and the shortcuts show it.
+      - name: The .exe has its icon
+        shell: pwsh
+        run: |
+          Add-Type -TypeDefinition @"
+          using System;
+          using System.Runtime.InteropServices;
+          public static class PeResource {
+              [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+              public static extern IntPtr LoadLibraryEx(string path, IntPtr file, uint flags);
+              [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+              public static extern IntPtr FindResource(IntPtr module, string name, IntPtr type);
+          }
+          "@
+          $exe = "${{ github.workspace }}\stage\FinanceDashboard.exe"
+          $module = [PeResource]::LoadLibraryEx($exe, [IntPtr]::Zero, 0x2)   # LOAD_LIBRARY_AS_DATAFILE
+          if ($module -eq [IntPtr]::Zero) { throw "cannot load $exe as a data file" }
+          $icon = [PeResource]::FindResource($module, "IDI_ICON1", [IntPtr]14)   # RT_GROUP_ICON
+          if ($icon -eq [IntPtr]::Zero) { throw "FinanceDashboard.exe has no IDI_ICON1 icon resource" }
+          Write-Host "OK — FinanceDashboard.exe has its icon (IDI_ICON1)"
 
       - name: Package (setup + portable ZIP)
         working-directory: build
@@ -406,6 +468,60 @@ jobs:
             Write-Host "OK — $($m.Name): install, update in place and uninstall"
           }
 
+      # The Test app (#130): the same build directory, with the Test identity
+      # (CMakeLists.txt § App identity). Only main.cpp, the icon resources and
+      # the QML caches build again.
+      - name: Build the Test app (setup + portable)
+        shell: bash
+        run: |
+          cmake -B build -DFD_APP_IDENTITY=test -DFD_VERSION_SUFFIX="${{ steps.channel.outputs.suffix }}"
+          cmake --build build --config Release --parallel
+          cmake --install build --config Release --prefix "${{ github.workspace }}/stage-test"
+          (cd build && cpack -C Release -B "${{ github.workspace }}/dist-test")
+          ls -la dist-test/*.exe dist-test/*.zip
+
+      # Both setups for the current user: each app has its own folder, Start
+      # menu folder and uninstall entry, and the uninstall of the Test app
+      # leaves the prod app in place.
+      - name: Test the prod and Test setups side by side
+        shell: pwsh
+        run: |
+          $uninstall = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+          $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+          $apps = @(
+            @{ Name = "prod"; Setup = (Get-ChildItem "${{ github.workspace }}\dist\FinanceDashboard-*.exe").FullName;
+               Dir = "$env:LOCALAPPDATA\Programs\FinanceDashboard"; Menu = "$menu\Finance Dashboard";
+               Key = "$uninstall\9F2B4E7C-3A61-4C0D-9E8B-5D7A1C46F0B3_is1" },
+            @{ Name = "Test"; Setup = (Get-ChildItem "${{ github.workspace }}\dist-test\FinanceDashboardTest-*.exe").FullName;
+               Dir = "$env:LOCALAPPDATA\Programs\FinanceDashboardTest"; Menu = "$menu\Finance Dashboard Test";
+               Key = "$uninstall\30296817-401F-4AB5-8B40-42BF8DC81C7F_is1" }
+          )
+          foreach ($a in $apps) {
+            $log = "${{ github.workspace }}\dist\setup-side-by-side-$($a.Name).log"
+            $p = Start-Process -FilePath $a.Setup -Wait -PassThru -ArgumentList @(
+              "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/LOG=`"$log`"")
+            if ($p.ExitCode -ne 0) { throw "$($a.Name): setup exit code $($p.ExitCode)" }
+          }
+          foreach ($a in $apps) {
+            if (-not (Test-Path "$($a.Dir)\FinanceDashboard.exe")) { throw "$($a.Name): FinanceDashboard.exe is not in $($a.Dir)" }
+            if (-not (Test-Path $a.Key)) { throw "$($a.Name): no uninstall key $($a.Key)" }
+            if (-not (Get-ChildItem "$($a.Menu)\*.lnk" -ErrorAction SilentlyContinue)) { throw "$($a.Name): no shortcut in $($a.Menu)" }
+          }
+          $test = $apps[1]
+          $p = Start-Process -FilePath "$($test.Dir)\unins000.exe" -Wait -PassThru -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")
+          if ($p.ExitCode -ne 0) { throw "Test: uninstaller exit code $($p.ExitCode)" }
+          for ($i = 0; $i -lt 60 -and (Test-Path "$($test.Dir)\FinanceDashboard.exe"); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path "$($test.Dir)\FinanceDashboard.exe") { throw "Test: FinanceDashboard.exe is still there after its uninstall" }
+          if (Test-Path $test.Key) { throw "Test: the uninstall key is still there" }
+          $prod = $apps[0]
+          if (-not (Test-Path "$($prod.Dir)\FinanceDashboard.exe")) { throw "the uninstall of the Test app removed the prod app" }
+          if (-not (Test-Path $prod.Key)) { throw "the uninstall of the Test app removed the uninstall key of the prod app" }
+          $p = Start-Process -FilePath "$($prod.Dir)\unins000.exe" -Wait -PassThru -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")
+          if ($p.ExitCode -ne 0) { throw "prod: uninstaller exit code $($p.ExitCode)" }
+          Write-Host "OK — the prod and Test apps install side by side, and each one uninstalls alone"
+
       - name: Upload the setup logs
         if: failure()
         uses: actions/upload-artifact@v4
@@ -423,6 +539,17 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
+      # Not "packages-*": the release job publishes those (the prod app only).
+      # The pre-releases of the Test app use these (#129).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-packages-windows
+          path: |
+            dist-test/*.exe
+            dist-test/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
   package-linux:
     name: Package — Linux (AppImage + .deb + portable)
     runs-on: ubuntu-24.04
@@ -432,6 +559,22 @@ jobs:
       - name: Read version
         id: version
         run: echo "version=$(python3 tools/version.py current)" >> "$GITHUB_OUTPUT"
+
+      # The pre-release of this run (#129): the Test packages get its version
+      # suffix (-exp.<run>, -exp.<run>.pr<number>, -rc.<run>).
+      - name: Channel
+        id: channel
+        # bash with pipefail: a failure of the command fails the step, not tee.
+        shell: bash
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          args=(--event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF" --run "$GITHUB_RUN_NUMBER")
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            args+=(--pr "$PR_NUMBER" --labels "$LABELS")
+          fi
+          python3 tools/release_flow.py channel "${args[@]}" | tee -a "$GITHUB_OUTPUT"
 
       - uses: ./.github/actions/setup-qt
         with:
@@ -446,6 +589,14 @@ jobs:
 
       - name: Install (self-contained tree)
         run: cmake --install build --prefix "${{ github.workspace }}/stage"
+
+      # The update check (#117) uses HTTPS. Qt's OpenSSL backend must be in
+      # the tree; it loads the libssl.so.3 of the system at run time.
+      - name: The deployed tree has the TLS backend
+        run: |
+          ls stage/plugins/tls || true
+          test -f stage/plugins/tls/libqopensslbackend.so || {
+            echo "::error::plugins/tls/libqopensslbackend.so is not in the deployed tree: the update check cannot use HTTPS"; exit 1; }
 
       - name: Package (portable tar.gz)
         working-directory: build
@@ -494,8 +645,47 @@ jobs:
           docker run --rm -v "$PWD:/src:ro" ubuntu:24.04 \
             bash /src/packaging/linux/test-deb.sh "/src/$deb"
 
+      # The Test app (#130): the same build directory, with the Test identity
+      # (CMakeLists.txt § App identity). Only an AppImage: the .deb and the
+      # .tar.gz are for the prod app.
+      - name: Build the Test app (AppImage)
+        run: |
+          cmake -B build -DFD_APP_IDENTITY=test -DFD_VERSION_SUFFIX="${{ steps.channel.outputs.suffix }}"
+          cmake --build build --parallel
+          cmake --install build --prefix "${{ github.workspace }}/stage-test"
+          bash packaging/linux/make-appimage.sh stage-test "${{ steps.channel.outputs.version }}" dist-test
+
+      # As the prod smoke test, and the Test app keeps its data in its own
+      # folder: DataAnalysis/FinanceDashboardTest, never DataAnalysis/FinanceDashboard.
+      - name: Smoke test the Test AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          QT_PLUGIN_PATH: ""
+          QML2_IMPORT_PATH: ""
+          QML_IMPORT_PATH: ""
+          LD_LIBRARY_PATH: ""
+        run: |
+          appimage=$(ls dist-test/FinanceDashboardTest-*.AppImage)
+          export XDG_DATA_HOME="$RUNNER_TEMP/xdg-data-test"
+          echo "Running $appimage"
+          set +e
+          xvfb-run -a --server-args="-screen 0 1280x800x24" \
+            timeout --signal=TERM 20 "$appimage"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 124 ] && [ "$rc" -ne 143 ]; then
+            echo "::error::The Test AppImage exited early with code $rc"
+            exit 1
+          fi
+          test -f "$XDG_DATA_HOME/DataAnalysis/FinanceDashboardTest/finance_dashboard.db" || {
+            echo "::error::The Test app did not create its database in DataAnalysis/FinanceDashboardTest"; exit 1; }
+          if [ -e "$XDG_DATA_HOME/DataAnalysis/FinanceDashboard" ]; then
+            echo "::error::The Test app wrote to the data folder of the prod app"; exit 1
+          fi
+          echo "OK — the Test AppImage stayed up for 20s, with its own data folder"
+
       - name: List artifacts
-        run: ls -la dist/
+        run: ls -la dist/ dist-test/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -504,6 +694,14 @@ jobs:
             dist/*.AppImage
             dist/*.deb
             dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+      # Not "packages-*": see the Windows job.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-packages-linux
+          path: dist-test/*.AppImage
           if-no-files-found: error
           retention-days: 30
 
@@ -747,6 +945,27 @@ jobs:
             --target "$GITHUB_SHA" \
             dist/*
 
+      # The release candidates of this version (preprod pre-releases, #129)
+      # are not needed any more: delete them with their tags. A re-run finds
+      # nothing to delete.
+      - name: Delete the release candidates of this version
+        if: steps.guard.outputs.published == 'true' || steps.publish.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prefix="v${{ steps.version.outputs.version }}-rc."
+          if ! candidates=$(gh release list --limit 200 --json tagName,isPrerelease \
+              --jq ".[] | select(.isPrerelease and (.tagName | startswith(\"$prefix\"))) | .tagName"); then
+            echo "::warning::Could not list the releases: delete the ${prefix}* pre-releases by hand."
+            exit 0
+          fi
+          for candidate in $candidates; do
+            echo "Deleting $candidate"
+            gh release delete "$candidate" --yes --cleanup-tag \
+              || echo "::warning::Could not delete $candidate: delete it by hand."
+          done
+
       # ── Back into develop ────────────────────────────────────────────────────
       # A branch from develop, with this commit merged into it, and a pull
       # request into develop: develop gets the dated release and keeps the
@@ -832,4 +1051,191 @@ jobs:
               done)   echo "Back-merge into develop: already done." ;;
               *)      echo "**Back-merge into develop: not done.** See the failed step, then re-run this job." ;;
             esac
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  #  Pre-releases of the Test app (#129) — see CI-CD.md § Release channels
+  # ────────────────────────────────────────────────────────────────────────────
+  # Experimental: each push to develop, and each run of a pull request with the
+  # label "experimental" (not from a fork: its token cannot write). Preprod:
+  # each push to release/*. The packages are the Test packages of the run
+  # (test-packages-*), built with the version suffix of the channel.
+  prerelease:
+    name: Pre-release
+    needs: [changelog, tests, package-windows, package-linux]
+    if: >-
+      (github.event_name == 'push'
+        && (github.ref == 'refs/heads/develop' || startsWith(github.ref, 'refs/heads/release/')))
+      || (github.event_name == 'pull_request'
+        && contains(github.event.pull_request.labels.*.name, 'experimental')
+        && github.event.pull_request.head.repo.full_name == github.repository
+        && (github.event.action != 'labeled' || github.event.label.name == 'experimental'))
+    runs-on: ubuntu-24.04
+    concurrency:
+      group: prerelease-${{ github.ref }}
+      cancel-in-progress: false
+    permissions:
+      contents: write   # create the tag and the pre-release, delete the old ones
+    env:
+      # The commit of the tag: the commit of the run, or for a pull request
+      # its head commit (CI built the merge of that commit into the base
+      # branch; the notes say so).
+      TARGET_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # The same command as the packaging jobs: the same version and tag.
+      - name: Channel
+        id: channel
+        # bash with pipefail: a failure of the command fails the step, not tee.
+        shell: bash
+        env:
+          LABELS: ${{ toJSON(github.event.pull_request.labels.*.name) }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          args=(--event "$GITHUB_EVENT_NAME" --ref "$GITHUB_REF" --run "$GITHUB_RUN_NUMBER")
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            args+=(--pr "$PR_NUMBER" --labels "$LABELS")
+          fi
+          python3 tools/release_flow.py channel "${args[@]}" | tee -a "$GITHUB_OUTPUT"
+
+      # As in the release job: a re-run does not publish twice, a draft is
+      # published again, and a tag on another commit stops the job.
+      - name: Find an existing pre-release
+        id: guard
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ steps.channel.outputs.publish }}" != "true" ]; then
+            echo "::error::This run publishes no pre-release (channel: ${{ steps.channel.outputs.channel }})."
+            exit 1
+          fi
+          tag="${{ steps.channel.outputs.tag }}"
+          published=false
+          if draft=$(gh release view "$tag" --json isDraft --jq .isDraft 2>/dev/null); then
+            if [ "$draft" = "true" ]; then
+              echo "::warning::$tag is a draft from an earlier run. It is deleted and published again."
+              gh release delete "$tag" --yes
+            else
+              echo "::notice::$tag is already published."
+              published=true
+            fi
+          fi
+          tagged=$(git ls-remote origin "refs/tags/$tag" "refs/tags/$tag^{}" \
+                   | awk '/\^\{\}$/ {peeled = $1} !/\^\{\}$/ {plain = $1} END {print (peeled != "" ? peeled : plain)}')
+          if [ -n "$tagged" ] && [ "$tagged" != "$TARGET_SHA" ]; then
+            echo "::error::Tag $tag is on $tagged, not on the commit of this run ($TARGET_SHA). Delete the tag, then re-run this job."
+            exit 1
+          fi
+          echo "published=$published" >> "$GITHUB_OUTPUT"
+
+      - name: Download the Test packages
+        if: steps.guard.outputs.published == 'false'
+        uses: actions/download-artifact@v4
+        with:
+          pattern: test-packages-*
+          merge-multiple: true
+          path: dist
+
+      # The packaging jobs computed the same version: check it in the file names.
+      - name: The packages have the version of the pre-release
+        if: steps.guard.outputs.published == 'false'
+        run: |
+          version="${{ steps.channel.outputs.version }}"
+          ls -la dist
+          for file in dist/*; do
+            case "$(basename "$file")" in
+              *"-${version}-"*) ;;
+              *) echo "::error::$(basename "$file") does not have the version $version"; exit 1 ;;
+            esac
+          done
+
+      - name: Checksums
+        if: steps.guard.outputs.published == 'false'
+        working-directory: dist
+        run: |
+          find . -maxdepth 1 -type f -printf '%f\0' | sort -z \
+            | xargs -0 sha256sum > ../SHA256SUMS.txt
+          mv ../SHA256SUMS.txt .
+          cat SHA256SUMS.txt
+
+      # Preprod: the changelog of the version in progress. Experimental: the
+      # branch, the commit and the pull request. The text of the pull request
+      # comes through env, never into the script itself.
+      - name: Build release notes
+        if: steps.guard.outputs.published == 'false'
+        shell: bash
+        env:
+          CHANNEL: ${{ steps.channel.outputs.channel }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          base=$(python3 tools/version.py current)
+          {
+            if [ "$CHANNEL" = "preprod" ]; then
+              echo "**Preprod build** of v${base}: a release candidate of the Test app."
+              echo
+              python3 tools/version.py notes --version "$base"
+            elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+              echo "**Experimental build** of the Test app, from a pull request."
+              echo
+              echo "- Pull request: #${PR_NUMBER} — ${PR_TITLE}"
+              echo "- Branch: \`${GITHUB_HEAD_REF}\`, commit ${TARGET_SHA:0:12} (the tag), merged into \`${GITHUB_BASE_REF}\` for this build"
+            else
+              echo "**Experimental build** of the Test app, from \`${GITHUB_REF_NAME}\`."
+              echo
+              echo "- Commit ${GITHUB_SHA:0:12}: $(git log -1 --format=%s "$GITHUB_SHA")"
+            fi
+            echo
+            cat .github/prerelease-notes-footer.md
+          } > release-notes.md
+          cat release-notes.md
+
+      - name: Publish the pre-release
+        id: publish
+        if: steps.guard.outputs.published == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.channel.outputs.tag }}" \
+            --prerelease \
+            --title "Finance Dashboard Test ${{ steps.channel.outputs.tag }}" \
+            --notes-file release-notes.md \
+            --target "$TARGET_SHA" \
+            dist/*
+
+      # Keep the 10 newest published experimental pre-releases; delete the
+      # older ones with their tags. A draft (a publication that a cancelled run
+      # stopped) does not count. Another run can delete the same one at the
+      # same time: a failure is only a warning.
+      - name: Delete old experimental pre-releases
+        if: steps.channel.outputs.channel == 'experimental'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! old=$(gh release list --limit 200 --json tagName,isPrerelease,isDraft,createdAt \
+              --jq '[.[] | select(.isPrerelease and (.isDraft | not) and (.tagName | test("-exp\\.")))] | sort_by(.createdAt) | reverse | .[10:] | .[].tagName'); then
+            echo "::warning::Could not list the releases: no old pre-release is deleted."
+            exit 0
+          fi
+          for tag in $old; do
+            echo "Deleting $tag"
+            gh release delete "$tag" --yes --cleanup-tag || echo "::warning::Could not delete $tag."
+          done
+
+      - name: Summary
+        if: always()
+        run: |
+          tag="${{ steps.channel.outputs.tag }}"
+          {
+            echo "### Pre-release (${{ steps.channel.outputs.channel }})"
+            if [ "${{ steps.guard.outputs.published }}" = "true" ]; then
+              echo "\`$tag\` was already published: not published again."
+            elif [ "${{ steps.publish.outcome }}" = "success" ]; then
+              echo "Published **$tag**: https://github.com/${{ github.repository }}/releases/tag/$tag"
+            else
+              echo "**$tag is not published.** See the failed step, then re-run this job."
+            fi
           } >> "$GITHUB_STEP_SUMMARY"

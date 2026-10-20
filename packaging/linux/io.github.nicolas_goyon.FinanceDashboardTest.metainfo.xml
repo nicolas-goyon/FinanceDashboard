@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- AppStream metadata of the Test app (#130): the experimental and preprod
+     builds, which install next to the prod app with their own data. Only the
+     AppImage has this identity. See the metadata of the prod app,
+     io.github.nicolas_goyon.FinanceDashboard.metainfo.xml.
+     Spec: https://www.freedesktop.org/software/appstream/docs/ -->
+<component type="desktop-application">
+  <id>io.github.nicolas_goyon.FinanceDashboardTest</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Finance Dashboard Test</name>
+  <summary>Test builds of Finance Dashboard, with their own data</summary>
+
+  <description>
+    <p>
+      Finance Dashboard Test runs the experimental and preprod builds of
+      Finance Dashboard. It installs next to the prod app, with its own data
+      folder and settings, so that a new version can be tried without a risk
+      to the real data.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">finance-dashboard-test.desktop</launchable>
+  <url type="homepage">https://github.com/nicolas-goyon/FinanceDashboard</url>
+  <url type="bugtracker">https://github.com/nicolas-goyon/FinanceDashboard/issues</url>
+
+  <provides>
+    <binary>FinanceDashboard</binary>
+  </provides>
+
+  <categories>
+    <category>Office</category>
+    <category>Finance</category>
+  </categories>
+
+  <content_rating type="oars-1.1"/>
+
+  <!-- Releases are appended by CI at package time from version.json — see
+       packaging/linux/make-appimage.sh and CI-CD.md. -->
+  <releases/>
+</component>

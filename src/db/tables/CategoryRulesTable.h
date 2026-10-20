@@ -62,6 +62,13 @@ public:
 
     bool remove(int ruleId);
 
+    // Renames (#34). The rows store the category and subcategory names as
+    // text, not as ids: Database::renameCategory()/renameSubcategory() call
+    // these in the same SQL transaction as the rename itself. A subcategory
+    // rename changes only the rows of its own category.
+    bool renameCategory(const QString& oldName, const QString& newName);
+    bool renameSubcategory(const QString& category, const QString& oldName, const QString& newName);
+
     // Every rule, insertion order. Ordering into *match* order (priority,
     // then pattern specificity) is CategoryPredictor::train()'s job, not the
     // table's — see its sort comment.

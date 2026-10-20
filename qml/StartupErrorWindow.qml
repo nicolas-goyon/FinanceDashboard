@@ -19,7 +19,10 @@ ApplicationWindow {
     visible: true
     width: 720
     height: 480
-    title: "Finance Dashboard — can't start"
+    // The title ends with the name of the app (#130): on Windows and Linux, Qt
+    // adds the name (QGuiApplication::applicationDisplayName, set by main.cpp)
+    // at the end of a window title that does not end with it.
+    title: "Can't start — " + Application.displayName
     color: "#11111b"
 
     ColumnLayout {
@@ -29,7 +32,7 @@ ApplicationWindow {
 
         Text {
             Layout.fillWidth: true
-            text: "Finance Dashboard can't start"
+            text: Application.displayName + " can't start"
             color: "#f38ba8"
             font.pixelSize: 22
             font.bold: true
