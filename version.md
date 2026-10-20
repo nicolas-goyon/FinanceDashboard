@@ -49,6 +49,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
   A copy with a newer schema is refused, and a copy that does not open is kept while the Test
   data comes back. The Test database is not replaced while another window of the Test app uses
   it. The page scrolls when it is higher than the window (#130).
+- Release channels: CI publishes the Test app as GitHub pre-releases. Each push to develop, and
+  each run of a pull request with the label "experimental", publishes an experimental build
+  (v0.2.2-exp.<run>, v0.2.2-exp.<run>.pr<number>); each push to a release branch publishes a
+  release candidate (v0.2.2-rc.<run>). <run> is the run number of the CI workflow, so the
+  versions of a channel sort in build order. The version suffix goes into the version of the
+  app, the setup and the file names. CI keeps the 10 newest experimental pre-releases, and the
+  release of a version deletes its release candidates (#129).
 
 ### Changed
 - The Git history on GitHub was rewritten on 2026-10-20 at 06:39 UTC to remove personal data. A

@@ -31,6 +31,9 @@ rights). To update, run the setup of the new version. It keeps the install mode,
 and your data.
 
 A release is published when a `release/<x.y.z>` branch is merged into `main` — see `CI-CD.md`.
+The [pre-releases](https://github.com/nicolas-goyon/FinanceDashboard/releases) (`-exp`, `-rc`)
+are builds of the Test app (`FinanceDashboardTest-*`, see "The Test app" below): it installs next
+to Finance Dashboard, with its own data.
 Linux builds need glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+); on anything older, build
 from source below.
 

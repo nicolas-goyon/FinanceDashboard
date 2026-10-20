@@ -13,8 +13,10 @@ run artifacts. The project follows gitflow. A push to a `release/*` branch makes
 CI open a pull request that opens the next version on `develop`. A push to
 **`main`** is the merge of a `release/*` or `hotfix/*` branch, and it publishes a
 GitHub release from those same files, with its tag. Then CI opens a pull request
-that merges `main` back into `develop`. Nothing needs to be installed by hand —
-including Qt, which the pipeline downloads for itself.
+that merges `main` back into `develop`. A push to `develop` or a `release/*`
+branch, and a pull request with the label `experimental`, publishes a
+pre-release of the Test app (§ Release channels). Nothing needs to be installed
+by hand — including Qt, which the pipeline downloads for itself.
 
 ---
 
@@ -23,10 +25,10 @@ including Qt, which the pipeline downloads for itself.
 ### 1. Jobs are independent
 
 Every job checks out the repo, installs its own Qt, and reads the version itself.
-No job `needs:` another, with two exceptions: `release` cannot run before the
-packages it publishes exist, and **Open the next version on develop** waits for
-the Changelog job, so that it never opens a pull request from a broken
-`version.json`.
+No job `needs:` another, with three exceptions: `release` and `prerelease`
+cannot run before the packages they publish exist, and **Open the next version
+on develop** waits for the Changelog job, so that it never opens a pull request
+from a broken `version.json`.
 
 That costs a few minutes of duplicated setup per run and buys the thing that
 matters when something breaks: **any single job can be re-run on its own** from
@@ -67,7 +69,8 @@ A version number is never typed twice, so it can never disagree with itself.
 | **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` test in a clean `ubuntu:24.04` container. Then the Test app's AppImage, and its smoke test, which checks that it keeps its data in its own folder. |
 | **Package — source** | ubuntu-24.04 | yes | `git archive` → source `.tar.gz` and `.zip`. |
 | **Open the next version on develop** | ubuntu-24.04 | — | `release/**` pushes only, after the Changelog job. Opens a pull request into `develop` that opens the next version (`release_flow.py open-next`), and starts CI on its branch. Does nothing when `develop` already opened it. |
-| **Release** | ubuntu-24.04 | — | `main` pushes only, after every blocking job above. Collects every `packages-*` artifact (the prod app; the Test app's artifacts are `test-packages-*`), writes `SHA256SUMS.txt`, publishes the release and its tag, then opens the back-merge pull request into `develop` (`release_flow.py back-merge`) and starts CI on its branch. Releases wait in a queue, one at a time. A re-run finishes what an earlier run started. |
+| **Release** | ubuntu-24.04 | — | `main` pushes only, after every blocking job above. Collects every `packages-*` artifact (the prod app; the Test app's artifacts are `test-packages-*`), writes `SHA256SUMS.txt`, publishes the release and its tag, deletes the release candidates of that version (`-rc` pre-releases and their tags), then opens the back-merge pull request into `develop` (`release_flow.py back-merge`) and starts CI on its branch. Releases wait in a queue, one at a time. A re-run finishes what an earlier run started. |
+| **Pre-release** | ubuntu-24.04 | — | Pushes to `develop` and `release/**`, and pull requests with the label `experimental`, after the Changelog, Tests and packaging jobs. Publishes the Test packages of the run (`test-packages-*`) as a GitHub pre-release, with its tag, and keeps the 10 newest experimental ones. See § Release channels. |
 
 ---
 
@@ -340,6 +343,56 @@ needs no bypass for `github-actions[bot]`.
 
 ---
 
+## Release channels
+
+Three channels, each published by CI as GitHub releases (#129). The prod app
+gets the releases; the Test app (`-DFD_APP_IDENTITY=test`, see § The Test app)
+gets the pre-releases.
+
+| Channel | Built from | Tag | GitHub release | App |
+|---|---|---|---|---|
+| Experimental | each push to `develop`; each run of a pull request with the label `experimental` | `v0.2.2-exp.<run>`, `v0.2.2-exp.<run>.pr<number>` | pre-release | Test |
+| Preprod | each push to `release/*` | `v0.2.2-rc.<run>` | pre-release | Test |
+| Prod | each merge into `main` | `v0.2.2` | latest release | Prod |
+
+`0.2.2` is the version of `version.json`, and `<run>` is the run number of the
+workflow (`github.run_number`): the same in every job and every re-run of a
+run, and higher for each new run. The suffixes follow SemVer, so the versions
+sort in build order, and every experimental build comes before every release
+candidate of the same version: `0.2.2-exp.57 < 0.2.2-exp.61.pr12 <
+0.2.2-rc.70 < 0.2.2`. The updater (#117) can compare them.
+
+`tools/release_flow.py channel` computes the channel, the suffix and the tag of
+a run. The packaging jobs pass the suffix to the Test build
+(`-DFD_VERSION_SUFFIX=-exp.57`): it goes into the version of the app, the
+`AppVersion` of the setup and the file names. A pull request without the label
+gets the suffix too (`-exp.<run>.pr<number>`), so that its Test packages are
+the ones the label would publish, but nothing is published. The prod packages
+never have a suffix.
+
+The **Pre-release** job downloads the Test packages, checks that their file
+names have the version, writes `SHA256SUMS.txt` and publishes a pre-release
+with its tag: on the commit of the run, or for a pull request on its head
+commit (CI built the merge of that commit into the base branch, and the notes
+say so). The notes: for `-rc`, the changelog of the version in progress; for
+`-exp`, the branch, the commit and the pull request; then, for both,
+`.github/prerelease-notes-footer.md`. Then the job deletes the published
+experimental pre-releases after the 10 newest, with their tags. The Release
+job deletes the `-rc` pre-releases of a version when it publishes that
+version. A re-run does not publish twice. If the tag exists on another
+commit, the job stops: delete the tag, then re-run the job.
+
+**A burst of pushes.** A new push cancels the run in progress on the same
+branch, so only the last push of a burst publishes.
+
+**Publish a pull request.** Add the label `experimental`: the run that the
+label starts publishes the pre-release, and each later push publishes a new
+one. Another label also starts a run (GitHub runs CI on `labeled`), which
+publishes nothing. A pull request from a fork never publishes: its token
+cannot write.
+
+---
+
 ## Working with the changelog
 
 `version.md` is now **generated**. Edit `version.json`, or better, use the tool:
@@ -471,6 +524,7 @@ Qt, build, package", and the local commands above reproduce them exactly.
 ├── workflows/ci.yml                the whole pipeline
 ├── actions/setup-qt/action.yml     Linux packages + Qt, shared by every job
 ├── release-notes-footer.md         the "how do I install this" half of a release
+├── prerelease-notes-footer.md      the same for a pre-release of the Test app
 └── dependabot.yml                  monthly PRs bumping the actions
 packaging/
 ├── icons/make-icons.py             generates the .ico and .png from code (prod and Test)
@@ -483,7 +537,8 @@ packaging/
 └── windows/app.rc.in               the icon of the .exe
 tests/CMakeLists.txt                the ctest registration
 tools/version.py                    version.json ⇄ version.md, release notes
-tools/release_flow.py               the branches that CI makes: next version, back-merge
+tools/release_flow.py               the branches that CI makes: next version, back-merge;
+                                    the channel of a run (pre-releases)
 tools/test_version.py               the tests of the two files above (unittest)
 version.json                        the version and the changelog
 LICENSE                             MIT — also becomes the setup's licence page

@@ -46,9 +46,11 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
     QGuiApplication::setDesktopFileName(QStringLiteral(FD_APP_FILE_ID));
     QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/app-icon.png")));
     // The version string comes from version.json, via the FD_VERSION_STRING
-    // compile definition set in CMakeLists.txt — see CI-CD.md. Never hard-code
-    // it here: this is the number the About/window title and any future update
-    // check would report, and it has to match the installer and the release tag.
+    // compile definition set in CMakeLists.txt — see CI-CD.md. A pre-release
+    // of the Test app adds its suffix: 0.2.2-exp.57, 0.2.2-rc.3 (#129). Never
+    // hard-code it here: this is the number the About/window title and the
+    // update check (#117) report, and it has to match the installer and the
+    // release tag.
     QGuiApplication::setApplicationVersion(QStringLiteral(FD_VERSION_STRING));
 
     // Must be set before any QML importing Qt Quick Controls is loaded
