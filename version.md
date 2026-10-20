@@ -29,7 +29,10 @@ version as the new in-progress one. See `CI-CD.md`.
 
 ## v0.2.2 (current)
 
-_No changes logged yet — add one with `python tools/version.py add <Section> "<text>"`._
+### Changed
+- The Git history on GitHub was rewritten on 2026-10-20 at 06:39 UTC to remove personal data. A
+  clone made before that time still has the old history: delete it and clone the repository
+  again.
 
 ---
 
