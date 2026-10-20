@@ -1,4 +1,5 @@
 #include "AccountHashesTable.h"
+#include "SqlPrepare.h"
 #include "models/Account.h"
 
 #include <QSqlDatabase>
@@ -54,9 +55,12 @@ bool AccountHashesTable::createTable()
 int AccountHashesTable::insert(int accountId, const QString& hash, const QString& source)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "INSERT INTO account_hashes (account_id, hash, source) VALUES (?, ?, ?);"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AccountHashesTable] insert");
+        return -1;
+    }
     query.addBindValue(accountId);
     query.addBindValue(hash);
     query.addBindValue(source);
@@ -71,7 +75,10 @@ int AccountHashesTable::insert(int accountId, const QString& hash, const QString
 bool AccountHashesTable::remove(int hashId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM account_hashes WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM account_hashes WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[AccountHashesTable] remove");
+        return false;
+    }
     query.addBindValue(hashId);
 
     const bool success = query.exec();
@@ -84,7 +91,10 @@ bool AccountHashesTable::remove(int hashId)
 bool AccountHashesTable::removeForAccount(int accountId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM account_hashes WHERE account_id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM account_hashes WHERE account_id = ?;"))) {
+        Sql::logPrepareError(query, "[AccountHashesTable] removeForAccount");
+        return false;
+    }
     query.addBindValue(accountId);
 
     const bool success = query.exec();
@@ -97,9 +107,12 @@ bool AccountHashesTable::removeForAccount(int accountId)
 bool AccountHashesTable::existsForAccount(int accountId, const QString& hash) const
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "SELECT 1 FROM account_hashes WHERE account_id = ? AND hash = ? LIMIT 1;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AccountHashesTable] existsForAccount");
+        return false;
+    }
     query.addBindValue(accountId);
     query.addBindValue(hash);
 
@@ -114,10 +127,13 @@ QVector<Data::AccountHash> AccountHashesTable::allForAccount(int accountId) cons
 {
     QVector<Data::AccountHash> result;
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "SELECT id, hash, source FROM account_hashes"
         " WHERE account_id = ? ORDER BY id ASC;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AccountHashesTable] allForAccount");
+        return {};
+    }
     query.addBindValue(accountId);
 
     if (!query.exec()) {

@@ -1,4 +1,5 @@
 #include "AccountsTable.h"
+#include "SqlPrepare.h"
 #include "SqlText.h"
 #include "models/Account.h"
 
@@ -57,10 +58,13 @@ int AccountsTable::insert(const QString& name, const QString& type, const QStrin
                            const QString& currency, const QString& notes)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "INSERT INTO accounts (name, type, category, currency, notes)"
         " VALUES (?, ?, ?, ?, ?);"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AccountsTable] insert");
+        return -1;
+    }
     // type, category and notes are optional (DEFAULT ''): a null QString is
     // written as '' (#125). The name and the currency are required:
     // Database::addAccount() refuses an empty one.
@@ -84,10 +88,13 @@ bool AccountsTable::update(int accountId, const QString& name, const QString& ty
                            const QString& currency, const QString& notes)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "UPDATE accounts SET name = ?, type = ?, category = ?,"
         " currency = ?, notes = ? WHERE id = ?;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AccountsTable] update");
+        return false;
+    }
     query.addBindValue(name);
     query.addBindValue(Sql::text(type));
     query.addBindValue(Sql::text(category));
@@ -105,7 +112,10 @@ bool AccountsTable::update(int accountId, const QString& name, const QString& ty
 bool AccountsTable::remove(int accountId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM accounts WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM accounts WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[AccountsTable] remove");
+        return false;
+    }
     query.addBindValue(accountId);
 
     const bool success = query.exec();
@@ -118,7 +128,10 @@ bool AccountsTable::remove(int accountId)
 bool AccountsTable::renameType(const QString& oldName, const QString& newName)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE accounts SET type = ? WHERE type = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE accounts SET type = ? WHERE type = ?;"))) {
+        Sql::logPrepareError(query, "[AccountsTable] renameType");
+        return false;
+    }
     query.addBindValue(newName);
     query.addBindValue(oldName);
 
@@ -132,7 +145,10 @@ bool AccountsTable::renameType(const QString& oldName, const QString& newName)
 bool AccountsTable::renameCategory(const QString& oldName, const QString& newName)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE accounts SET category = ? WHERE category = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE accounts SET category = ? WHERE category = ?;"))) {
+        Sql::logPrepareError(query, "[AccountsTable] renameCategory");
+        return false;
+    }
     query.addBindValue(newName);
     query.addBindValue(oldName);
 

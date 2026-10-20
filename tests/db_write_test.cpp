@@ -15,6 +15,8 @@
 //   #36   the balance history replays the rows in booking order (the
 //         confirmation date), the order of the bank's own balance
 //   #48   the amounts of a USD account are shown in $
+//   #49   a statement that cannot be prepared logs the SQLite error; a write
+//         that cannot start its own SQL transaction fails and writes nothing
 
 #include "AccountController.h"
 #include "CategoryController.h"
@@ -28,7 +30,9 @@
 #include "utils/Formatter.h"
 
 #include <QDate>
+#include <QRegularExpression>
 #include <QScopeGuard>
+#include <QSqlDatabase>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QTemporaryDir>
@@ -122,6 +126,8 @@ private slots:
     void mockDataHasTheSampleTransactions();
     void balanceHistoryFollowsTheBookingOrder();
     void usdAccountShowsItsCurrency();
+    void prepareErrorIsLogged();
+    void writeWithoutItsTransactionFails();
 
 private:
     QTemporaryDir m_dir;
@@ -538,6 +544,45 @@ void DbWriteTest::usdAccountShowsItsCurrency()
     const QVariantMap summary = controller.accountBalanceSummary(index);
     QCOMPARE(summary.value(QStringLiteral("currencySymbol")).toString(), QStringLiteral("$"));
     QVERIFY(summary.value(QStringLiteral("currentBalanceText")).toString().endsWith(QLatin1Char('$')));
+}
+
+void DbWriteTest::prepareErrorIsLogged()
+{
+    Database& db = Database::instance();
+    // init() makes the table again for the next test.
+    QSqlQuery query(db.sqlDatabase());
+    QVERIFY(query.exec(QStringLiteral("DROP TABLE account_types;")));
+
+    // The real error, not "Parameter count mismatch" from exec().
+    QTest::ignoreMessage(QtWarningMsg,
+                         QRegularExpression(QStringLiteral("^\\[AccountTypesTable\\] insert prepare error: "
+                                                           "no such table: account_types")));
+    QCOMPARE(db.addAccountType(QStringLiteral("CCP")), -1);
+}
+
+void DbWriteTest::writeWithoutItsTransactionFails()
+{
+    Database& db = Database::instance();
+    const int account = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
+                                      QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(account >= 0);
+
+    // A transaction is open, so the BEGIN of the write fails. Before #49 the
+    // write went on without its own transaction, and its COMMIT committed
+    // the open one.
+    QSqlDatabase connection = db.sqlDatabase();
+    QVERIFY(connection.transaction());
+    QTest::ignoreMessage(QtWarningMsg, QRegularExpression(QStringLiteral("removeAccount: cannot start a transaction")));
+    QVERIFY(!db.removeAccount(account));
+    QVERIFY2(db.lastError().contains(QStringLiteral("cannot start a transaction")), qPrintable(db.lastError()));
+    QVERIFY(!db.resetAll());
+    QVERIFY2(db.lastError().startsWith(QStringLiteral("Failed to start the reset")), qPrintable(db.lastError()));
+    QVERIFY(connection.rollback());
+
+    // Nothing was removed or reset.
+    const QVector<Data::Account> accounts = db.loadAccounts();
+    QCOMPARE(accounts.size(), qsizetype(1));
+    QCOMPARE(accounts.at(0).id, account);
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)

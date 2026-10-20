@@ -1,4 +1,5 @@
 #include "AccountTypesTable.h"
+#include "SqlPrepare.h"
 #include "models/Account.h"
 
 #include <QSqlDatabase>
@@ -38,7 +39,10 @@ bool AccountTypesTable::createTable()
 int AccountTypesTable::insert(const QString& name)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("INSERT INTO account_types (name) VALUES (?);"));
+    if (!query.prepare(QStringLiteral("INSERT INTO account_types (name) VALUES (?);"))) {
+        Sql::logPrepareError(query, "[AccountTypesTable] insert");
+        return -1;
+    }
     query.addBindValue(name);
 
     if (!query.exec()) {
@@ -51,7 +55,10 @@ int AccountTypesTable::insert(const QString& name)
 bool AccountTypesTable::rename(int typeId, const QString& newName)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE account_types SET name = ? WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE account_types SET name = ? WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[AccountTypesTable] rename");
+        return false;
+    }
     query.addBindValue(newName);
     query.addBindValue(typeId);
 
@@ -65,7 +72,10 @@ bool AccountTypesTable::rename(int typeId, const QString& newName)
 bool AccountTypesTable::remove(int typeId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM account_types WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM account_types WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[AccountTypesTable] remove");
+        return false;
+    }
     query.addBindValue(typeId);
 
     const bool success = query.exec();

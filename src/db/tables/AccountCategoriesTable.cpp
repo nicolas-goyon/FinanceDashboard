@@ -1,4 +1,5 @@
 #include "AccountCategoriesTable.h"
+#include "SqlPrepare.h"
 #include "models/Account.h"
 
 #include <QSqlDatabase>
@@ -41,9 +42,12 @@ bool AccountCategoriesTable::createTable()
 int AccountCategoriesTable::insert(const QString& name, const QString& color)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "INSERT INTO account_categories (name, color) VALUES (?, ?);"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AccountCategoriesTable] insert");
+        return -1;
+    }
     query.addBindValue(name);
     query.addBindValue(color);
 
@@ -57,7 +61,10 @@ int AccountCategoriesTable::insert(const QString& name, const QString& color)
 bool AccountCategoriesTable::rename(int accountCategoryId, const QString& newName)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE account_categories SET name = ? WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE account_categories SET name = ? WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[AccountCategoriesTable] rename");
+        return false;
+    }
     query.addBindValue(newName);
     query.addBindValue(accountCategoryId);
 
@@ -71,7 +78,10 @@ bool AccountCategoriesTable::rename(int accountCategoryId, const QString& newNam
 bool AccountCategoriesTable::setColor(int accountCategoryId, const QString& color)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE account_categories SET color = ? WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE account_categories SET color = ? WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[AccountCategoriesTable] setColor");
+        return false;
+    }
     query.addBindValue(color);
     query.addBindValue(accountCategoryId);
 
@@ -85,7 +95,10 @@ bool AccountCategoriesTable::setColor(int accountCategoryId, const QString& colo
 bool AccountCategoriesTable::remove(int accountCategoryId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM account_categories WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM account_categories WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[AccountCategoriesTable] remove");
+        return false;
+    }
     query.addBindValue(accountCategoryId);
 
     const bool success = query.exec();

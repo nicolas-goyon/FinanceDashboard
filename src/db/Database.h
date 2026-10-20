@@ -290,7 +290,10 @@ private:
     bool recordDefaults(Defaults set);
     [[nodiscard]] QStringList columnsOf(const QString& table) const;
     // Runs `steps` in one SQL transaction: commit when they return true, roll
-    // back otherwise. `what` names the operation in m_lastError and the log.
+    // back otherwise. `what` names the operation in m_lastError and the log;
+    // the message keeps what a failed step put in m_lastError. A BEGIN or a
+    // COMMIT that fails makes it fail too (#49): inside an open transaction,
+    // BEGIN fails, as SQLite has no nested transactions.
     bool inTransaction(const QString& what, const std::function<bool()>& steps);
 
     QSqlDatabase            m_db;
