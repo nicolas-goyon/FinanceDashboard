@@ -25,7 +25,23 @@ it (see .github/workflows/ci.yml and CI-CD.md § The release flow).
         in-progress version of the result. Prints nothing when REF already
         contains SHA.
 
-The working tree must be clean. Stdlib only, like version.py.
+    channel --event EVENT --ref REF --run N [--pr N --labels JSON]
+        The pre-release of a CI run (#129), for the package jobs and the
+        pre-release job. Prints key=value lines for $GITHUB_OUTPUT: channel
+        (experimental, preprod or none), publish (true or false), suffix,
+        version (the version of version.json with the suffix) and tag.
+        <run> is the run number of the workflow: the same in every job and
+        every re-run of a run, and it grows with each run, so the versions
+        of a channel sort in build order (SemVer: 0.2.2-exp.57 <
+        0.2.2-exp.61.pr12 < 0.2.2-rc.70 < 0.2.2).
+          - a push to develop: experimental, -exp.<run>, published;
+          - a push to release/*: preprod, -rc.<run>, published;
+          - a pull request: experimental, -exp.<run>.pr<pr>, published only
+            with the label "experimental" (--labels, a JSON list of names);
+          - anything else: none, no suffix, not published.
+
+open-next and back-merge need a clean working tree. Stdlib only, like
+version.py.
 """
 
 from __future__ import annotations
@@ -162,6 +178,32 @@ def cmd_back_merge(args: argparse.Namespace) -> int:
     return 0
 
 
+# The label that makes a pull request publish its pre-release (#129).
+EXPERIMENTAL_LABEL = "experimental"
+
+
+def cmd_channel(args: argparse.Namespace) -> int:
+    version = current_here()
+    channel, suffix, publish = "none", "", False
+    if args.event == "push" and args.ref == "refs/heads/develop":
+        channel, suffix, publish = "experimental", f"-exp.{args.run}", True
+    elif args.event == "push" and args.ref.startswith("refs/heads/release/"):
+        channel, suffix, publish = "preprod", f"-rc.{args.run}", True
+    elif args.event == "pull_request":
+        if args.pr is None:
+            sys.exit("error: a pull request needs --pr (its number)")
+        labels = json.loads(args.labels) if args.labels else None
+        channel, suffix = "experimental", f"-exp.{args.run}.pr{args.pr}"
+        publish = EXPERIMENTAL_LABEL in (labels or [])
+    full = version + suffix
+    print(f"channel={channel}")
+    print(f"publish={'true' if publish else 'false'}")
+    print(f"suffix={suffix}")
+    print(f"version={full}")
+    print(f"tag=v{full}")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="release_flow.py",
@@ -181,6 +223,15 @@ def main(argv: list[str] | None = None) -> int:
     back_merge.add_argument("--release", required=True, help="the released commit on main")
     back_merge.add_argument("--develop", required=True, help="the develop commit (a ref or a SHA)")
     back_merge.set_defaults(func=cmd_back_merge)
+
+    channel = sub.add_parser("channel", help="the pre-release of a CI run: channel, suffix, "
+                                             "version and tag (#129)")
+    channel.add_argument("--event", required=True, help="github.event_name")
+    channel.add_argument("--ref", required=True, help="github.ref")
+    channel.add_argument("--run", required=True, type=int, help="github.run_number")
+    channel.add_argument("--pr", type=int, help="the number of the pull request")
+    channel.add_argument("--labels", help="the labels of the pull request, a JSON list of names")
+    channel.set_defaults(func=cmd_channel)
 
     args = parser.parse_args(argv)
     return args.func(args)

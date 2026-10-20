@@ -6,7 +6,8 @@
 The first class tests the version model on temporary files. The second one
 runs a whole release cycle in a temporary git repository, with the same
 commands as CI: cut, fixes on the release branch, the merge into main and
-the back-merge. It needs git.
+the back-merge, and the pre-release of each kind of CI run (channel, #129).
+It needs git.
 """
 
 from __future__ import annotations
@@ -359,6 +360,56 @@ class ReleaseFlowTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("develop changed v0.2.2 after release/0.2.2 was cut", result.stderr)
         self.assertEqual(self.git("branch", "--show-current").strip(), "release/0.2.2")
+
+    def channel(self, *args: str) -> dict[str, str]:
+        out = self.tool("release_flow.py", "channel", *args).stdout
+        return dict(line.split("=", 1) for line in out.strip().splitlines())
+
+    def test_channel_of_a_push_to_develop(self) -> None:
+        self.assertEqual(self.channel("--event", "push", "--ref", "refs/heads/develop", "--run", "57"),
+                         {"channel": "experimental", "publish": "true", "suffix": "-exp.57",
+                          "version": "0.2.2-exp.57", "tag": "v0.2.2-exp.57"})
+
+    def test_channel_of_a_pull_request_publishes_with_its_label_only(self) -> None:
+        args = ("--event", "pull_request", "--ref", "refs/pull/12/merge", "--run", "61", "--pr", "12")
+        without = self.channel(*args, "--labels", '["type: feature", "area: ci"]')
+        self.assertEqual((without["channel"], without["publish"], without["version"]),
+                         ("experimental", "false", "0.2.2-exp.61.pr12"))
+        self.assertEqual(self.channel(*args)["publish"], "false")
+        self.assertEqual(self.channel(*args, "--labels", "null")["publish"], "false")
+        labelled = self.channel(*args, "--labels", '["type: feature", "experimental"]')
+        self.assertEqual((labelled["publish"], labelled["tag"]), ("true", "v0.2.2-exp.61.pr12"))
+        self.assertNotEqual(self.tool("release_flow.py", "channel", "--event", "pull_request", "--ref",
+                                      "refs/pull/12/merge", "--run", "61", check=False).returncode, 0)
+
+    def test_channel_of_a_release_branch(self) -> None:
+        self.git("switch", "--quiet", "-c", "release/0.2.2")
+        self.assertEqual(self.channel("--event", "push", "--ref", "refs/heads/release/0.2.2", "--run", "70"),
+                         {"channel": "preprod", "publish": "true", "suffix": "-rc.70",
+                          "version": "0.2.2-rc.70", "tag": "v0.2.2-rc.70"})
+
+    def test_channel_versions_sort_in_build_order(self) -> None:
+        """SemVer 2.0 precedence of the pre-release part: the run number decides."""
+        def key(version: str) -> list[tuple[int, int | str]]:
+            # A numeric identifier sorts before a text one (SemVer § 11).
+            return [(0, int(part)) if part.isdigit() else (1, part)
+                    for part in version.split("-", 1)[1].split(".")]
+        versions = []
+        for event, ref, run, extra in (("push", "refs/heads/develop", "57", ()),
+                                       ("pull_request", "refs/pull/145/merge", "58", ("--pr", "145")),
+                                       ("pull_request", "refs/pull/9/merge", "60", ("--pr", "9")),
+                                       ("push", "refs/heads/develop", "61", ())):
+            versions.append(self.channel("--event", event, "--ref", ref, "--run", run, *extra)["version"])
+        self.assertEqual(sorted(versions, key=key), versions)
+        self.assertLess(key("0.2.2-exp.61.pr9"), key("0.2.2-rc.1"))
+
+    def test_channel_of_other_runs(self) -> None:
+        for event, ref in (("push", "refs/heads/main"), ("push", "refs/heads/hotfix/0.2.3"),
+                           ("workflow_dispatch", "refs/heads/chore/back-merge-v0.2.1")):
+            with self.subTest(event=event, ref=ref):
+                self.assertEqual(self.channel("--event", event, "--ref", ref, "--run", "5"),
+                                 {"channel": "none", "publish": "false", "suffix": "",
+                                  "version": "0.2.2", "tag": "v0.2.2"})
 
     def test_open_next_needs_the_version_of_the_branch(self) -> None:
         self.git("switch", "--quiet", "-c", "release/0.2.3")

@@ -58,6 +58,30 @@ else()
 endif()
 message(STATUS "App identity: ${FD_APP_IDENTITY} (${FD_APP_DISPLAY_NAME})")
 
+# ── Pre-release suffix (#129) ─────────────────────────────────────────────────
+# The experimental and preprod pre-releases of the Test app add a SemVer
+# suffix to the version of version.json: 0.2.2-exp.57, 0.2.2-exp.61.pr12,
+# 0.2.2-rc.70 (the number is the run number of the CI workflow). CI computes
+# it (tools/release_flow.py channel) and passes it with
+# -DFD_VERSION_SUFFIX=-exp.57. It goes into the version of the app
+# (QCoreApplication::applicationVersion(), which the updater compares, #117),
+# the setup and the package file names. Empty for a release and a local build.
+set(FD_VERSION_SUFFIX "" CACHE STRING "Pre-release suffix of the version (#129): -exp.<run>, -exp.<run>.pr<number> or -rc.<run>")
+if(NOT FD_VERSION_SUFFIX STREQUAL "")
+    # SemVer identifiers: a number with no leading zero, or digits and letters
+    # with at least one letter.
+    if(NOT FD_VERSION_SUFFIX MATCHES "^-(exp|rc)(\\.(0|[1-9][0-9]*|[0-9A-Za-z]*[A-Za-z][0-9A-Za-z]*))+$")
+        message(FATAL_ERROR "FD_VERSION_SUFFIX is \"${FD_VERSION_SUFFIX}\": use -exp.<run>, -exp.<run>.pr<number> or -rc.<run>.")
+    endif()
+    if(NOT FD_APP_IDENTITY STREQUAL "test")
+        message(FATAL_ERROR "FD_VERSION_SUFFIX is for the pre-releases, which are Test app builds: add "
+                            "-DFD_APP_IDENTITY=test, or clear the suffix with -DFD_VERSION_SUFFIX= (a build "
+                            "directory keeps it).")
+    endif()
+endif()
+set(FD_FULL_VERSION "${PROJECT_VERSION}${FD_VERSION_SUFFIX}")
+message(STATUS "Version of the packages: ${FD_FULL_VERSION}")
+
 include(GNUInstallDirs)
 
 # Windows installs/portable ZIPs are flat: FinanceDashboard.exe sits at the root
@@ -265,19 +289,20 @@ target_link_libraries(FinanceDashboard PRIVATE
 
 target_compile_definitions(FinanceDashboard PRIVATE
     $<$<OR:$<CONFIG:Debug>,$<CONFIG:RelWithDebInfo>>:QT_QML_DEBUG>
-    # main.cpp passes this to QGuiApplication::setApplicationVersion() so the
-    # running app reports the same number as version.json / the installer /
-    # the release tag. Never hard-code a version string in C++.
-    FD_VERSION_STRING="${PROJECT_VERSION}"
 )
 
-# The identity of the app (#130), for main.cpp only: the application name (the
-# data folder and the settings), the window title and the desktop entry, and
-# for the Test app the application name of the prod app (its database). On
-# main.cpp alone, a switch of FD_APP_IDENTITY in a build directory rebuilds one
+# For main.cpp only:
+#   - FD_VERSION_STRING, the version with its pre-release suffix (#129):
+#     main.cpp passes it to QGuiApplication::setApplicationVersion(), so the
+#     running app reports the same number as version.json, the installer and
+#     the release tag. Never hard-code a version string in C++.
+#   - the identity of the app (#130): the application name (the data folder
+#     and the settings), the window title and the desktop entry, and for the
+#     Test app the application name of the prod app (its database).
+# On main.cpp alone, a new identity or suffix in a build directory rebuilds one
 # file, not the whole app (CI builds both identities in one directory).
 set_source_files_properties(src/main.cpp PROPERTIES COMPILE_DEFINITIONS
-    "FD_APP_NAME=\"${FD_APP_NAME}\";FD_APP_WINDOW_TITLE=\"${FD_APP_WINDOW_TITLE}\";FD_APP_FILE_ID=\"${FD_APP_FILE_ID}\";FD_APP_IS_TEST=${FD_APP_IS_TEST};FD_PROD_APP_NAME=\"${FD_PROD_APP_NAME}\"")
+    "FD_VERSION_STRING=\"${FD_FULL_VERSION}\";FD_APP_NAME=\"${FD_APP_NAME}\";FD_APP_WINDOW_TITLE=\"${FD_APP_WINDOW_TITLE}\";FD_APP_FILE_ID=\"${FD_APP_FILE_ID}\";FD_APP_IS_TEST=${FD_APP_IS_TEST};FD_PROD_APP_NAME=\"${FD_PROD_APP_NAME}\"")
 
 # The icon of the identity, for the window and the taskbar (main.cpp sets it
 # from this resource) and, on Windows, for the .exe (app.rc).
@@ -436,7 +461,9 @@ install(SCRIPT ${deploy_script})
 set(CPACK_PACKAGE_NAME              "${FD_APP_NAME}")
 set(CPACK_PACKAGE_VENDOR            "DataAnalysis")
 set(CPACK_PACKAGE_CONTACT           "Nicolas Goyon <https://github.com/nicolas-goyon>")
-set(CPACK_PACKAGE_VERSION           "${PROJECT_VERSION}")
+# With the pre-release suffix (#129): Inno Setup's AppVersion, and the file
+# names below.
+set(CPACK_PACKAGE_VERSION           "${FD_FULL_VERSION}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "Local-first personal finance dashboard — import statements, categorize, track net worth")
 set(CPACK_PACKAGE_HOMEPAGE_URL      "https://github.com/nicolas-goyon/FinanceDashboard")
@@ -463,7 +490,7 @@ if(WIN32)
 else()
     set(CPACK_SYSTEM_NAME "linux-${CMAKE_SYSTEM_PROCESSOR}")
 endif()
-set(CPACK_PACKAGE_FILE_NAME "${FD_APP_NAME}-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}")
+set(CPACK_PACKAGE_FILE_NAME "${FD_APP_NAME}-${FD_FULL_VERSION}-${CPACK_SYSTEM_NAME}")
 set(CPACK_SOURCE_PACKAGE_FILE_NAME "FinanceDashboard-${PROJECT_VERSION}-source")
 
 if(WIN32)
@@ -489,6 +516,10 @@ if(WIN32)
     # uninstalls it without touching the prod app.
     # https://jrsoftware.org/ishelp/topic_setup_appid.htm
     set(CPACK_INNOSETUP_SETUP_AppId "${FD_INNOSETUP_APP_ID}")
+    # AppVersion is CPACK_PACKAGE_VERSION, with the pre-release suffix (#129).
+    # The version resource of the setup takes numbers only: up to four,
+    # missing ones are zeros (https://jrsoftware.org/ishelp/topic_setup_versioninfoversion.htm).
+    set(CPACK_INNOSETUP_SETUP_VersionInfoVersion "${PROJECT_VERSION}")
 
     # The person who installs chooses "for me only" (the default, no
     # administrator rights, %LOCALAPPDATA%\Programs) or "for all users"

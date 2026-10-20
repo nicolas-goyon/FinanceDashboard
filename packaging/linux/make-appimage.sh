@@ -9,7 +9,9 @@
 #   <install-tree>  a prefix produced by `cmake --install build --prefix <dir>`,
 #                   i.e. containing bin/FinanceDashboard, lib/, plugins/, qml/
 #                   and share/ — see the install() rules in CMakeLists.txt.
-#   <version>       X.Y.Z, used in the output file name (comes from version.json)
+#   <version>       X.Y.Z (from version.json), or X.Y.Z-exp.<run> / -rc.<run> for a
+#                   pre-release of the Test app (#129). Used in the output file
+#                   name and in the AppStream release.
 #   [output-dir]    where to write the .AppImage (default: dist/)
 #
 # The install tree has the desktop entry of its identity (#130):
