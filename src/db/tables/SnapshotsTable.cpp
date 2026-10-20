@@ -1,4 +1,5 @@
 #include "SnapshotsTable.h"
+#include "SqlPrepare.h"
 
 #include <QPair>
 #include <QSqlDatabase>
@@ -43,10 +44,13 @@ bool SnapshotsTable::createTable()
 bool SnapshotsTable::upsert(const QDate& date)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "INSERT INTO snapshots (date) VALUES (?)"
         " ON CONFLICT(date) DO NOTHING;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[SnapshotsTable] upsert");
+        return false;
+    }
     query.addBindValue(date.toString(Qt::ISODate));
 
     const bool success = query.exec();
@@ -61,7 +65,10 @@ bool SnapshotsTable::upsert(const QDate& date)
 std::optional<int> SnapshotsTable::idForDate(const QDate& date) const
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("SELECT id FROM snapshots WHERE date = ?;"));
+    if (!query.prepare(QStringLiteral("SELECT id FROM snapshots WHERE date = ?;"))) {
+        Sql::logPrepareError(query, "[SnapshotsTable] idForDate");
+        return std::nullopt;
+    }
     query.addBindValue(date.toString(Qt::ISODate));
 
     if (!query.exec() || !query.next()) {

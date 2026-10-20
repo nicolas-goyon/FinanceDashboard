@@ -122,6 +122,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
   conversion with undefined behaviour). The pages of one account (transactions, balance
   checkpoints, balance history and its chart, category totals) show the amounts of a USD
   account in $, not in €; the other pages keep the currency of the app (#48).
+- Database: a failed BEGIN or COMMIT is no longer ignored. "Reset Database", the save of a
+  snapshot and the removal of a category or an account fail with a message when their SQL
+  transaction cannot start or commit. Before, a failed commit counted as a success, and a reset
+  without its transaction committed each table drop on its own. The table classes check that
+  each statement is prepared and log the error of SQLite, instead of a misleading "Parameter
+  count mismatch". The results of the WAL, secure_delete and checkpoint PRAGMAs are logged
+  (#49).
 
 ---
 

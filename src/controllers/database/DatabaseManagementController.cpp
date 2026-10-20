@@ -23,6 +23,8 @@ DatabaseManagementController::DatabaseManagementController(QObject* parent)
 void DatabaseManagementController::resetDatabase()
 {
     if (!Database::instance().resetAll()) {
+        // The status says "see application log": the log has the cause (#49).
+        qWarning().noquote() << "[DatabaseManagementController] reset failed:" << Database::instance().lastError();
         setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Reset failed — see application log"));
         return;
     }
@@ -33,6 +35,8 @@ void DatabaseManagementController::resetDatabase()
 void DatabaseManagementController::resetToMock()
 {
     if (!Database::instance().resetAll()) {
+        // The status says "see application log": the log has the cause (#49).
+        qWarning().noquote() << "[DatabaseManagementController] reset failed:" << Database::instance().lastError();
         setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Reset failed — see application log"));
         return;
     }

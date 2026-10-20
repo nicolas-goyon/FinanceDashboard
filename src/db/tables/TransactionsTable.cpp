@@ -1,4 +1,5 @@
 #include "TransactionsTable.h"
+#include "SqlPrepare.h"
 #include "SqlText.h"
 #include "models/Transaction.h"
 
@@ -197,7 +198,10 @@ QHash<QString, QDate> TransactionsTable::operationDatesByFingerprint(int account
 {
     QHash<QString, QDate> result;
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("SELECT fingerprint, operation_date FROM transactions WHERE account_id = ?;"));
+    if (!query.prepare(QStringLiteral("SELECT fingerprint, operation_date FROM transactions WHERE account_id = ?;"))) {
+        Sql::logPrepareError(query, "[TransactionsTable] operationDatesByFingerprint");
+        return {};
+    }
     query.addBindValue(accountId);
     if (!query.exec()) {
         qWarning() << "[TransactionsTable] operationDatesByFingerprint error:" << query.lastError().text();
@@ -218,13 +222,16 @@ bool TransactionsTable::insertBatch(int accountId, const QVector<Data::Transacti
     // ON CONFLICT on the fingerprint index only: INSERT OR IGNORE would also
     // skip a row that breaks NOT NULL (a NaN amount binds as NULL) without
     // an error.
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "INSERT INTO transactions"
         " (account_id, confirmation_date, operation_date, name, description, debit,"
         "  credit, balance_after, category, subcategory, source_template, fingerprint)"
         " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
         " ON CONFLICT (account_id, fingerprint) DO NOTHING;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[TransactionsTable] insertBatch");
+        return false;
+    }
 
     const QStringList computed = fingerprints(txs);
     for (qsizetype i = 0; i < txs.size(); ++i) {
@@ -256,7 +263,10 @@ bool TransactionsTable::insertBatch(int accountId, const QVector<Data::Transacti
 bool TransactionsTable::removeForAccount(int accountId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM transactions WHERE account_id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM transactions WHERE account_id = ?;"))) {
+        Sql::logPrepareError(query, "[TransactionsTable] removeForAccount");
+        return false;
+    }
     query.addBindValue(accountId);
 
     const bool success = query.exec();
@@ -270,12 +280,15 @@ QVector<Data::Transaction> TransactionsTable::allForAccount(int accountId) const
 {
     QVector<Data::Transaction> result;
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "SELECT id, account_id, confirmation_date, operation_date, name, description,"
         " debit, credit, balance_after, category, subcategory, source_template"
         " FROM transactions WHERE account_id = ?"
         " ORDER BY operation_date DESC, id DESC;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[TransactionsTable] allForAccount");
+        return {};
+    }
     query.addBindValue(accountId);
 
     if (!query.exec()) {
@@ -337,7 +350,10 @@ QVector<Data::Transaction> TransactionsTable::allCategorized() const
 int TransactionsTable::countForAccount(int accountId) const
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE account_id = ?;"));
+    if (!query.prepare(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE account_id = ?;"))) {
+        Sql::logPrepareError(query, "[TransactionsTable] countForAccount");
+        return 0;
+    }
     query.addBindValue(accountId);
 
     if (!query.exec() || !query.next()) {
@@ -350,11 +366,14 @@ int TransactionsTable::countForAccount(int accountId) const
 bool TransactionsTable::updateById(const Data::Transaction& tx)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "UPDATE transactions SET confirmation_date = ?, operation_date = ?, name = ?,"
         " description = ?, debit = ?, credit = ?, category = ?, subcategory = ?"
         " WHERE id = ?;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[TransactionsTable] updateById");
+        return false;
+    }
     query.addBindValue(dateToDb(tx.confirmationDate));
     query.addBindValue(dateToDb(tx.operationDate));
     query.addBindValue(Sql::text(tx.name));
@@ -375,7 +394,10 @@ bool TransactionsTable::updateById(const Data::Transaction& tx)
 bool TransactionsTable::renameCategory(const QString& oldName, const QString& newName)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE transactions SET category = ? WHERE category = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE transactions SET category = ? WHERE category = ?;"))) {
+        Sql::logPrepareError(query, "[TransactionsTable] renameCategory");
+        return false;
+    }
     query.addBindValue(newName);
     query.addBindValue(oldName);
 
@@ -389,7 +411,10 @@ bool TransactionsTable::renameCategory(const QString& oldName, const QString& ne
 bool TransactionsTable::renameSubcategory(const QString& category, const QString& oldName, const QString& newName)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE transactions SET subcategory = ? WHERE category = ? AND subcategory = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE transactions SET subcategory = ? WHERE category = ? AND subcategory = ?;"))) {
+        Sql::logPrepareError(query, "[TransactionsTable] renameSubcategory");
+        return false;
+    }
     query.addBindValue(newName);
     query.addBindValue(category);
     query.addBindValue(oldName);
@@ -404,12 +429,15 @@ bool TransactionsTable::renameSubcategory(const QString& category, const QString
 std::optional<Data::Transaction> TransactionsTable::latestOnOrBefore(int accountId, const QDate& date) const
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "SELECT id, account_id, confirmation_date, operation_date, name, description,"
         " debit, credit, balance_after, category, subcategory, source_template"
         " FROM transactions WHERE account_id = ? AND operation_date != '' AND operation_date <= ?"
         " ORDER BY operation_date DESC, id DESC LIMIT 1;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[TransactionsTable] latestOnOrBefore");
+        return std::nullopt;
+    }
     query.addBindValue(accountId);
     query.addBindValue(dateToDb(date));
 

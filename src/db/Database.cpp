@@ -145,7 +145,11 @@ bool Database::openFile(const QString& path)
     // after the commit, a full disk).
     if (copyCleared) {
         QSqlQuery secureDelete(m_db);
-        secureDelete.exec(QStringLiteral("PRAGMA secure_delete = ON;"));
+        // Without it, the VACUUM below still writes the file again without
+        // the freed pages (#49: the result was not checked).
+        if (!secureDelete.exec(QStringLiteral("PRAGMA secure_delete = ON;"))) {
+            qWarning() << "[Database] PRAGMA secure_delete = ON failed:" << sqlText(secureDelete.lastError());
+        }
         secureDelete.finish();
     }
 
@@ -182,20 +186,35 @@ bool Database::openFile(const QString& path)
     }
     if (copyCleared) {
         QSqlQuery secureDelete(m_db);
-        secureDelete.exec(QStringLiteral("PRAGMA secure_delete = OFF;"));
+        if (!secureDelete.exec(QStringLiteral("PRAGMA secure_delete = OFF;"))) {
+            qWarning() << "[Database] PRAGMA secure_delete = OFF failed:" << sqlText(secureDelete.lastError());
+        }
         secureDelete.finish();
     }
 
     // WAL mode: better read concurrency, faster writes. After the upgrade:
     // journal_mode cannot change inside a transaction.
+    // The PRAGMA returns the journal mode that SQLite uses: a file system
+    // without WAL support keeps the old mode. The app works in both modes, so
+    // a mode other than "wal" is only logged (#49).
     QSqlQuery pragma(m_db);
-    pragma.exec(QStringLiteral("PRAGMA journal_mode = WAL;"));
+    if (!pragma.exec(QStringLiteral("PRAGMA journal_mode = WAL;"))) {
+        qWarning() << "[Database] PRAGMA journal_mode = WAL failed:" << sqlText(pragma.lastError());
+    } else if (pragma.next() && pragma.value(0).toString().compare(QLatin1String("wal"), Qt::CaseInsensitive) != 0) {
+        qWarning() << "[Database] the journal mode stays" << pragma.value(0).toString() << "(WAL was asked)";
+    }
     // The PRAGMA returns a row; finish() releases the statement, else the
     // next commit() fails with "SQL statements in progress".
     pragma.finish();
     if (stats.droppedAccountNumbers) {
-        // Write the WAL into the file and empty it: the old pages go too.
-        pragma.exec(QStringLiteral("PRAGMA wal_checkpoint(TRUNCATE);"));
+        // Write the WAL into the file and empty it: the old pages go too. The
+        // first column is 1 when a reader or a writer blocked the checkpoint.
+        if (!pragma.exec(QStringLiteral("PRAGMA wal_checkpoint(TRUNCATE);"))) {
+            qWarning() << "[Database] PRAGMA wal_checkpoint(TRUNCATE) failed:" << sqlText(pragma.lastError());
+        } else if (pragma.next() && pragma.value(0).toInt() != 0) {
+            qWarning() << "[Database] PRAGMA wal_checkpoint(TRUNCATE) was blocked: the WAL file keeps old pages"
+                          " until the next checkpoint";
+        }
         pragma.finish();
     }
 
@@ -291,9 +310,13 @@ bool Database::backUp(const QString& path, QString& backupPath)
             QStringLiteral("%1.backup-%2-%3.%4").arg(info.completeBaseName(), stamp).arg(n).arg(info.suffix()));
     }
     QSqlQuery backup(m_db);
-    backup.prepare(QStringLiteral("VACUUM INTO ?;"));
-    backup.addBindValue(QDir::toNativeSeparators(backupPath));
-    if (!backup.exec()) {
+    // prepare() is checked too: its error is the real one (#49).
+    bool done = backup.prepare(QStringLiteral("VACUUM INTO ?;"));
+    if (done) {
+        backup.addBindValue(QDir::toNativeSeparators(backupPath));
+        done = backup.exec();
+    }
+    if (!done) {
         const QString detail = sqlText(backup.lastError());
         backup.finish();
         QFile::remove(backupPath); // a partial copy, if any
@@ -497,7 +520,10 @@ bool Database::migrateTo2(UpgradeStats& stats)
         }
     }
     QSqlQuery update(m_db);
-    update.prepare(QStringLiteral("UPDATE transactions SET fingerprint = ? WHERE id = ?;"));
+    if (!update.prepare(QStringLiteral("UPDATE transactions SET fingerprint = ? WHERE id = ?;"))) {
+        m_lastError = sqlText(update.lastError());
+        return false;
+    }
     for (const Row& row : rows) {
         update.addBindValue(row.fingerprint);
         update.addBindValue(row.id);
@@ -600,37 +626,34 @@ bool Database::saveSnapshot(const Data::FinancialSnapshot& snapshot)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
 
-    m_db.transaction();
+    // One SQL transaction. inTransaction() checks that it starts and that the
+    // commit works (#49: a failed commit returned true).
+    return inTransaction(QStringLiteral("saveSnapshot"), [this, &snapshot]() {
+        // 1. Ensure the date row exists
+        if (!m_snapshots.upsert(snapshot.date())) {
+            m_lastError = "Could not upsert snapshot date.";
+            return false;
+        }
 
-    // 1. Ensure the date row exists
-    if (!m_snapshots.upsert(snapshot.date())) {
-        m_db.rollback();
-        m_lastError = "Could not upsert snapshot date.";
-        return false;
-    }
+        // 2. Resolve the row id
+        const auto snapshotId = m_snapshots.idForDate(snapshot.date());
+        if (!snapshotId) {
+            m_lastError = "Could not resolve snapshot id.";
+            return false;
+        }
 
-    // 2. Resolve the row id
-    const auto snapshotId = m_snapshots.idForDate(snapshot.date());
-    if (!snapshotId) {
-        m_db.rollback();
-        m_lastError = "Could not resolve snapshot id.";
-        return false;
-    }
-
-    // 3. Full replace: delete old entries, insert new ones
-    if (!m_assetEntries.deleteForSnapshot(*snapshotId)                              ||
-        !m_assetEntries.insertBatch(*snapshotId, "stock", snapshot.stocks())       ||
-        !m_assetEntries.insertBatch(*snapshotId, "coin",  snapshot.coins())        ||
-        !m_assetEntries.insertBatch(*snapshotId, "metal", snapshot.metals())       ||
-        !m_assetEntries.insertBatch(*snapshotId, "etf",   snapshot.etfs()))
-    {
-        m_db.rollback();
-        m_lastError = "Failed to write asset entries.";
-        return false;
-    }
-
-    m_db.commit();
-    return true;
+        // 3. Full replace: delete old entries, insert new ones
+        if (!m_assetEntries.deleteForSnapshot(*snapshotId)                              ||
+            !m_assetEntries.insertBatch(*snapshotId, "stock", snapshot.stocks())       ||
+            !m_assetEntries.insertBatch(*snapshotId, "coin",  snapshot.coins())        ||
+            !m_assetEntries.insertBatch(*snapshotId, "metal", snapshot.metals())       ||
+            !m_assetEntries.insertBatch(*snapshotId, "etf",   snapshot.etfs()))
+        {
+            m_lastError = "Failed to write asset entries.";
+            return false;
+        }
+        return true;
+    });
 }
 
 // ── Load ──────────────────────────────────────────────────────────────────────
@@ -726,18 +749,11 @@ bool Database::removeCategory(int categoryId)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
 
-    m_db.transaction();
-
     // Manual cascade: subcategories first, then the category row itself —
     // same "delete-then-insert" transaction style as saveSnapshot().
-    if (!m_subcategoriesTable.removeForCategory(categoryId) || !m_categoriesTable.remove(categoryId)) {
-        m_db.rollback();
-        m_lastError = "Failed to remove category.";
-        return false;
-    }
-
-    m_db.commit();
-    return true;
+    return inTransaction(QStringLiteral("removeCategory"), [this, categoryId]() {
+        return m_subcategoriesTable.removeForCategory(categoryId) && m_categoriesTable.remove(categoryId);
+    });
 }
 
 int Database::addSubcategory(int categoryId, const QString& name, const QString& color)
@@ -819,22 +835,15 @@ bool Database::removeAccount(int accountId)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
 
-    m_db.transaction();
-
     // Manual cascade: hashes, transactions, and balance checkpoints first,
     // then the account row itself — same "delete-then-insert" transaction
     // style as removeCategory()/saveSnapshot().
-    if (!m_accountHashesTable.removeForAccount(accountId)      ||
-        !m_transactionsTable.removeForAccount(accountId)       ||
-        !m_balanceCheckpointsTable.removeForAccount(accountId) ||
-        !m_accountsTable.remove(accountId)) {
-        m_db.rollback();
-        m_lastError = "Failed to remove account.";
-        return false;
-    }
-
-    m_db.commit();
-    return true;
+    return inTransaction(QStringLiteral("removeAccount"), [this, accountId]() {
+        return m_accountHashesTable.removeForAccount(accountId)      &&
+               m_transactionsTable.removeForAccount(accountId)       &&
+               m_balanceCheckpointsTable.removeForAccount(accountId) &&
+               m_accountsTable.remove(accountId);
+    });
 }
 
 int Database::addAccountHash(int accountId, const QString& hash, const QString& source)
@@ -940,9 +949,14 @@ bool Database::inTransaction(const QString& what, const std::function<bool()>& s
         qWarning() << "[Database]" << m_lastError;
         return false;
     }
+    // A step that fails can say why in m_lastError: the message keeps it.
+    m_lastError.clear();
     if (!steps()) {
+        const QString detail = m_lastError;
         m_db.rollback();
-        m_lastError = QStringLiteral("%1 failed: rolled back, nothing changed.").arg(what);
+        m_lastError = detail.isEmpty()
+            ? QStringLiteral("%1 failed: rolled back, nothing changed.").arg(what)
+            : QStringLiteral("%1 failed: %2 Rolled back, nothing changed.").arg(what, sentence(detail));
         qWarning() << "[Database]" << m_lastError;
         return false;
     }
@@ -1152,7 +1166,12 @@ bool Database::resetAll()
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
 
-    m_db.transaction();
+    // Without a transaction, each DROP below would commit on its own, and a
+    // failure half way could not be rolled back (#49).
+    if (!m_db.transaction()) {
+        m_lastError = QStringLiteral("Failed to start the reset: %1").arg(m_db.lastError().text());
+        return false;
+    }
 
     // Drop every table this app owns (children before parents doesn't
     // actually matter here — no FK constraints are declared anywhere in

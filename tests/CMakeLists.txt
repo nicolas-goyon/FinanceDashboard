@@ -92,8 +92,9 @@ set_tests_properties(db_migration_test PROPERTIES
 #   values that the Database refuses (#125); renames that reach every row that
 #   uses the name, with the duplicate checks of the controllers (#34); the
 #   default data written once per database (#37), the mock data (#38), the
-#   order of the balance history (#36) and the currency of an account (#48). It
-#   compiles the core sources plus three controllers.
+#   order of the balance history (#36), the currency of an account (#48), and
+#   the checked results of prepare(), BEGIN and COMMIT (#49). It compiles the
+#   core sources plus three controllers.
 
 qt_add_executable(db_write_test
     db_write_test.cpp

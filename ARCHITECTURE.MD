@@ -35,7 +35,11 @@ the `DEFAULT` of a column does not apply to an explicit `NULL`. So bind the text
 column (`TEXT NOT NULL DEFAULT ''`) through `Sql::text()` (`src/db/tables/SqlText.h`), which
 writes `''`. A required value (a name, a currency, an account hash, a date) is not changed: the
 `Database` method refuses an empty one before any write, with a message in `lastError()`
-(`tests/db_write_test.cpp`).
+(`tests/db_write_test.cpp`). Check every result: a new transaction goes through
+`Database::inTransaction()`, which checks `BEGIN` and `COMMIT` (the upgrade, `saveImport()` and
+`resetAll()` check them in their own code), and a table class that cannot prepare its statement
+logs the SQLite error (`Sql::logPrepareError()`, `src/db/tables/SqlPrepare.h`) and returns its
+failure value.
 
 Transactions and category rules keep the category and subcategory names as text, and accounts
 keep their type and category names as text, not ids. So a rename changes those rows too, in the

@@ -1,4 +1,5 @@
 #include "AccountBalanceCheckpointsTable.h"
+#include "SqlPrepare.h"
 #include "SqlText.h"
 #include "models/Account.h"
 
@@ -63,9 +64,12 @@ bool AccountBalanceCheckpointsTable::createTable()
 int AccountBalanceCheckpointsTable::insert(int accountId, const QDate& date, double balance, const QString& note)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "INSERT INTO account_balance_checkpoints (account_id, date, balance, note) VALUES (?, ?, ?, ?);"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AccountBalanceCheckpointsTable] insert");
+        return -1;
+    }
     query.addBindValue(accountId);
     query.addBindValue(dateToDb(date));          // required: NULL for an invalid date fails
     query.addBindValue(balance);
@@ -81,7 +85,10 @@ int AccountBalanceCheckpointsTable::insert(int accountId, const QDate& date, dou
 bool AccountBalanceCheckpointsTable::remove(int checkpointId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM account_balance_checkpoints WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM account_balance_checkpoints WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[AccountBalanceCheckpointsTable] remove");
+        return false;
+    }
     query.addBindValue(checkpointId);
 
     const bool success = query.exec();
@@ -94,7 +101,10 @@ bool AccountBalanceCheckpointsTable::remove(int checkpointId)
 bool AccountBalanceCheckpointsTable::removeForAccount(int accountId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM account_balance_checkpoints WHERE account_id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM account_balance_checkpoints WHERE account_id = ?;"))) {
+        Sql::logPrepareError(query, "[AccountBalanceCheckpointsTable] removeForAccount");
+        return false;
+    }
     query.addBindValue(accountId);
 
     const bool success = query.exec();
@@ -108,10 +118,13 @@ QVector<Data::AccountBalanceCheckpoint> AccountBalanceCheckpointsTable::allForAc
 {
     QVector<Data::AccountBalanceCheckpoint> result;
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "SELECT id, account_id, date, balance, note FROM account_balance_checkpoints"
         " WHERE account_id = ? ORDER BY date ASC, id ASC;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AccountBalanceCheckpointsTable] allForAccount");
+        return {};
+    }
     query.addBindValue(accountId);
 
     if (!query.exec()) {
@@ -135,11 +148,14 @@ std::optional<Data::AccountBalanceCheckpoint>
 AccountBalanceCheckpointsTable::latestOnOrBefore(int accountId, const QDate& date) const
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "SELECT id, account_id, date, balance, note FROM account_balance_checkpoints"
         " WHERE account_id = ? AND date <= ?"
         " ORDER BY date DESC, id DESC LIMIT 1;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[AccountBalanceCheckpointsTable] latestOnOrBefore");
+        return std::nullopt;
+    }
     query.addBindValue(accountId);
     query.addBindValue(dateToDb(date));
 

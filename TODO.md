@@ -45,7 +45,6 @@ here so the architecture doc stays a design record, not a task tracker).
 - [ ] **`ImportSnapshotPage.qml` file picker assumes a template is always selected** — `fileDialog.onAccepted` calls `controller.parseFile(selectedFile, page.currentTemplate.id)` with no null check. Harmless while exactly one import template exists, but the button that opens the dialog isn't disabled when `controller.templates.length === 0`, so this is a latent crash once a second template ships or the list can be empty.
 - [ ] **Missing `pragma ComponentBehavior: Bound`** on `InvestmentsPage.qml` and `ImportSnapshotPage.qml` — every other page using `required property` inside a Repeater delegate declares this pragma; these two don't, despite using `required property var modelData` themselves. Verify against doc.qt.io whether this has a real behavioral effect here, then align for consistency.
 - [ ] **Unguarded chart-title string interpolation** — `CashFlowPage.qml` concatenates `controller.monthLabels[controller.selectedMonth]` directly into chart titles with no bounds check, unlike the rest of the app's defensive-display convention (e.g. `AccountHistoryPage.qml` ternary-guards `page.account !== null` before display). Low risk today (mock data populates synchronously) but worth aligning.
-- [ ] **`Database::open()` silently ignores a WAL-mode failure** — `Database.cpp`, the `PRAGMA journal_mode = WAL;` exec's return value isn't checked/logged, unlike every other query-failure path in the same file. Add a `qWarning()` on failure for parity.
 
 ---
 

@@ -1,4 +1,5 @@
 #include "SettingsTable.h"
+#include "SqlPrepare.h"
 
 #include <QDebug>
 #include <QSqlDatabase>
@@ -21,7 +22,10 @@ QSqlDatabase SettingsTable::db() const
 QString SettingsTable::value(const QString& key) const
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("SELECT value FROM settings WHERE key = ?;"));
+    if (!query.prepare(QStringLiteral("SELECT value FROM settings WHERE key = ?;"))) {
+        Sql::logPrepareError(query, "[SettingsTable] value");
+        return QStringLiteral("");
+    }
     query.addBindValue(key);
     if (!query.exec()) {
         qWarning() << "[SettingsTable] value error:" << query.lastError().text();
@@ -33,10 +37,13 @@ QString SettingsTable::value(const QString& key) const
 bool SettingsTable::setValue(const QString& key, const QString& value)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "INSERT INTO settings (key, value) VALUES (?, ?)"
         " ON CONFLICT(key) DO UPDATE SET value = excluded.value;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[SettingsTable] setValue");
+        return false;
+    }
     // Both columns are required (no DEFAULT): not through Sql::text(). The
     // keys and the values are constants of Database.
     query.addBindValue(key);

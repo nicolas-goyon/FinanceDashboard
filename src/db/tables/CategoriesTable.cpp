@@ -1,4 +1,5 @@
 #include "CategoriesTable.h"
+#include "SqlPrepare.h"
 #include "models/Category.h"
 
 #include <QSqlDatabase>
@@ -45,9 +46,12 @@ bool CategoriesTable::createTable()
 int CategoriesTable::insert(const QString& name, const QString& color)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "INSERT INTO categories (name, color) VALUES (?, ?);"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[CategoriesTable] insert");
+        return -1;
+    }
     query.addBindValue(name);
     query.addBindValue(color);
 
@@ -61,7 +65,10 @@ int CategoriesTable::insert(const QString& name, const QString& color)
 bool CategoriesTable::rename(int categoryId, const QString& newName)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE categories SET name = ? WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE categories SET name = ? WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[CategoriesTable] rename");
+        return false;
+    }
     query.addBindValue(newName);
     query.addBindValue(categoryId);
 
@@ -75,7 +82,10 @@ bool CategoriesTable::rename(int categoryId, const QString& newName)
 bool CategoriesTable::setColor(int categoryId, const QString& color)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE categories SET color = ? WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE categories SET color = ? WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[CategoriesTable] setColor");
+        return false;
+    }
     query.addBindValue(color);
     query.addBindValue(categoryId);
 
@@ -89,7 +99,10 @@ bool CategoriesTable::setColor(int categoryId, const QString& color)
 bool CategoriesTable::remove(int categoryId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM categories WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM categories WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[CategoriesTable] remove");
+        return false;
+    }
     query.addBindValue(categoryId);
 
     const bool success = query.exec();

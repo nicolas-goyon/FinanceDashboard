@@ -1,4 +1,5 @@
 #include "CategoryRulesTable.h"
+#include "SqlPrepare.h"
 #include "SqlText.h"
 #include "models/CategoryRule.h"
 
@@ -55,10 +56,13 @@ bool CategoryRulesTable::createTable()
 int CategoryRulesTable::insert(const Data::CategoryRule& rule)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "INSERT INTO category_rules (pattern, category, subcategory, priority)"
         " VALUES (?, ?, ?, ?);"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[CategoryRulesTable] insert");
+        return -1;
+    }
     query.addBindValue(Sql::text(rule.pattern));
     query.addBindValue(Sql::text(rule.category));
     query.addBindValue(Sql::text(rule.subcategory));
@@ -77,9 +81,12 @@ int CategoryRulesTable::insert(const Data::CategoryRule& rule)
 bool CategoryRulesTable::updateTarget(int ruleId, const QString& category, const QString& subcategory)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "UPDATE category_rules SET category = ?, subcategory = ? WHERE id = ?;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[CategoryRulesTable] updateTarget");
+        return false;
+    }
     query.addBindValue(Sql::text(category));
     query.addBindValue(Sql::text(subcategory));
     query.addBindValue(ruleId);
@@ -94,7 +101,10 @@ bool CategoryRulesTable::updateTarget(int ruleId, const QString& category, const
 bool CategoryRulesTable::remove(int ruleId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM category_rules WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM category_rules WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[CategoryRulesTable] remove");
+        return false;
+    }
     query.addBindValue(ruleId);
 
     const bool success = query.exec();
@@ -107,7 +117,10 @@ bool CategoryRulesTable::remove(int ruleId)
 bool CategoryRulesTable::renameCategory(const QString& oldName, const QString& newName)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE category_rules SET category = ? WHERE category = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE category_rules SET category = ? WHERE category = ?;"))) {
+        Sql::logPrepareError(query, "[CategoryRulesTable] renameCategory");
+        return false;
+    }
     query.addBindValue(newName);
     query.addBindValue(oldName);
 
@@ -121,7 +134,10 @@ bool CategoryRulesTable::renameCategory(const QString& oldName, const QString& n
 bool CategoryRulesTable::renameSubcategory(const QString& category, const QString& oldName, const QString& newName)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE category_rules SET subcategory = ? WHERE category = ? AND subcategory = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE category_rules SET subcategory = ? WHERE category = ? AND subcategory = ?;"))) {
+        Sql::logPrepareError(query, "[CategoryRulesTable] renameSubcategory");
+        return false;
+    }
     query.addBindValue(newName);
     query.addBindValue(category);
     query.addBindValue(oldName);
@@ -161,10 +177,13 @@ QVector<Data::CategoryRule> CategoryRulesTable::all() const
 Data::CategoryRule CategoryRulesTable::byPattern(const QString& pattern) const
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "SELECT id, pattern, category, subcategory, priority"
         " FROM category_rules WHERE pattern = ? LIMIT 1;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[CategoryRulesTable] byPattern");
+        return {};
+    }
     query.addBindValue(pattern);
 
     if (!query.exec()) {
