@@ -56,6 +56,20 @@ builds, source archives). Then CI opens a pull request that merges the release b
   versions of a channel sort in build order. The version suffix goes into the version of the
   app, the setup and the file names. CI keeps the 10 newest experimental pre-releases, and the
   release of a version deletes its release candidates (#129).
+- Updates: at each start, the app asks GitHub for the list of releases and tells in a banner
+  when a newer version of its channel exists. The new Updates page (ADMIN) shows the version of
+  the app, the versions of the channel with their notes and release pages, a "Check now" button
+  and the setting that turns the check off. The prod app follows the releases; the Test app
+  follows Experimental (-exp and -rc) or Preprod (-rc). GitHub sees the internet address of the
+  computer and the version of the app: the app sends no token, no cookie and no data, and
+  English as the language. Without a network, when GitHub does not answer within 20 seconds, or
+  when GitHub refuses the call, the page tells why. The QML engine loads nothing from the
+  network, the notes of a version are shown without their images, and the page opens the pages
+  of the project on GitHub only. The check uses HTTPS: CI checks that the packages have the TLS
+  backend of Qt; on Linux it uses the OpenSSL 3 of the system, and the .deb depends on
+  libssl3t64 | libssl3 and ca-certificates. The Docker build ships the TLS plugins and builds
+  its static Linux Qt with OpenSSL. The installation itself comes later: for now the page opens
+  the release page (#117).
 
 ### Changed
 - The Git history on GitHub was rewritten on 2026-10-20 at 06:39 UTC to remove personal data. A

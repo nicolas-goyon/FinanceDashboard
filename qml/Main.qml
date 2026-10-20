@@ -10,10 +10,11 @@ import QtQuick.Layouts
 //   Overlay0 #6c7086 · Text #cdd6f4 · Blue #89b4fa
 //
 // Layout: left sidebar (collapsible category list) instead of a top TabBar.
-// Each of the 8 categories mirrors a PROJECT.md page or a Transactions/
-// Account/Database Management split page 1:1 (see ARCHITECTURE.MD § App
-// Status). Clicking a category label selects its page; clicking the small
-// arrow expands/collapses its action list without changing the page.
+// Each of the 9 categories mirrors a PROJECT.md page, a Transactions/
+// Account/Database Management split page or the Updates page (#117) 1:1 (see
+// ARCHITECTURE.MD § App Status). Clicking a category label selects its page;
+// clicking the small arrow expands/collapses its action list without changing
+// the page.
 //
 // ── Navigation model — single source of truth ───────────────────────────────
 // `root.currentViewId` is the ONLY piece of state that says "what's on
@@ -71,6 +72,18 @@ ApplicationWindow {
     // app, for "Copy my prod database" on the Database Management page. Empty
     // in the prod app, which then has no such action.
     property string prodDatabasePath: ""
+
+    // Set by main.cpp: true in the Test app (#130). UpdateController follows
+    // the Experimental or Preprod channel there, and Stable in the prod app
+    // (#117, #129).
+    property bool isTestApp: false
+
+    // The update check at start (#117): UpdateController waits a few seconds,
+    // and does nothing when the user turned the check off.
+    Component.onCompleted: {
+        UpdateController.testApp = root.isTestApp
+        UpdateController.startupCheck()
+    }
 
     // Overlay views: full-content pages reached from a sidebar action (or,
     // for "accountTransactions", from a button inside another overlay) that
@@ -179,6 +192,11 @@ ApplicationWindow {
         },
         {
             id: "databaseManagement", label: "Database Management",
+            actions: []
+        },
+        {
+            // The update check and the versions of the channel (#117).
+            id: "updates", label: "Updates",
             actions: []
         }
     ]
@@ -311,10 +329,47 @@ ApplicationWindow {
         width: 1; color: "#313244"
     }
 
+    // ── Update banner (#117) ─────────────────────────────────────────────────
+    // Above the page content, when a newer version of the channel exists, but
+    // not on the Updates page itself. The pages and the overlays start below
+    // it; with no banner, its height is 0.
+    Rectangle {
+        id: updateBanner
+        anchors { top: parent.top; left: sidebarDivider.right; right: parent.right }
+        height: UpdateController.bannerVisible && root.currentViewId !== "updates" ? 40 : 0
+        visible: height > 0
+        color: "#1e3a5f"
+
+        RowLayout {
+            anchors { fill: parent; leftMargin: 20; rightMargin: 12 }
+            spacing: 12
+
+            Text {
+                Layout.fillWidth: true
+                elide: Text.ElideRight
+                text: Application.displayName + " " + UpdateController.latestVersion + " is available."
+                font.pixelSize: 14
+                color: "#cdd6f4"
+            }
+            PillButton {
+                text: "See the versions"
+                variant: "primary"
+                fontSize: 13
+                Layout.preferredHeight: 28
+                onClicked: root.currentViewId = "updates"
+            }
+            GhostButton {
+                text: "×"
+                fontSize: 15
+                onClicked: UpdateController.dismissBanner()
+            }
+        }
+    }
+
     // ── Page content ─────────────────────────────────────────────────────────
     StackLayout {
         anchors {
-            top: parent.top; bottom: parent.bottom
+            top: updateBanner.bottom; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
         visible: !root.isOverlayView
@@ -328,13 +383,14 @@ ApplicationWindow {
         TransactionsManagementPage    {}
         AccountManagementLandingPage  {}
         DatabaseManagementPage        { prodDatabasePath: root.prodDatabasePath }
+        UpdatesPage                   {}
     }
 
     // ── Overlay — Import Transactions (see SidebarCategory.actionTriggered
     //    handling above). Lazily loaded/unloaded via Loader.active. ────────────
     Loader {
         anchors {
-            top: parent.top; bottom: parent.bottom
+            top: updateBanner.bottom; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
         active: root.currentViewId === "importTransactions"
@@ -353,7 +409,7 @@ ApplicationWindow {
     //    handling above). Lazily loaded/unloaded via Loader.active. ──────────
     Loader {
         anchors {
-            top: parent.top; bottom: parent.bottom
+            top: updateBanner.bottom; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
         active: root.currentViewId === "manageCategories"
@@ -372,7 +428,7 @@ ApplicationWindow {
     //    handling above). Lazily loaded/unloaded via Loader.active. ──────────
     Loader {
         anchors {
-            top: parent.top; bottom: parent.bottom
+            top: updateBanner.bottom; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
         active: root.currentViewId === "manageAccounts"
@@ -403,7 +459,7 @@ ApplicationWindow {
     //    Lazily loaded/unloaded via Loader.active. ───────────────────────────
     Loader {
         anchors {
-            top: parent.top; bottom: parent.bottom
+            top: updateBanner.bottom; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
         active: root.currentViewId === "accountTransactions"
@@ -425,7 +481,7 @@ ApplicationWindow {
     //    handling above). Lazily loaded/unloaded via Loader.active. ──────────
     Loader {
         anchors {
-            top: parent.top; bottom: parent.bottom
+            top: updateBanner.bottom; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
         active: root.currentViewId === "accountTypes"
@@ -450,7 +506,7 @@ ApplicationWindow {
     //    SnapshotImportController backing "Import Transactions". ──────────
     Loader {
         anchors {
-            top: parent.top; bottom: parent.bottom
+            top: updateBanner.bottom; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
         active: root.currentViewId === "accountDetails"

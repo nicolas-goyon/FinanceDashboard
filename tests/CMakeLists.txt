@@ -149,6 +149,42 @@ set_tests_properties(db_copy_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# update_test
+#   The update check (#117): SemVer (the order of semver.org and of the tags of
+#   the release channels), the list of releases of GitHub and its channels,
+#   UpdateController with a file:// list and with a local test server on
+#   127.0.0.1 in place of GitHub (the request and its headers, no cookie, the
+#   refused checks, a check with no answer, the check at start), the pages
+#   that openPage() opens, the release notes without images (safeNotes()),
+#   and the network access of the QML engine (local files only). No
+#   internet. It compiles the update sources, the controller and
+#   src/startup/LocalOnlyNetwork.cpp.
+qt_add_executable(update_test
+    update_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/update/SemVer.h
+    ${CMAKE_SOURCE_DIR}/src/update/SemVer.cpp
+    ${CMAKE_SOURCE_DIR}/src/update/ReleaseFeed.h
+    ${CMAKE_SOURCE_DIR}/src/update/ReleaseFeed.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/updates/UpdateController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/updates/UpdateController.cpp
+    ${CMAKE_SOURCE_DIR}/src/startup/LocalOnlyNetwork.h
+    ${CMAKE_SOURCE_DIR}/src/startup/LocalOnlyNetwork.cpp
+)
+target_include_directories(update_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/controllers/updates
+)
+# Qt6::Network for the download and the test server, Qt6::Gui for
+# QDesktopServices and the QGuiApplication of a QML Text, Qt6::Qml for the
+# QML_ELEMENT macro in the controller header and the QML engine.
+target_link_libraries(update_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Test)
+set_target_properties(update_test PROPERTIES WIN32_EXECUTABLE OFF)
+add_test(NAME update_test COMMAND update_test)
+set_tests_properties(update_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # calc_test
 #   The calculations behind the texts and charts of the pages: the Projects page
 #   (#41), the money flow and the rolling average of the Cash Flow page (#42,
@@ -183,4 +219,4 @@ set_tests_properties(calc_test PROPERTIES
 
 # Every test target, so that CI and a local build need one target name:
 #   cmake --build build --target fd_tests
-add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test db_copy_test calc_test)
+add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test db_copy_test update_test calc_test)

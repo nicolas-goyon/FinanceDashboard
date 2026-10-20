@@ -7,7 +7,8 @@ builds. It installs and runs next to Finance Dashboard, with its own data
 folder, so a pre-release never touches the data of the prod app. Its icon has
 an orange "TEST" band, and its window title ends with "(Test)". To try a
 pre-release on your real data, use **Copy my prod database** on its Database
-Management page: the prod database is only read.
+Management page: the prod database is only read. Its Updates page tells when a
+newer pre-release of its channel exists (Experimental or Preprod).
 
 ### Downloads
 

@@ -93,7 +93,7 @@ if(WIN32)
 endif()
 
 # Qt Quick / QML + Qt Graphs (2D). Qt Charts and Widgets are no longer used.
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2 Network)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -167,6 +167,12 @@ set(FD_CORE_SOURCES
     src/import/ImportTemplateRegistry.cpp
     src/import/SumeriaCcpCsvExtractionTemplate.h
     src/import/SumeriaCcpCsvExtractionTemplate.cpp
+    # The update check (#117): versions and the list of releases. Qt Core only,
+    # no network — UpdateController below downloads the list.
+    src/update/SemVer.h
+    src/update/SemVer.cpp
+    src/update/ReleaseFeed.h
+    src/update/ReleaseFeed.cpp
 )
 list(TRANSFORM FD_CORE_SOURCES PREPEND "${CMAKE_CURRENT_SOURCE_DIR}/")
 
@@ -177,6 +183,10 @@ qt_add_executable(FinanceDashboard
     # window loads (see docs/startup.md).
     src/startup/StartupChecks.h
     src/startup/StartupChecks.cpp
+    # The network access of the QML engine: local files and resources only
+    # (#117, ARCHITECTURE.MD § Network rule).
+    src/startup/LocalOnlyNetwork.h
+    src/startup/LocalOnlyNetwork.cpp
     ${FD_CORE_SOURCES}
 )
 
@@ -212,6 +222,8 @@ qt_add_qml_module(FinanceDashboard
         src/controllers/dataentry/AccountController.cpp
         src/controllers/database/DatabaseManagementController.h
         src/controllers/database/DatabaseManagementController.cpp
+        src/controllers/updates/UpdateController.h
+        src/controllers/updates/UpdateController.cpp
     QML_FILES
         qml/Main.qml
         qml/StartupErrorWindow.qml
@@ -240,6 +252,7 @@ qt_add_qml_module(FinanceDashboard
         qml/pages/TransactionsManagementPage.qml
         qml/pages/AccountManagementLandingPage.qml
         qml/pages/DatabaseManagementPage.qml
+        qml/pages/UpdatesPage.qml
         qml/pages/ImportSnapshotPage.qml
         qml/pages/CategoriesManagePage.qml
         qml/pages/AccountsManagePage.qml
@@ -275,6 +288,7 @@ target_include_directories(FinanceDashboard PRIVATE
     src/controllers/projects
     src/controllers/dataentry
     src/controllers/database
+    src/controllers/updates
 )
 
 target_link_libraries(FinanceDashboard PRIVATE
@@ -285,6 +299,8 @@ target_link_libraries(FinanceDashboard PRIVATE
     Qt6::Graphs
     Qt6::Sql
     Qt6::QuickControls2
+    # The update check (#117): QNetworkAccessManager, HTTPS to api.github.com.
+    Qt6::Network
 )
 
 target_compile_definitions(FinanceDashboard PRIVATE
