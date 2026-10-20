@@ -426,14 +426,19 @@ bool TransactionsTable::renameSubcategory(const QString& category, const QString
     return success;
 }
 
+// The booking date (the confirmation date, else the operation date) filters
+// and orders: balance_after is the balance after the booking day of the row
+// (#133, as the balance history since #36). On one day, the last row saved.
 std::optional<Data::Transaction> TransactionsTable::latestOnOrBefore(int accountId, const QDate& date) const
 {
     QSqlQuery query(db());
     if (!query.prepare(QStringLiteral(
         "SELECT id, account_id, confirmation_date, operation_date, name, description,"
         " debit, credit, balance_after, category, subcategory, source_template"
-        " FROM transactions WHERE account_id = ? AND operation_date != '' AND operation_date <= ?"
-        " ORDER BY operation_date DESC, id DESC LIMIT 1;"
+        " FROM transactions WHERE account_id = ?"
+        " AND COALESCE(NULLIF(confirmation_date, ''), operation_date) != ''"
+        " AND COALESCE(NULLIF(confirmation_date, ''), operation_date) <= ?"
+        " ORDER BY COALESCE(NULLIF(confirmation_date, ''), operation_date) DESC, id DESC LIMIT 1;"
     ))) {
         Sql::logPrepareError(query, "[TransactionsTable] latestOnOrBefore");
         return std::nullopt;
