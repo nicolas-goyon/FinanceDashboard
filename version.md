@@ -20,10 +20,12 @@ fact. Small fixes to a feature that's still unreleased/in-progress in the *same*
 need their own extra line; fold them into the feature's own entry instead of listing "fixed a
 bug in the thing I just added two lines above."
 
-**Releases** follow gitflow. A `release/<x.y.z>` branch stamps the date here
-(`version.py release`). Its merge into `main` publishes the GitHub release (setup, portable
-builds, source archives). Then CI opens a pull request into `develop` that opens the next patch
-version as the new in-progress one. See `CI-CD.md`.
+**Releases** follow gitflow. When a `release/<x.y.z>` branch is cut, CI opens a pull request
+that opens the next patch version on `develop`. There, vX.Y.Z stays undated ("release in
+progress") until it is released. The release branch stamps the date here (`version.py release`)
+just before its merge into `main`, and that merge publishes the GitHub release (setup, portable
+builds, source archives). Then CI opens a pull request that merges the release back into
+`develop`. See `CI-CD.md`.
 
 ---
 
@@ -33,6 +35,17 @@ version as the new in-progress one. See `CI-CD.md`.
 - The Git history on GitHub was rewritten on 2026-10-20 at 06:39 UTC to remove personal data. A
   clone made before that time still has the old history: delete it and clone the repository
   again.
+- Release flow: when a `release/x.y.z` branch is pushed, CI opens a pull request that opens the
+  next version on `develop` (`version.py cut`), so `develop` takes changes again while the
+  release branch is tested; `version.py uncut` undoes it when a release branch is dropped. On
+  `develop`, the version of the release branch stays undated ("release in progress"); the
+  release branch dates it just before its merge into `main`. The back-merge is now a merge of
+  `main` into a branch from `develop`, made by `tools/release_flow.py`, which renders
+  `version.md` again when it conflicts. The Changelog job runs the new tests of the tools
+  (`tools/test_version.py`). It refuses a pull request into `main` with an undated version, and
+  a pull request into `develop` that changes the version of a release branch, or that comes
+  before the pull request that opens the next version or before the back-merge.
+  `CONTRIBUTING.md` tells when a whole stack can be merged at once (#131).
 
 ---
 

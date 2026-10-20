@@ -141,6 +141,7 @@ FinanceDashboard/
 ├── src/        — Controllers, database layer, models, statement-import templates (all C++).
 ├── tests/      — CTest registration for the predictor self-test harness.
 ├── tools/      — Static-analysis runners, the doc generator, version.py (version/changelog),
+│                 release_flow.py (the branches that CI makes for a release) and their tests,
 │                 Docker build wrappers + requirement check (docker-build.*, check-requirements.*).
 ├── docker/     — Docker build toolchain image + in-container build scripts.
 ├── launcher/   — Start-up launcher (Windows Win32 exe / Linux script).

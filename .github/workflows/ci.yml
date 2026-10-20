@@ -3,19 +3,21 @@
 #
 #  Full documentation: CI-CD.md. The short version:
 #
-#  * Every job is self-contained. None of them `needs:` another (the single
-#    exception is `release`, which by definition cannot run before the things it
-#    publishes exist, and must not run when a blocking job failed). A job that
-#    fails can be re-run on its own from the GitHub UI without dragging five
-#    other jobs along, and a broken linter never blocks a build. Each job checks
-#    out, sets up Qt and reads the version itself.
+#  * Every job is self-contained. None of them `needs:` another (the
+#    exceptions are `release`, which by definition cannot run before the things
+#    it publishes exist, and must not run when a blocking job failed, and
+#    `open-next-version`, which waits for the Changelog job). A job that fails
+#    can be re-run on its own from the GitHub UI without dragging five other
+#    jobs along, and a broken linter never blocks a build. Each job checks out,
+#    sets up Qt and reads the version itself.
 #
 #  * Gitflow. CI runs on pull requests and on pushes to main, develop,
-#    release/** and hotfix/**. main only receives merges of release/* and
-#    hotfix/* branches, whose version is already dated (`version.py release`).
-#    A push to main publishes that version: tag vX.Y.Z and a GitHub release,
-#    with no commit to main. Then CI opens a pull request into develop that
-#    merges main back and opens the next patch version.
+#    release/** and hotfix/**. A push to a release/* branch makes CI open a
+#    pull request into develop that opens the next version. main only receives
+#    merges of release/* and hotfix/* branches, whose version is dated
+#    (`version.py release`) before the merge. A push to main publishes that
+#    version: tag vX.Y.Z and a GitHub release, with no commit to main. Then CI
+#    opens a pull request that merges main back into develop.
 #
 #  * The end products are meant to be plug and play. A user downloads one file:
 #      Windows  FinanceDashboard-<v>-windows-x64.exe   setup, shortcuts,
@@ -99,13 +101,56 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Tests of version.py and release_flow.py
+        run: python -m unittest discover -s tools -p "test_*.py" -v
+
       # main is the base: the versions that are released (dated) there cannot
-      # change on any other branch.
-      - name: Fetch main
-        run: git fetch --no-tags --depth=1 origin main
+      # change on any other branch. A pull request has its base branch as a
+      # second base: on develop, the version of a release branch can change
+      # only in that release branch.
+      - name: Fetch main and the base branch
+        run: |
+          git fetch --no-tags --depth=1 origin +main:refs/remotes/origin/main
+          if [ -n "$GITHUB_BASE_REF" ] && [ "$GITHUB_BASE_REF" != main ]; then
+            git fetch --no-tags --depth=1 origin "+$GITHUB_BASE_REF:refs/remotes/origin/$GITHUB_BASE_REF"
+          fi
 
       - name: version.json ↔ version.md are in sync, released versions unchanged
-        run: python tools/version.py check --base FETCH_HEAD
+        run: |
+          options=(--base origin/main)
+          if [ -n "$GITHUB_BASE_REF" ] && [ "$GITHUB_BASE_REF" != main ]; then
+            options+=(--base "origin/$GITHUB_BASE_REF")
+          fi
+          # A pull request into main releases its version: the version must be dated.
+          if [ "$GITHUB_BASE_REF" = main ]; then
+            options+=(--dated)
+          fi
+          python tools/version.py check "${options[@]}"
+
+      # From the cut of release/X.Y.Z to the back-merge of its release, the
+      # version of develop takes no new change: the release branch releases it
+      # without that change. So the pull request that opens the next version
+      # (chore/open-v…) goes into develop first, and after the release the
+      # back-merge pull request (chore/back-merge-v…) goes first. The version
+      # comes from develop, not from the pull request, so that a pull request
+      # that renames the version does not pass. The two branches that CI makes
+      # are the way out, so they skip the check. A re-run uses the merge commit
+      # of the first run: update the branch to run the check again.
+      - name: The version of a release branch takes no new change
+        if: >-
+          github.event_name == 'pull_request' && github.base_ref == 'develop' &&
+          !startsWith(github.head_ref, 'chore/open-v') &&
+          !startsWith(github.head_ref, 'chore/back-merge-v')
+        run: |
+          current=$(git show origin/develop:version.json | python -c 'import json, sys; print(json.load(sys.stdin)["current"])')
+          if git ls-remote --exit-code --heads origin "release/$current" >/dev/null; then
+            echo "::error::release/$current is cut, so v$current takes no new change on develop. Merge the pull request that opens the next version on develop (chore/open-v…) first, then update this branch."
+            exit 1
+          fi
+          if git show origin/main:version.json | python -c 'import json, sys; sys.exit(0 if any(r["version"] == sys.argv[1] and r.get("date") for r in json.load(sys.stdin)["releases"]) else 1)' "$current"; then
+            echo "::error::v$current is released, and develop does not have the back-merge yet. Merge the back-merge pull request (chore/back-merge-v$current) first, then update this branch."
+            exit 1
+          fi
 
       - name: Preview the release notes this version would publish
         run: |
@@ -498,7 +543,81 @@ jobs:
           retention-days: 30
 
   # ────────────────────────────────────────────────────────────────────────────
-  #  Release — the only job with dependencies, and only on main
+  #  Open the next version on develop — on pushes to release/** only
+  # ────────────────────────────────────────────────────────────────────────────
+  # After release/X.Y.Z is cut from develop, a pull request into develop opens
+  # the next version, so that develop can take changes again while the release
+  # branch is tested. vX.Y.Z stays undated on develop until its release. CI
+  # never pushes to develop: the maintainer merges the pull request. Each part
+  # is skipped when it is already done, so each push to the release branch can
+  # run the job again.
+  open-next-version:
+    name: Open the next version on develop
+    needs: [changelog]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/release/')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write        # push the branch
+      pull-requests: write   # open the pull request into develop
+      actions: write         # start CI on the branch (workflow_dispatch)
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Keep the token so the branch can be pushed.
+          persist-credentials: true
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Open the pull request into develop
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="${GITHUB_REF_NAME#release/}"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git fetch --no-tags origin develop
+          next=$(python tools/release_flow.py open-next "$version" --develop FETCH_HEAD)
+          if [ -z "$next" ]; then
+            echo "develop already opened the version after v${version}."
+            echo "### Next version" >> "$GITHUB_STEP_SUMMARY"
+            echo "develop already opened the version after \`v${version}\`." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          branch="chore/open-v${next}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "$branch exists: an earlier run pushed it."
+          else
+            git push origin "$branch"
+          fi
+
+          created=false
+          if [ -z "$(gh pr list --head "$branch" --base develop --state open --json number --jq '.[].number')" ]; then
+            if ! gh pr create --base develop --head "$branch" \
+                --title "chore(release): open v${next} on develop" \
+                --body "\`release/${version}\` is cut. This pull request opens v${next} on \`develop\` as the in-progress version. Merge it before any other pull request into \`develop\`: their changelog entries then go under v${next}. v${version} stays undated on \`develop\` (\"release in progress\") until its release: the back-merge from \`main\` gives it its date. Opened by CI. See CI-CD.md § The release flow."; then
+              echo "::error::Could not open the pull request from ${branch} into develop. Allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions), then re-run this job."
+              exit 1
+            fi
+            created=true
+          fi
+          # A pull request opened with GITHUB_TOKEN starts no CI run (see the
+          # back-merge in the release job): start one. Also when an earlier
+          # run opened the pull request but stopped before this.
+          if [ "$created" = true ] || [ "$(gh run list --branch "$branch" --workflow ci.yml --limit 1 --json databaseId --jq length)" = 0 ]; then
+            gh workflow run ci.yml --ref "$branch"
+          fi
+          {
+            echo "### Next version"
+            echo "Pull request into develop: opens \`v${next}\`. Merge it before any other pull request into develop."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ────────────────────────────────────────────────────────────────────────────
+  #  Release — needs every blocking job, and only on main
   # ────────────────────────────────────────────────────────────────────────────
   release:
     name: Release
@@ -629,9 +748,13 @@ jobs:
             dist/*
 
       # ── Back into develop ────────────────────────────────────────────────────
-      # A branch from this commit opens the next patch version, and a pull
-      # request merges it into develop: develop gets the dated release and the
-      # new in-progress version in one merge. Nothing is committed to main.
+      # A branch from develop, with this commit merged into it, and a pull
+      # request into develop: develop gets the dated release and keeps the
+      # in-progress version that it opened when the release branch was cut.
+      # The merge is made here, not on GitHub, because version.md (a generated
+      # file) conflicts: release_flow.py renders it again from the merged
+      # version.json. If develop did not open the next version, it opens the
+      # next patch. Nothing is committed to main.
       #
       # Each part is skipped when it is already done, so a re-run can finish a
       # back-merge that failed. GitHub refuses the pull request when the
@@ -659,22 +782,28 @@ jobs:
             git fetch --no-tags origin "$branch"
             next=$(git show FETCH_HEAD:version.json | python -c 'import json, sys; print(json.load(sys.stdin)["current"])')
           else
-            git checkout -b "$branch" "$GITHUB_SHA"
-            next=$(python tools/version.py bump patch)
-            python tools/version.py check
-            git add version.json version.md
-            git commit -m "chore(release): open v${next} after v${version}"
+            # Any conflict other than version.md stops the step: merge by hand
+            # (CI-CD.md § The release flow, hotfixes), then re-run the job.
+            next=$(python tools/release_flow.py back-merge "$version" --release "$GITHUB_SHA" --develop FETCH_HEAD)
             git push origin "$branch"
           fi
           echo "next=$next" >> "$GITHUB_ENV"
 
           if [ -z "$(gh pr list --head "$branch" --base develop --state open --json number --jq '.[].number')" ]; then
             if ! gh pr create --base develop --head "$branch" \
-                --title "chore(release): merge v${version} back into develop and open v${next}" \
-                --body "Merges \`main\` (release v${version}) back into \`develop\` and opens v${next} as the in-progress version. Opened by the release job. Merge it with a merge commit, not a squash. See CI-CD.md § The release flow."; then
+                --title "chore(release): merge v${version} back into develop" \
+                --body "Merges \`main\` (release v${version}) back into \`develop\`. The branch starts from \`develop\` and has \`main\` merged into it, so this pull request has no conflict. In-progress version after the merge: v${next}. Opened by the release job. Merge it with a merge commit, not a squash. See CI-CD.md § The release flow."; then
               echo "::error::Could not open the pull request from ${branch} into develop. Allow GitHub Actions to create pull requests (Settings → Actions → General → Workflow permissions), then re-run this job. It does not publish the release again."
               exit 1
             fi
+          fi
+
+          # The release came before the pull request that opens the next
+          # version was merged: the back-merge opened that version itself.
+          stale=$(gh pr list --head "chore/open-v${next}" --base develop --state open --json number --jq '.[].number')
+          if [ -n "$stale" ]; then
+            gh pr close "$stale" --delete-branch \
+              --comment "v${version} is released before this pull request was merged. The back-merge pull request from ${branch} opens v${next} instead."
           fi
 
           # A pull request opened with GITHUB_TOKEN starts no CI run, so a
