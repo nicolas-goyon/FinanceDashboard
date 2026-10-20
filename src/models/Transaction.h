@@ -44,6 +44,14 @@ struct Transaction {
     // ARCHITECTURE.MD § Statement Import.
 };
 
+// The booking date of a row: its confirmation date, else its operation date.
+// The running balance of the bank (balanceAfter) follows the booking order, not
+// the operation date (#36, #133).
+[[nodiscard]] inline QDate bookingDate(const Transaction& transaction)
+{
+    return transaction.confirmationDate.isValid() ? transaction.confirmationDate : transaction.operationDate;
+}
+
 } // namespace Data
 
 #endif // FINANCEDASHBOARD_MODELS_TRANSACTION_H

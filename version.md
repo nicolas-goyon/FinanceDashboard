@@ -157,6 +157,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   (#49).
 - Windows: `FinanceDashboard.exe` has its icon (Explorer, the shortcuts, the taskbar), and the
   window shows the app icon on Windows and Linux. Before, only the setup had the icon (#111).
+- Import: the start check of the reconciliation takes the last saved row in booking order (the
+  confirmation date, else the operation date), as the balance history does. Before, it took the
+  row with the latest operation date: a card payment made before the start of a statement but
+  booked after it gave a false gap (#133).
 
 ---
 

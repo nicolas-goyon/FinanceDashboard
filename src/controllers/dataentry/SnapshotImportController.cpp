@@ -700,8 +700,9 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
     // Prefer whichever reference is dated closer to (i.e. more recent
     // before) the statement's own start date — a checkpoint and a
     // transaction can both exist; the most recent one is the better
-    // "what did we last know" answer.
-    if (checkpoint.has_value() && (!priorTx.has_value() || checkpoint->date >= priorTx->operationDate)) {
+    // "what did we last know" answer. The date of the transaction is its
+    // booking date: its balanceAfter is the balance after that day (#133).
+    if (checkpoint.has_value() && (!priorTx.has_value() || checkpoint->date >= Data::bookingDate(*priorTx))) {
         hasStartReference = true;
         expectedStart = checkpoint->balance;
         startSourceLabel = QStringLiteral("balance checkpoint");
@@ -710,7 +711,7 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
         hasStartReference = true;
         expectedStart = priorTx->balanceAfter;
         startSourceLabel = QStringLiteral("last recorded transaction");
-        startSourceDate = priorTx->operationDate;
+        startSourceDate = Data::bookingDate(*priorTx);
     }
 
     result["hasStartReference"]   = hasStartReference;

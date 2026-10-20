@@ -192,7 +192,7 @@ public:
     // Database Management (see ARCHITECTURE.MD § Database Management),
     // distinct from removeAccount()'s full cascade below.
     bool clearTransactionsForAccount(int accountId);
-    // Most recent transaction for `accountId` on or before `date` — see
+    // Last transaction of `accountId` booked on or before `date` — see
     // TransactionsTable::latestOnOrBefore(). Used by
     // SnapshotImportController::checkReconciliation() as the fallback
     // "previously recorded balance" reference when there's no closer

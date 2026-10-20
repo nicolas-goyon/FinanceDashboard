@@ -646,16 +646,14 @@ QVariantList AccountController::accountBalanceHistory(int accountIndex) const
     // the confirmation date, not the operation date. A card payment made on
     // 02/27 and booked on 03/02 comes after a transfer booked on 03/01. So the
     // replay goes in booking order, and each point is a booking date (#36). A
-    // row with no confirmation date uses its operation date.
-    const auto bookingDate = [](const Data::Transaction& tx) {
-        return tx.confirmationDate.isValid() ? tx.confirmationDate : tx.operationDate;
-    };
+    // row with no confirmation date uses its operation date
+    // (Data::bookingDate()).
 
     QVector<Data::Transaction> txs = Database::instance().transactionsForAccount(accountId);
     QVector<Data::Transaction> dated;
     dated.reserve(txs.size());
     for (const Data::Transaction& tx : txs) {
-        if (bookingDate(tx).isValid()) {
+        if (Data::bookingDate(tx).isValid()) {
             dated.append(tx);
         }
     }
@@ -666,15 +664,15 @@ QVariantList AccountController::accountBalanceHistory(int accountIndex) const
     // orders most-recent-first (for the read-only tables); a running-balance
     // walk needs booking order instead. On one day, the rows keep the order
     // of the statement (the order in which they were saved, so the id).
-    std::sort(dated.begin(), dated.end(), [&bookingDate](const Data::Transaction& a, const Data::Transaction& b) {
-        const QDate dateA = bookingDate(a);
-        const QDate dateB = bookingDate(b);
+    std::sort(dated.begin(), dated.end(), [](const Data::Transaction& a, const Data::Transaction& b) {
+        const QDate dateA = Data::bookingDate(a);
+        const QDate dateB = Data::bookingDate(b);
         return dateA != dateB ? dateA < dateB : a.id < b.id;
     });
 
     double running = 0.0;
     const std::optional<Data::AccountBalanceCheckpoint> checkpoint =
-        Database::instance().latestCheckpointOnOrBefore(accountId, bookingDate(dated.first()));
+        Database::instance().latestCheckpointOnOrBefore(accountId, Data::bookingDate(dated.first()));
     if (checkpoint.has_value()) {
         running = checkpoint->balance;
     } else {
@@ -696,11 +694,11 @@ QVariantList AccountController::accountBalanceHistory(int accountIndex) const
         });
     };
 
-    QDate day = bookingDate(dated.first());
+    QDate day = Data::bookingDate(dated.first());
     for (const Data::Transaction& tx : dated) {
-        if (bookingDate(tx) != day) {
+        if (Data::bookingDate(tx) != day) {
             pushPoint(day, running);
-            day = bookingDate(tx);
+            day = Data::bookingDate(tx);
         }
         running += (tx.credit - tx.debit);
     }
