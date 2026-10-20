@@ -32,6 +32,12 @@ QList<StartupStep> StartupChecks::runRequirementChecks()
     return steps;
 }
 
+QString StartupChecks::databasePath()
+{
+    return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QDir::separator()
+           + QStringLiteral("finance_dashboard.db");
+}
+
 QList<StartupStep> StartupChecks::runInitialization(QString& dbPath)
 {
     QList<StartupStep> steps;
@@ -44,7 +50,7 @@ QList<StartupStep> StartupChecks::runInitialization(QString& dbPath)
     // FinanceDashboardTest for the Test app (#130): main.cpp sets the
     // application name from the identity of the build.
     const QString dbDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    dbPath = dbDir + QDir::separator() + QStringLiteral("finance_dashboard.db");
+    dbPath = databasePath();
 
     StartupStep folder;
     folder.name   = QStringLiteral("Data folder");

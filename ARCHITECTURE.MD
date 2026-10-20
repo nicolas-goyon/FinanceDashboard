@@ -10,7 +10,7 @@
 | Field | Value |
 |---|---|
 | Name | FinanceDashboard |
-| App identities | Prod ("Finance Dashboard") and Test ("Finance Dashboard Test", `-DFD_APP_IDENTITY=test`): separate data folder, settings, installer identity, desktop entry, icon and window title — see `CMakeLists.txt` § App identity (#130) |
+| App identities | Prod ("Finance Dashboard") and Test ("Finance Dashboard Test", `-DFD_APP_IDENTITY=test`): separate data folder, settings, installer identity, desktop entry, icon and window title — see `CMakeLists.txt` § App identity (#130). The Test app can copy the prod database ("Copy my prod database", Database Management page) |
 | Version | Read from `version.json` — see `version.md` for the changelog |
 | Language | C++17 |
 | UI framework | Qt Quick / QML + Qt Graphs |
@@ -53,6 +53,16 @@ accounts) the first time that a database is used, and record it in the `settings
 SQL transaction (`Database::writeDefaults()`). So an empty table is not a first run, and a write
 that fails leaves nothing: the next start tries again. "Reset Database" keeps the records, so
 the default data does not come back, across restarts too.
+
+The Test app replaces its database with a copy of the prod database through
+`Database::replaceWithCopyOf()` ("Copy my prod database", #130). The prod file is opened read-only
+and copied with `VACUUM INTO`, which includes its WAL; then the Test file is closed and kept
+(`finance_dashboard.before-copy-<date>.db`), the copy takes its name, and `open()` opens it as at a
+start, so it upgrades an older copy. A copy that does not open is kept
+(`finance_dashboard.copy-failed-<date>.db`) and the Test file comes back. A Test file that another
+connection uses (the Test app open twice) is not replaced (`tests/db_copy_test.cpp`). The read-only
+connection can leave an empty `-wal` file and a `-shm` file next to the prod file; the prod app
+removes them when it closes.
 
 The schema has a version (`PRAGMA user_version`, `Database::kSchemaVersion`). `createTable()`
 is the base schema and does not change; each change after it is one migration step in
@@ -97,7 +107,7 @@ transaction.
 | Automated documentation generation | [`docs/automated-docs.md`](docs/automated-docs.md) |
 | Auto-generated file listing (regenerate, don't hand-edit) | [`docs/generated/source-tree.md`](docs/generated/source-tree.md) |
 | Build, test, package and release pipeline | [`CI-CD.md`](CI-CD.md) |
-| Tests (`ctest`): category predictor, statement-import save path, schema upgrades, database writes, page calculations | `tests/CMakeLists.txt` (one comment for each test); the app and the tests share `FD_CORE_SOURCES` in `CMakeLists.txt` |
+| Tests (`ctest`): category predictor, statement-import save path, schema upgrades, database writes, copy of the prod database, page calculations | `tests/CMakeLists.txt` (one comment for each test); the app and the tests share `FD_CORE_SOURCES` in `CMakeLists.txt` |
 | Version number & changelog (single source of truth) | [`CI-CD.md`](CI-CD.md) § Working with the changelog |
 
 ## Other top-level docs
