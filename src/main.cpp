@@ -1,4 +1,5 @@
 #include "db/Database.h"
+#include "startup/LocalOnlyNetwork.h"
 #include "startup/StartupChecks.h"
 
 #include <QCoreApplication>
@@ -77,7 +78,13 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
     Startup::StartupChecks::log(steps);
 
     // ── QML engine ────────────────────────────────────────────────────────────
+    // The network access of QML reads local files and resources only: an
+    // image in the Markdown of release notes is not downloaded (#117,
+    // ARCHITECTURE.MD § Network rule). The engine does not own the factory,
+    // so the factory is made first and deleted after the engine.
+    Startup::LocalOnlyNetworkFactory localOnlyNetwork;
     QQmlApplicationEngine engine;
+    engine.setNetworkAccessManagerFactory(&localOnlyNetwork);
 
     QObject::connect(
         &engine,
@@ -93,10 +100,12 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
         engine.loadFromModule("FinanceDashboard", "StartupErrorWindow");
     } else {
         // Main.qml shows the notice once when this start upgraded the
-        // database. The prod database path is empty in the prod app.
+        // database. The prod database path is empty in the prod app. The
+        // update check follows the channels of the identity (#117).
         engine.setInitialProperties({
             {QStringLiteral("databaseNotice"), Database::instance().upgradeReport()},
             {QStringLiteral("prodDatabasePath"), prodDatabasePath},
+            {QStringLiteral("isTestApp"), FD_APP_IS_TEST != 0},
         });
         engine.loadFromModule("FinanceDashboard", "Main");
     }

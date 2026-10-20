@@ -62,7 +62,7 @@ A version number is never typed twice, so it can never disagree with itself.
 | Job | Runner | Blocking | What it does |
 |---|---|---|---|
 | **Changelog & version** | ubuntu-24.04 | yes | Runs the tests of `tools/version.py` and `tools/release_flow.py`, then `version.py check --base <main>` — version.md matches version.json, no duplicates, one version in progress (the current one) plus at most the version of a release branch, and no change to a version that is released on `main`. On a pull request, its base branch is a second base (no change to the version of a release branch on `develop`); into `main`, the version must be dated; into `develop`, the version must not be in a release branch. Prints the release notes it *would* publish into the run summary. ~30 s. |
-| **Tests (ctest)** | ubuntu-24.04 | yes | Configures with `-DFD_BUILD_TESTS=ON`, builds the `fd_tests` target (`predictor_selftest`, `import_save_test`, `db_migration_test`, `db_write_test`, `db_copy_test`, `calc_test`), runs `ctest`. |
+| **Tests (ctest)** | ubuntu-24.04 | yes | Configures with `-DFD_BUILD_TESTS=ON`, builds the `fd_tests` target (`predictor_selftest`, `import_save_test`, `db_migration_test`, `db_write_test`, `db_copy_test`, `update_test`, `calc_test`), runs `ctest`. |
 | **qmllint** | ubuntu-24.04 | no | Builds the `FinanceDashboard_qmllint` target that `qt_add_qml_module()` generates — the same check `tools/run-static-analysis.ps1` runs locally. |
 | **clang-tidy** | ubuntu-24.04 | no | Full build (so AUTOMOC and the QML type-registration sources exist), then `run-clang-tidy` over `src/*.cpp` only, using the repo's `.clang-tidy`. Counts land in the run summary; the log is an artifact. |
 | **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → setup `.exe` + portable `.zip` → setup test (install, update in place, uninstall, in both install modes). Then the Test app (same build directory, `-DFD_APP_IDENTITY=test`): its setup and ZIP, and a test that installs the prod and Test apps side by side and uninstalls the Test app without the prod app. |
@@ -187,6 +187,13 @@ Both packaging jobs run the app before uploading anything:
   the app must stay up 20 s under `Xvfb`, and the package must remove cleanly.
   The runner itself cannot show a missing `Depends` entry, because the
   `setup-qt` action installed every X11 and GL library on it.
+
+Before that, both jobs check that the install tree has the TLS backend of the
+update check (#117, HTTPS): `tls/qschannelbackend.dll` on Windows (the TLS of
+the system), `plugins/tls/libqopensslbackend.so` on Linux. The Linux backend
+loads the `libssl.so.3` of the system at run time, with no `NEEDED` entry, so
+`make-deb.sh` adds `libssl3t64 | libssl3` and `ca-certificates` to `Depends`
+by name, and `test-deb.sh` checks that `libssl.so.3` is installed.
 
 Both steps blank out `QT_PLUGIN_PATH`, `QML2_IMPORT_PATH` and the Qt entries in
 `PATH`/`LD_LIBRARY_PATH` first. Without that the app would happily borrow a DLL

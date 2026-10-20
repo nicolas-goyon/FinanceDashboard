@@ -82,6 +82,29 @@ reference and amount of a saved row but another operation date is reported, with
 issue in `TransactionsTable::kReusedReferenceIssueUrl`: the identity assumes one reference per
 transaction.
 
+## Network rule
+
+The app makes one network call: the update check of `UpdateController`
+(`src/controllers/updates/`, #117). At each start (unless the user turned it off) and on "Check
+now", it reads the list of releases of the project (`GET api.github.com/repos/.../releases`), with
+no token, no cookie and no data of the user. GitHub sees the internet address of the computer and
+the version of the app (the `User-Agent` header); the request sends `Accept-Language: en`, not the
+language of the computer. `src/update/` reads that list and the versions (SemVer, the channels of
+#129) with no network. `tests/update_test.cpp` tests the check with a local test server
+(127.0.0.1), never with GitHub.
+
+The QML engine has no network access: `main.cpp` gives it `Startup::LocalOnlyNetworkFactory`
+(`src/startup/LocalOnlyNetwork.h`), so its network access (an `Image`, a `Loader`, an image in
+rich text) reads local files and `qrc:` resources only. An `http`/`https` address fails at once,
+with no connection. QML opens a `file:` address itself, and on Windows `file://server/...` is a
+network share. So the release notes, text from GitHub, go through `UpdateController::safeNotes()`
+before QML shows them: it removes their images, background images and style sheets. The update
+check has its own `QNetworkAccessManager` (no cookie), not the one of the engine. `openPage()`
+opens the pages of the project on GitHub only.
+
+Any other network call needs a decision of the maintainer first: the app promises that the data
+never leaves the computer.
+
 ## Where to look
 
 | Topic | Doc |
@@ -97,6 +120,7 @@ transaction.
 | Account History page | [`docs/account-history.md`](docs/account-history.md) |
 | Transactions sidebar category | [`docs/transactions.md`](docs/transactions.md) |
 | Database management (reset/reseed/per-account cleanup) | [`docs/database-management.md`](docs/database-management.md) |
+| Update check: Updates page, banner, channels, versions | `src/controllers/updates/UpdateController.h` (class comment), `src/update/`, `src/startup/LocalOnlyNetwork.h` (no network for QML), `README.md` § Updates |
 | QML/C++ boundary pattern & C++ component responsibilities | [`docs/backend.md`](docs/backend.md) |
 | Styling / Catppuccin palette | [`docs/styling.md`](docs/styling.md) |
 | Qt Graphs pitfalls learned on this project | [`docs/charting-gotchas.md`](docs/charting-gotchas.md) |
@@ -107,7 +131,7 @@ transaction.
 | Automated documentation generation | [`docs/automated-docs.md`](docs/automated-docs.md) |
 | Auto-generated file listing (regenerate, don't hand-edit) | [`docs/generated/source-tree.md`](docs/generated/source-tree.md) |
 | Build, test, package and release pipeline | [`CI-CD.md`](CI-CD.md) |
-| Tests (`ctest`): category predictor, statement-import save path, schema upgrades, database writes, copy of the prod database, page calculations | `tests/CMakeLists.txt` (one comment for each test); the app and the tests share `FD_CORE_SOURCES` in `CMakeLists.txt` |
+| Tests (`ctest`): category predictor, statement-import save path, schema upgrades, database writes, copy of the prod database, update check, page calculations | `tests/CMakeLists.txt` (one comment for each test); the app and the tests share `FD_CORE_SOURCES` in `CMakeLists.txt` |
 | Version number & changelog (single source of truth) | [`CI-CD.md`](CI-CD.md) § Working with the changelog |
 
 ## Other top-level docs

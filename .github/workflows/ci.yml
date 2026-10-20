@@ -356,6 +356,19 @@ jobs:
       - name: Install (self-contained tree)
         run: cmake --install build --config Release --prefix "${{ github.workspace }}/stage"
 
+      # The update check (#117) uses HTTPS. On Windows, Qt's Schannel backend
+      # uses the TLS of the system: no OpenSSL DLL to ship, but the plugin must
+      # be in the tree.
+      - name: The deployed tree has the TLS backend
+        shell: pwsh
+        run: |
+          $stage = "${{ github.workspace }}\stage"
+          $tls = @(Get-ChildItem -Path $stage -Recurse -Filter "*.dll" | Where-Object { $_.Directory.Name -eq "tls" })
+          $tls | ForEach-Object { Write-Host "  $($_.FullName.Substring($stage.Length + 1))" }
+          if (-not ($tls | Where-Object { $_.Name -eq "qschannelbackend.dll" })) {
+            throw "tls\qschannelbackend.dll is not in the deployed tree: the update check cannot use HTTPS"
+          }
+
       # Does the thing actually start? A missing QML module or platform plugin
       # only shows up at runtime, and shipping an installer that opens to a
       # blank screen is exactly the failure this pipeline exists to prevent.
@@ -576,6 +589,14 @@ jobs:
 
       - name: Install (self-contained tree)
         run: cmake --install build --prefix "${{ github.workspace }}/stage"
+
+      # The update check (#117) uses HTTPS. Qt's OpenSSL backend must be in
+      # the tree; it loads the libssl.so.3 of the system at run time.
+      - name: The deployed tree has the TLS backend
+        run: |
+          ls stage/plugins/tls || true
+          test -f stage/plugins/tls/libqopensslbackend.so || {
+            echo "::error::plugins/tls/libqopensslbackend.so is not in the deployed tree: the update check cannot use HTTPS"; exit 1; }
 
       - name: Package (portable tar.gz)
         working-directory: build
