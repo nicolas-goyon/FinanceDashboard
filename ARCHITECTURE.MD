@@ -92,7 +92,7 @@ transaction.
 | Automated documentation generation | [`docs/automated-docs.md`](docs/automated-docs.md) |
 | Auto-generated file listing (regenerate, don't hand-edit) | [`docs/generated/source-tree.md`](docs/generated/source-tree.md) |
 | Build, test, package and release pipeline | [`CI-CD.md`](CI-CD.md) |
-| Tests (`ctest`): category predictor, statement-import save path, schema upgrades, database writes | `tests/CMakeLists.txt` (one comment for each test); the app and the tests share `FD_CORE_SOURCES` in `CMakeLists.txt` |
+| Tests (`ctest`): category predictor, statement-import save path, schema upgrades, database writes, page calculations | `tests/CMakeLists.txt` (one comment for each test); the app and the tests share `FD_CORE_SOURCES` in `CMakeLists.txt` |
 | Version number & changelog (single source of truth) | [`CI-CD.md`](CI-CD.md) § Working with the changelog |
 
 ## Other top-level docs

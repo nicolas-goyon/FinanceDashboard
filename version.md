@@ -102,6 +102,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
   date), the order of the bank's own balance. A card payment made before the statement start
   and booked after it no longer moves the start of the line: the current balance is right
   (#36).
+- Projects page: with no monthly contribution, "Projected Completion" says "Never" instead of
+  the current month, and the save-vs-borrow text no longer says "~0 more months". With no gap,
+  the text says that there is no gap, instead of the gap of a 10 000 € sample loan (the loan
+  scenarios still borrow that sample amount). "Still Needed" is 0, not a negative amount, when
+  the earmarked amount is above the target. A contribution below half a cent counts as none, a
+  completion after 100 years shows "Never", and a new project with an amount that is not a
+  number or a target date after 100 years is refused (#41).
 
 ---
 
