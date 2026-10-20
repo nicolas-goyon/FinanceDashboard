@@ -98,6 +98,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   type, and the dialog tells that there is no account type. Before, nothing happened: the empty
   list of types gave a TypeError. An edit of an account whose type or category is not in the
   list keeps it, instead of giving it the first type (#62).
+- Account History: the balance replays the transactions in booking order (the confirmation
+  date), the order of the bank's own balance. A card payment made before the statement start
+  and booked after it no longer moves the start of the line: the current balance is right
+  (#36).
 
 ---
 

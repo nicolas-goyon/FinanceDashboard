@@ -165,12 +165,14 @@ public:
     // ── Account History (AccountHistoryPage.qml — read-only, see
     //    ARCHITECTURE.MD § Account History) ─────────────────────────────────
     // Day-by-day running balance, computed by replaying every persisted
-    // transaction with a valid operation date in chronological order (one
-    // point per calendar day that has at least one transaction, cumulative
-    // through that day's last transaction) — the "using each transaction to
-    // compute the balance each day" line chart from the product request.
+    // transaction with a valid booking date (the confirmation date, else the
+    // operation date) in booking order, the order of the bank's own running
+    // balance (#36) — one point per booking day that has at least one
+    // transaction, cumulative through that day's last transaction — the
+    // "using each transaction to compute the balance each day" line chart
+    // from the product request.
     // Seeded from the latest AccountBalanceCheckpoint on or before the
-    // first transaction's date if one exists; otherwise inferred by
+    // first transaction's booking date if one exists; otherwise inferred by
     // subtracting the first transaction's own (credit - debit) from its own
     // declared balanceAfter, so the line starts somewhere plausible instead
     // of at a misleading 0 (product decision — see ARCHITECTURE.MD).
