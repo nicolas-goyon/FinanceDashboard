@@ -46,7 +46,7 @@ Item {
             StatusBadge {
                 visible: controller.statusText.length > 0
                 text: controller.statusText
-                variant: "success"
+                variant: controller.statusLevel
             }
         }
 

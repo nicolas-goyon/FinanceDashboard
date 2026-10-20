@@ -1,6 +1,8 @@
 #ifndef FINANCEDASHBOARD_CONTROLLERS_DATABASE_DATABASEMANAGEMENTCONTROLLER_H
 #define FINANCEDASHBOARD_CONTROLLERS_DATABASE_DATABASEMANAGEMENTCONTROLLER_H
 
+#include "utils/StatusMessage.h"
+
 #include <QObject>
 #include <QString>
 #include <QtQml/qqml.h>
@@ -42,11 +44,14 @@ class DatabaseManagementController : public QObject
     QML_ELEMENT
 
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged)
+    // "success", "warning" or "danger": the StatusBadge variant of statusText (#54).
+    Q_PROPERTY(QString statusLevel READ statusLevel NOTIFY statusChanged)
 
 public:
     explicit DatabaseManagementController(QObject* parent = nullptr);
 
-    [[nodiscard]] QString statusText() const { return m_statusText; }
+    [[nodiscard]] QString statusText() const { return m_status.text(); }
+    [[nodiscard]] QString statusLevel() const { return m_status.variant(); }
 
     // Wipes every table to empty. Leaves categories/account-categories/
     // account-types/accounts/transactions all genuinely empty — does NOT
@@ -77,10 +82,10 @@ signals:
     void databaseReset();
 
 private:
-    void setStatus(const QString& msg);
+    void setStatus(StatusMessage::Level level, const QString& msg);
     static void seedMockData();
 
-    QString m_statusText;
+    StatusMessage m_status;
 };
 
 #endif // FINANCEDASHBOARD_CONTROLLERS_DATABASE_DATABASEMANAGEMENTCONTROLLER_H

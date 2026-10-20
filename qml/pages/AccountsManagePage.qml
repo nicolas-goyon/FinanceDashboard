@@ -64,7 +64,7 @@ Item {
                 StatusBadge {
                     visible: AccountController.statusText.length > 0
                     text: AccountController.statusText
-                    variant: "success"
+                    variant: AccountController.statusLevel
                 }
                 PillButton {
                     text: "＋  Add account"

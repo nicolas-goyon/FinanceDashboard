@@ -63,6 +63,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
   end ("Internal ref.: …", "End-to-end ref.: …"). So a "ref" in the free text ("Rent for March,
   ref: APT12") stays in the transaction name, and a description with only reference lines gets
   its first line as the name instead of an empty name. Rows saved before keep their name (#46).
+- Status messages: a failure shows in red and a warning in amber, no longer in green, and a
+  failure stays until the next message. A new message stays for the whole delay: one timer for
+  each page controller, instead of one timer for each message (#54).
+- Import: when the save fails, the page stays on the review step with a red message. "Import
+  another file" no longer shows the report of the earlier import (#39).
+- Import: "Auto-filled N of M" counts only the rows whose category the predictor filled, not
+  the categories picked by hand. A subcategory picked by hand keeps the row in the count (#53).
 
 ---
 

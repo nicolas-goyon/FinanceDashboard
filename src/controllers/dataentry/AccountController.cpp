@@ -10,7 +10,6 @@
 #include <QMap>
 #include <QObject>
 #include <QString>
-#include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
 #include <Qt>
@@ -25,6 +24,7 @@ constexpr int kStatusClearDelayMs = 3000; // how long a status message stays vis
 
 AccountController::AccountController(QObject* parent)
     : QObject(parent)
+    , m_status(this, kStatusClearDelayMs, [this]() { emit statusChanged(); })
 {
     loadFromDb();
     if (m_accounts.isEmpty() && m_accountCategories.isEmpty() && m_accountTypes.isEmpty()) {
@@ -188,14 +188,14 @@ void AccountController::addAccount(const QString& name, const QString& type, con
     }
     for (const Data::Account& acc : m_accounts) {
         if (acc.name.compare(trimmed, Qt::CaseInsensitive) == 0) {
-            setStatus(QStringLiteral("⚠  An account with this name already exists"));
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  An account with this name already exists"));
             return;
         }
     }
 
     const int accountId = Database::instance().addAccount(trimmed, type, category, currency, notes);
     if (accountId < 0) {
-        setStatus(QStringLiteral("⚠  Could not save the account"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the account"));
         return;
     }
 
@@ -209,7 +209,7 @@ void AccountController::addAccount(const QString& name, const QString& type, con
 
     m_accounts.append(acc);
     emit accountsChanged();
-    setStatus(QStringLiteral("✓  Account added"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account added"));
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
@@ -227,13 +227,13 @@ void AccountController::updateAccount(int index, const QString& name, const QStr
     }
     for (int i = 0; i < m_accounts.size(); ++i) {
         if (i != index && m_accounts.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
-            setStatus(QStringLiteral("⚠  An account with this name already exists"));
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  An account with this name already exists"));
             return;
         }
     }
 
     if (!Database::instance().updateAccount(m_accounts.at(index).id, trimmed, type, category, currency, notes)) {
-        setStatus(QStringLiteral("⚠  Could not save the account"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the account"));
         return;
     }
 
@@ -247,7 +247,7 @@ void AccountController::updateAccount(int index, const QString& name, const QStr
     acc.notes    = notes;
 
     emit accountsChanged();
-    setStatus(QStringLiteral("✓  Account updated"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account updated"));
 }
 
 void AccountController::removeAccount(int index)
@@ -256,12 +256,12 @@ void AccountController::removeAccount(int index)
         return;
     }
     if (!Database::instance().removeAccount(m_accounts.at(index).id)) {
-        setStatus(QStringLiteral("⚠  Could not remove the account"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not remove the account"));
         return;
     }
     m_accounts.removeAt(index);
     emit accountsChanged();
-    setStatus(QStringLiteral("✓  Account removed"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account removed"));
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
@@ -425,7 +425,7 @@ bool AccountController::addHash(int accountIndex, const QString& hash)
     const bool added = addHashInternal(accountIndex, hash, QStringLiteral("manual"));
     if (added) {
         emit accountsChanged();
-        setStatus(QStringLiteral("✓  Hash added"));
+        setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Hash added"));
     }
     return added;
 }
@@ -435,7 +435,7 @@ bool AccountController::linkAccountHash(int accountIndex, const QString& hash)
     const bool added = addHashInternal(accountIndex, hash, QStringLiteral("auto"));
     if (added) {
         emit accountsChanged();
-        setStatus(QStringLiteral("✓  Account linked"));
+        setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account linked"));
     }
     return added;
 }
@@ -458,7 +458,7 @@ void AccountController::removeHash(int accountIndex, int hashIndex)
     }
     acc.hashes.removeAt(hashIndex);
     emit accountsChanged();
-    setStatus(QStringLiteral("✓  Hash removed"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Hash removed"));
 }
 
 bool AccountController::accountHasHash(int accountIndex, const QString& hash) const
@@ -536,10 +536,10 @@ bool AccountController::updateTransaction(int transactionId, const QString& conf
     tx.subcategory      = subcategory;
 
     if (!Database::instance().updateTransaction(tx)) {
-        setStatus(QStringLiteral("⚠  Could not save the transaction"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the transaction"));
         return false;
     }
-    setStatus(QStringLiteral("✓  Transaction updated"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Transaction updated"));
     return true;
 }
 
@@ -571,15 +571,15 @@ bool AccountController::addBalanceCheckpoint(int accountIndex, const QString& da
     }
     const QDate date = QDate::fromString(dateIso, Qt::ISODate);
     if (!date.isValid()) {
-        setStatus(QStringLiteral("⚠  Invalid date — use yyyy-MM-dd"));
+        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  Invalid date — use yyyy-MM-dd"));
         return false;
     }
     const int checkpointId = Database::instance().addBalanceCheckpoint(m_accounts.at(accountIndex).id, date, balance, note);
     if (checkpointId < 0) {
-        setStatus(QStringLiteral("⚠  Could not save the checkpoint"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the checkpoint"));
         return false;
     }
-    setStatus(QStringLiteral("✓  Balance checkpoint added"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Balance checkpoint added"));
     return true;
 }
 
@@ -595,7 +595,7 @@ void AccountController::removeBalanceCheckpoint(int accountIndex, int checkpoint
     if (!Database::instance().removeBalanceCheckpoint(checkpoints.at(checkpointIndex).id)) {
         return;
     }
-    setStatus(QStringLiteral("✓  Balance checkpoint removed"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Balance checkpoint removed"));
 }
 
 QVariantList AccountController::accountBalanceHistory(int accountIndex) const
@@ -756,12 +756,7 @@ QVariantMap AccountController::accountCategoryBreakdown(int accountIndex) const
     return result;
 }
 
-void AccountController::setStatus(const QString& msg)
+void AccountController::setStatus(StatusMessage::Level level, const QString& msg)
 {
-    m_statusText = msg;
-    emit statusChanged();
-    QTimer::singleShot(kStatusClearDelayMs, this, [this]() {
-        m_statusText.clear();
-        emit statusChanged();
-    });
+    m_status.show(level, msg);
 }
