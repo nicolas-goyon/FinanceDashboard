@@ -1,8 +1,11 @@
 #ifndef FINANCEDASHBOARD_UTILS_FORMATTER_H
 #define FINANCEDASHBOARD_UTILS_FORMATTER_H
 
+#include <QChar>
 #include <QDate>
+#include <QLatin1String>
 #include <QString>
+#include <Qt>
 #include <cmath>
 #include <cstdint>
 
@@ -13,6 +16,7 @@
 //   QString s = Fmt::money(12345.6);       // "12 345,60 €"
 //   QString s = Fmt::money(-500.0, true);  // "-500,00 €"
 //   QString s = Fmt::money(80.5,   true);  // "+80,50 €"
+//   QString s = Fmt::money(80.5, Fmt::currencyFromCode(account.currency)); // "80,50 $"
 //   QString s = Fmt::dateOrDash(someDate); // "16/07/2026" or "—" if invalid
 
 namespace Fmt {
@@ -20,6 +24,9 @@ namespace Fmt {
 namespace detail {
 constexpr int kCentsPerUnit = 100;              // 100 cents per euro/dollar
 constexpr char16_t kNarrowNoBreakSpace = 0x202F; // U+202F thousands separator
+// Larger amounts are not formatted: the cents would not fit a long long, and
+// no amount of this app comes near it.
+constexpr double kMaxAmount = 1e15;
 } // namespace detail
 
 enum class Currency : std::uint8_t { EUR, USD };
@@ -35,6 +42,19 @@ inline Currency& currency()
     return instance;
 }
 
+/// The currency of an account, from its `currency` column ("EUR" or "USD",
+/// see AccountsManagePage.qml's currency selector). Anything else is EUR.
+inline Currency currencyFromCode(const QString& code)
+{
+    return code.compare(QLatin1String("USD"), Qt::CaseInsensitive) == 0 ? Currency::USD : Currency::EUR;
+}
+
+/// "€" or "$", for a label that names the unit (a chart axis, say).
+inline QString currencySymbol(Currency unit)
+{
+    return unit == Currency::USD ? QStringLiteral("$") : QStringLiteral("€");
+}
+
 /// Format a monetary value using French locale conventions:
 ///   - Thousands separator : narrow no-break space (U+202F)
 ///   - Decimal separator   : comma
@@ -42,18 +62,24 @@ inline Currency& currency()
 ///       EUR → "1 234,56 €"
 ///       USD → "1 234,56 $"
 ///
+/// The value is rounded to cents first, and the sign comes from the rounded
+/// value: -0.001 is "0,00 €", not "-0,00 €". NaN, an infinity and an amount
+/// above 10^15 give "—" (#48).
+///
 /// @param value    Amount to format (negative → minus sign prepended).
+/// @param unit     The currency of the amount (the account's, for an amount
+///                 of one account).
 /// @param showPlus Prepend '+' for zero / positive values when true.
-inline QString money(double value, bool showPlus = false)
+inline QString money(double value, Currency unit, bool showPlus = false)
 {
-    const bool negative = (value < 0.0);
-    const double absVal = std::abs(value);
-
-    // Split into integer and cents, handling floating-point rounding
-    auto intPart = static_cast<long long>(absVal);
-    int  cents   = static_cast<int>(std::round((absVal - static_cast<double>(intPart))
-                                                * detail::kCentsPerUnit));
-    if (cents == detail::kCentsPerUnit) { ++intPart; cents = 0; }
+    if (!std::isfinite(value) || std::abs(value) > detail::kMaxAmount) {
+        return QStringLiteral("—");
+    }
+    const long long totalCents = std::llround(value * detail::kCentsPerUnit);
+    const bool negative = totalCents < 0;
+    const long long absCents = negative ? -totalCents : totalCents;
+    const long long intPart = absCents / detail::kCentsPerUnit;
+    const auto cents = static_cast<int>(absCents % detail::kCentsPerUnit);
 
     // Group integer part with narrow no-break spaces (U+202F) every 3 digits
     const QString intStr = QString::number(intPart);
@@ -76,12 +102,15 @@ inline QString money(double value, bool showPlus = false)
     if (negative)      { sign = QStringLiteral("-"); }
     else if (showPlus) { sign = QStringLiteral("+"); }
 
-    // Currency symbol (after the amount, French convention)
-    const QString symbol = (currency() == Currency::EUR)
-                           ? QStringLiteral(" €")   // " €"
-                           : QStringLiteral(" $");        // " $"
+    // Currency symbol (after the amount, French convention), after a narrow
+    // no-break space (U+202F)
+    return sign + amount + QChar(detail::kNarrowNoBreakSpace) + currencySymbol(unit);
+}
 
-    return sign + amount + symbol;
+/// money() in the currency of the app (currency()).
+inline QString money(double value, bool showPlus = false)
+{
+    return money(value, currency(), showPlus);
 }
 
 /// Display-format a date as "dd/MM/yyyy", or "—" when invalid/unset.

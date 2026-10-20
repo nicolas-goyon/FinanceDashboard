@@ -117,6 +117,11 @@ builds, source archives). Then CI opens a pull request that merges the release b
 - Investments page (mock data): the monthly performance leaves out the deposit of the month.
   Before, the 250 € deposit counted as a gain: the second month showed 4.95 % instead of 2.48 %
   (#56).
+- Money: an amount is rounded to cents before its sign is set, so a very small negative value
+  shows "0,00 €", not "-0,00 €". NaN and an infinity show "—" (before, they reached a
+  conversion with undefined behaviour). The pages of one account (transactions, balance
+  checkpoints, balance history and its chart, category totals) show the amounts of a USD
+  account in $, not in €; the other pages keep the currency of the app (#48).
 
 ---
 

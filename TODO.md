@@ -76,7 +76,6 @@ here so the architecture doc stays a design record, not a task tracker).
 
 - [ ] `ProjectsController.cpp` — name the magic number `180` (months, "15-year" comparison scenario) as a `constexpr`, matching this file's existing `kHouseDepositTarget`/`kChartMaxHeadroom`/`kSampleLoan` convention. `.clang-tidy`'s `cppcoreguidelines-*` set is likely to flag it as-is.
 - [ ] `SumeriaCcpCsvExtractionTemplate.cpp` — `QString(value).remove(QLatin1Char(' '))` for the IBAN field constructs a redundant copy since `value` is already a `QString`; simplify to a plain assignment + `remove()`.
-- [ ] `Formatter.h` — trailing-comment alignment is inconsistent between the EUR/USD branches of the currency suffix block; a cosmetic nit.
 - [ ] `MoneyFlow.qml` — `function repaint()` is dead code (nothing calls it; `onInputsChanged`/`onOutputsChanged` call `canvas.requestPaint()` directly instead).
 - [ ] `AccountHistoryPage.qml` — the "one day in ms" constant (`86400000`) is repeated twice with no named property.
 - [ ] `AccountHistoryPage.qml` and `AccountTransactionsPage.qml` — the category/subcategory badge truncation width (`Math.min(implicitWidth, 118)`) is the same magic number repeated across both files.

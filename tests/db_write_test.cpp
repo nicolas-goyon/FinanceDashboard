@@ -14,6 +14,7 @@
 //   #38   "Reset to Mock Data" writes the sample transactions
 //   #36   the balance history replays the rows in booking order (the
 //         confirmation date), the order of the bank's own balance
+//   #48   the amounts of a USD account are shown in $
 
 #include "AccountController.h"
 #include "CategoryController.h"
@@ -24,6 +25,7 @@
 #include "models/Category.h"
 #include "models/CategoryRule.h"
 #include "models/Transaction.h"
+#include "utils/Formatter.h"
 
 #include <QDate>
 #include <QScopeGuard>
@@ -119,6 +121,7 @@ private slots:
     void defaultsAreAllOrNothing();
     void mockDataHasTheSampleTransactions();
     void balanceHistoryFollowsTheBookingOrder();
+    void usdAccountShowsItsCurrency();
 
 private:
     QTemporaryDir m_dir;
@@ -509,6 +512,32 @@ void DbWriteTest::balanceHistoryFollowsTheBookingOrder()
         QCOMPARE(history.at(1).toMap().value(QStringLiteral("dateIso")).toString(), QStringLiteral("2026-03-02"));
         QCOMPARE(history.at(1).toMap().value(QStringLiteral("balance")).toDouble(), 850.0);
     }
+}
+
+void DbWriteTest::usdAccountShowsItsCurrency()
+{
+    Database& db = Database::instance();
+    const int account = db.addAccount(QStringLiteral("Brokerage"), QStringLiteral("CTO"), QStringLiteral(""),
+                                      QStringLiteral("USD"), QStringLiteral(""));
+    QVERIFY(account >= 0);
+    Data::Transaction dividend = transaction(QStringLiteral("DIVIDEND"), QStringLiteral(""), QStringLiteral(""));
+    dividend.debit = 0.0;
+    dividend.credit = 12.5;
+    dividend.balanceAfter = 112.5;
+    QVERIFY(db.insertTransactions(account, {dividend}));
+    AccountController controller;
+    const int index = indexOfName(controller.accounts(), QStringLiteral("Brokerage"));
+    QVERIFY(index >= 0);
+
+    const QVariantMap row = controller.transactionsForAccount(index).first().toMap();
+    QCOMPARE(row.value(QStringLiteral("creditText")).toString(), Fmt::money(12.5, Fmt::Currency::USD, true));
+    QCOMPARE(row.value(QStringLiteral("balanceText")).toString(), Fmt::money(112.5, Fmt::Currency::USD));
+    const QVariantMap point = controller.accountBalanceHistory(index).last().toMap();
+    QVERIFY2(point.value(QStringLiteral("balanceText")).toString().endsWith(QLatin1Char('$')),
+             qPrintable(point.value(QStringLiteral("balanceText")).toString()));
+    const QVariantMap summary = controller.accountBalanceSummary(index);
+    QCOMPARE(summary.value(QStringLiteral("currencySymbol")).toString(), QStringLiteral("$"));
+    QVERIFY(summary.value(QStringLiteral("currentBalanceText")).toString().endsWith(QLatin1Char('$')));
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)
