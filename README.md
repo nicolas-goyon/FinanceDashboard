@@ -92,6 +92,18 @@ version number comes from `version.json`, not from `CMakeLists.txt`. The release
 (see `CI-CD.md`); to make the in-progress version a minor or major one, use
 `python tools/version.py bump minor` (or `major`).
 
+**The Test app.** `-DFD_APP_IDENTITY=test` at configure time builds "Finance Dashboard Test". It
+installs and runs next to the prod app, with its own data folder
+(`%APPDATA%\DataAnalysis\FinanceDashboardTest\`, `~/.local/share/DataAnalysis/FinanceDashboardTest/`)
+and settings, an icon with an orange "TEST" band and "(Test)" in the window title. It is for the
+experimental and preprod builds. Its packages are the Windows setup and ZIP, and the AppImage
+(`FinanceDashboardTest-*`); the `.deb` and the `.tar.gz` are for the prod app only. Use one build
+directory for each identity:
+
+```powershell
+cmake -B build-test -DFD_APP_IDENTITY=test -DCMAKE_PREFIX_PATH="C:/Qt/6.11.1/msvc2022_64"
+```
+
 ### Tests
 
 ```bash

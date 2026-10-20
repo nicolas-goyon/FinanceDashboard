@@ -3,6 +3,7 @@
 
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QIcon>
 #include <QList>
 #include <QObject>
 #include <QQmlApplicationEngine>
@@ -21,7 +22,16 @@
 int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays,misc-include-cleaner)
 {
     QGuiApplication app(argc, argv);
-    QGuiApplication::setApplicationName("FinanceDashboard");
+    // The identity of the build (#130), from CMakeLists.txt: "FinanceDashboard"
+    // or "FinanceDashboardTest". The application name gives the data folder
+    // (QStandardPaths::AppDataLocation) and the settings, so the Test app never
+    // reads or writes the data of the prod app. The display name is the window
+    // title (Application.displayName in QML), and the desktop file name
+    // lets a Linux desktop match the window with its menu entry and icon.
+    QGuiApplication::setApplicationName(QStringLiteral(FD_APP_NAME));
+    QGuiApplication::setApplicationDisplayName(QStringLiteral(FD_APP_WINDOW_TITLE));
+    QGuiApplication::setDesktopFileName(QStringLiteral(FD_APP_FILE_ID));
+    QGuiApplication::setWindowIcon(QIcon(QStringLiteral(":/app-icon.png")));
     // The version string comes from version.json, via the FD_VERSION_STRING
     // compile definition set in CMakeLists.txt — see CI-CD.md. Never hard-code
     // it here: this is the number the About/window title and any future update

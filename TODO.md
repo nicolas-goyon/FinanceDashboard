@@ -22,7 +22,7 @@ here so the architecture doc stays a design record, not a task tracker).
 - [ ] Loan simulator: add optional insurance (assurance emprunteur) flat % input.
 - [ ] `Fmt::money` not yet reachable from QML — Y-axis uses `labelFormat: "%.0f €"` instead of French-locale formatting.
 - [ ] Centralize the Catppuccin palette in a `Theme.qml` singleton (currently hardcoded hex literals per file).
-- [ ] No `.qrc` resource file — icons and fonts should be added under `resources/` when needed.
+- [ ] The UI has no icon or font resources — add them with `qt_add_resources()`, as the app icon in `CMakeLists.txt`, when needed.
 - [ ] No tests — add a `tests/` directory with Qt Test when data logic grows.
 - [ ] `SumeriaCcpCsvExtractionTemplate` reads UTF-8, or Windows-1252 when the file is not valid UTF-8 (#45), and assumes `MM/dd/yyyy` dates, per the spec as given — the dates were not verified against a real exported file yet.
 - [ ] PDF statement templates are not implemented — `ImportTemplate` supports them by design, but no PDF library is linked yet.

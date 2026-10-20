@@ -63,11 +63,11 @@ A version number is never typed twice, so it can never disagree with itself.
 | **Tests (ctest)** | ubuntu-24.04 | yes | Configures with `-DFD_BUILD_TESTS=ON`, builds the `fd_tests` target (`predictor_selftest`, `import_save_test`, `db_migration_test`, `db_write_test`, `calc_test`), runs `ctest`. |
 | **qmllint** | ubuntu-24.04 | no | Builds the `FinanceDashboard_qmllint` target that `qt_add_qml_module()` generates — the same check `tools/run-static-analysis.ps1` runs locally. |
 | **clang-tidy** | ubuntu-24.04 | no | Full build (so AUTOMOC and the QML type-registration sources exist), then `run-clang-tidy` over `src/*.cpp` only, using the repo's `.clang-tidy`. Counts land in the run summary; the log is an artifact. |
-| **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → setup `.exe` + portable `.zip` → setup test (install, update in place, uninstall, in both install modes). |
-| **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` test in a clean `ubuntu:24.04` container. |
+| **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → setup `.exe` + portable `.zip` → setup test (install, update in place, uninstall, in both install modes). Then the Test app (same build directory, `-DFD_APP_IDENTITY=test`): its setup and ZIP, and a test that installs the prod and Test apps side by side and uninstalls the Test app without the prod app. |
+| **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` test in a clean `ubuntu:24.04` container. Then the Test app's AppImage, and its smoke test, which checks that it keeps its data in its own folder. |
 | **Package — source** | ubuntu-24.04 | yes | `git archive` → source `.tar.gz` and `.zip`. |
 | **Open the next version on develop** | ubuntu-24.04 | — | `release/**` pushes only, after the Changelog job. Opens a pull request into `develop` that opens the next version (`release_flow.py open-next`), and starts CI on its branch. Does nothing when `develop` already opened it. |
-| **Release** | ubuntu-24.04 | — | `main` pushes only, after every blocking job above. Collects every artifact, writes `SHA256SUMS.txt`, publishes the release and its tag, then opens the back-merge pull request into `develop` (`release_flow.py back-merge`) and starts CI on its branch. Releases wait in a queue, one at a time. A re-run finishes what an earlier run started. |
+| **Release** | ubuntu-24.04 | — | `main` pushes only, after every blocking job above. Collects every `packages-*` artifact (the prod app; the Test app's artifacts are `test-packages-*`), writes `SHA256SUMS.txt`, publishes the release and its tag, then opens the back-merge pull request into `develop` (`release_flow.py back-merge`) and starts CI on its branch. Releases wait in a queue, one at a time. A re-run finishes what an earlier run started. |
 
 ---
 
@@ -113,6 +113,22 @@ Reference: <https://doc.qt.io/qt-6/cmake-deployment.html>
 Both shell scripts take `<install-tree> <version> [output-dir]` and run fine by
 hand on any Linux machine — that is the point of them being scripts rather than
 workflow steps.
+
+#### The Test app
+
+`-DFD_APP_IDENTITY=test` (#130) builds "Finance Dashboard Test", which installs
+and runs next to the prod app. `CMakeLists.txt` § App identity sets everything
+that is different: the application name (so the data folder and the settings),
+the window title, the icon, the Windows setup identity (`AppId`, install
+folder, Start menu folder, shortcuts, uninstall entry) and the Linux desktop
+entry and AppStream id. The executable is `FinanceDashboard` for both. CI
+reconfigures the build directory of the prod app with the Test identity after
+the prod packages are done, so only `main.cpp`, the icon resources and the QML
+caches build again. The Test app has a setup, a ZIP and an AppImage
+(`make-appimage.sh` reads the identity from the install tree); `make-deb.sh`
+refuses a Test install tree. Its artifacts are `test-packages-windows` and
+`test-packages-linux`, which the Release job does not collect: the pre-releases
+use them (#129).
 
 #### Why not linuxdeploy / linuxdeployqt for the AppImage
 
@@ -453,12 +469,14 @@ Qt, build, package", and the local commands above reproduce them exactly.
 ├── release-notes-footer.md         the "how do I install this" half of a release
 └── dependabot.yml                  monthly PRs bumping the actions
 packaging/
-├── icons/make-icons.py             generates the .ico and .png from code
+├── icons/make-icons.py             generates the .ico and .png from code (prod and Test)
 ├── linux/finance-dashboard.desktop
-├── linux/*.metainfo.xml            AppStream metadata
-├── linux/make-appimage.sh
-├── linux/make-deb.sh
-└── linux/test-deb.sh             installs and starts the .deb in a clean container
+├── linux/finance-dashboard-test.desktop   the Test app
+├── linux/*.metainfo.xml            AppStream metadata (prod and Test)
+├── linux/make-appimage.sh          either identity
+├── linux/make-deb.sh               the prod app only
+├── linux/test-deb.sh               installs and starts the .deb in a clean container
+└── windows/app.rc.in               the icon of the .exe
 tests/CMakeLists.txt                the ctest registration
 tools/version.py                    version.json ⇄ version.md, release notes
 tools/release_flow.py               the branches that CI makes: next version, back-merge

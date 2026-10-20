@@ -364,6 +364,28 @@ jobs:
           Stop-Process -Id $p.Id -Force
           Write-Host "OK — app stayed up for 15s on the windows platform plugin"
 
+      # The icon resource IDI_ICON1 (packaging/windows/app.rc.in, #111):
+      # Explorer and the shortcuts show it.
+      - name: The .exe has its icon
+        shell: pwsh
+        run: |
+          Add-Type -TypeDefinition @"
+          using System;
+          using System.Runtime.InteropServices;
+          public static class PeResource {
+              [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+              public static extern IntPtr LoadLibraryEx(string path, IntPtr file, uint flags);
+              [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+              public static extern IntPtr FindResource(IntPtr module, string name, IntPtr type);
+          }
+          "@
+          $exe = "${{ github.workspace }}\stage\FinanceDashboard.exe"
+          $module = [PeResource]::LoadLibraryEx($exe, [IntPtr]::Zero, 0x2)   # LOAD_LIBRARY_AS_DATAFILE
+          if ($module -eq [IntPtr]::Zero) { throw "cannot load $exe as a data file" }
+          $icon = [PeResource]::FindResource($module, "IDI_ICON1", [IntPtr]14)   # RT_GROUP_ICON
+          if ($icon -eq [IntPtr]::Zero) { throw "FinanceDashboard.exe has no IDI_ICON1 icon resource" }
+          Write-Host "OK — FinanceDashboard.exe has its icon (IDI_ICON1)"
+
       - name: Package (setup + portable ZIP)
         working-directory: build
         run: cpack -C Release -B "${{ github.workspace }}/dist"
@@ -406,6 +428,60 @@ jobs:
             Write-Host "OK — $($m.Name): install, update in place and uninstall"
           }
 
+      # The Test app (#130): the same build directory, with the Test identity
+      # (CMakeLists.txt § App identity). Only main.cpp, the icon resources and
+      # the QML caches build again.
+      - name: Build the Test app (setup + portable)
+        shell: bash
+        run: |
+          cmake -B build -DFD_APP_IDENTITY=test
+          cmake --build build --config Release --parallel
+          cmake --install build --config Release --prefix "${{ github.workspace }}/stage-test"
+          (cd build && cpack -C Release -B "${{ github.workspace }}/dist-test")
+          ls -la dist-test/*.exe dist-test/*.zip
+
+      # Both setups for the current user: each app has its own folder, Start
+      # menu folder and uninstall entry, and the uninstall of the Test app
+      # leaves the prod app in place.
+      - name: Test the prod and Test setups side by side
+        shell: pwsh
+        run: |
+          $uninstall = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall"
+          $menu = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs"
+          $apps = @(
+            @{ Name = "prod"; Setup = (Get-ChildItem "${{ github.workspace }}\dist\FinanceDashboard-*.exe").FullName;
+               Dir = "$env:LOCALAPPDATA\Programs\FinanceDashboard"; Menu = "$menu\Finance Dashboard";
+               Key = "$uninstall\9F2B4E7C-3A61-4C0D-9E8B-5D7A1C46F0B3_is1" },
+            @{ Name = "Test"; Setup = (Get-ChildItem "${{ github.workspace }}\dist-test\FinanceDashboardTest-*.exe").FullName;
+               Dir = "$env:LOCALAPPDATA\Programs\FinanceDashboardTest"; Menu = "$menu\Finance Dashboard Test";
+               Key = "$uninstall\30296817-401F-4AB5-8B40-42BF8DC81C7F_is1" }
+          )
+          foreach ($a in $apps) {
+            $log = "${{ github.workspace }}\dist\setup-side-by-side-$($a.Name).log"
+            $p = Start-Process -FilePath $a.Setup -Wait -PassThru -ArgumentList @(
+              "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/LOG=`"$log`"")
+            if ($p.ExitCode -ne 0) { throw "$($a.Name): setup exit code $($p.ExitCode)" }
+          }
+          foreach ($a in $apps) {
+            if (-not (Test-Path "$($a.Dir)\FinanceDashboard.exe")) { throw "$($a.Name): FinanceDashboard.exe is not in $($a.Dir)" }
+            if (-not (Test-Path $a.Key)) { throw "$($a.Name): no uninstall key $($a.Key)" }
+            if (-not (Get-ChildItem "$($a.Menu)\*.lnk" -ErrorAction SilentlyContinue)) { throw "$($a.Name): no shortcut in $($a.Menu)" }
+          }
+          $test = $apps[1]
+          $p = Start-Process -FilePath "$($test.Dir)\unins000.exe" -Wait -PassThru -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")
+          if ($p.ExitCode -ne 0) { throw "Test: uninstaller exit code $($p.ExitCode)" }
+          for ($i = 0; $i -lt 60 -and (Test-Path "$($test.Dir)\FinanceDashboard.exe"); $i++) { Start-Sleep -Seconds 1 }
+          if (Test-Path "$($test.Dir)\FinanceDashboard.exe") { throw "Test: FinanceDashboard.exe is still there after its uninstall" }
+          if (Test-Path $test.Key) { throw "Test: the uninstall key is still there" }
+          $prod = $apps[0]
+          if (-not (Test-Path "$($prod.Dir)\FinanceDashboard.exe")) { throw "the uninstall of the Test app removed the prod app" }
+          if (-not (Test-Path $prod.Key)) { throw "the uninstall of the Test app removed the uninstall key of the prod app" }
+          $p = Start-Process -FilePath "$($prod.Dir)\unins000.exe" -Wait -PassThru -ArgumentList @(
+            "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART")
+          if ($p.ExitCode -ne 0) { throw "prod: uninstaller exit code $($p.ExitCode)" }
+          Write-Host "OK — the prod and Test apps install side by side, and each one uninstalls alone"
+
       - name: Upload the setup logs
         if: failure()
         uses: actions/upload-artifact@v4
@@ -420,6 +496,17 @@ jobs:
           path: |
             dist/*.exe
             dist/*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+      # Not "packages-*": the release job publishes those (the prod app only).
+      # The pre-releases of the Test app use these (#129).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-packages-windows
+          path: |
+            dist-test/*.exe
+            dist-test/*.zip
           if-no-files-found: error
           retention-days: 30
 
@@ -494,8 +581,47 @@ jobs:
           docker run --rm -v "$PWD:/src:ro" ubuntu:24.04 \
             bash /src/packaging/linux/test-deb.sh "/src/$deb"
 
+      # The Test app (#130): the same build directory, with the Test identity
+      # (CMakeLists.txt § App identity). Only an AppImage: the .deb and the
+      # .tar.gz are for the prod app.
+      - name: Build the Test app (AppImage)
+        run: |
+          cmake -B build -DFD_APP_IDENTITY=test
+          cmake --build build --parallel
+          cmake --install build --prefix "${{ github.workspace }}/stage-test"
+          bash packaging/linux/make-appimage.sh stage-test "${{ steps.version.outputs.version }}" dist-test
+
+      # As the prod smoke test, and the Test app keeps its data in its own
+      # folder: DataAnalysis/FinanceDashboardTest, never DataAnalysis/FinanceDashboard.
+      - name: Smoke test the Test AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+          QT_PLUGIN_PATH: ""
+          QML2_IMPORT_PATH: ""
+          QML_IMPORT_PATH: ""
+          LD_LIBRARY_PATH: ""
+        run: |
+          appimage=$(ls dist-test/FinanceDashboardTest-*.AppImage)
+          export XDG_DATA_HOME="$RUNNER_TEMP/xdg-data-test"
+          echo "Running $appimage"
+          set +e
+          xvfb-run -a --server-args="-screen 0 1280x800x24" \
+            timeout --signal=TERM 20 "$appimage"
+          rc=$?
+          set -e
+          if [ "$rc" -ne 124 ] && [ "$rc" -ne 143 ]; then
+            echo "::error::The Test AppImage exited early with code $rc"
+            exit 1
+          fi
+          test -f "$XDG_DATA_HOME/DataAnalysis/FinanceDashboardTest/finance_dashboard.db" || {
+            echo "::error::The Test app did not create its database in DataAnalysis/FinanceDashboardTest"; exit 1; }
+          if [ -e "$XDG_DATA_HOME/DataAnalysis/FinanceDashboard" ]; then
+            echo "::error::The Test app wrote to the data folder of the prod app"; exit 1
+          fi
+          echo "OK — the Test AppImage stayed up for 20s, with its own data folder"
+
       - name: List artifacts
-        run: ls -la dist/
+        run: ls -la dist/ dist-test/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -504,6 +630,14 @@ jobs:
             dist/*.AppImage
             dist/*.deb
             dist/*.tar.gz
+          if-no-files-found: error
+          retention-days: 30
+
+      # Not "packages-*": see the Windows job.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: test-packages-linux
+          path: dist-test/*.AppImage
           if-no-files-found: error
           retention-days: 30
 

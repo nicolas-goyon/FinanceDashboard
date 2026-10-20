@@ -10,6 +10,7 @@
 | Field | Value |
 |---|---|
 | Name | FinanceDashboard |
+| App identities | Prod ("Finance Dashboard") and Test ("Finance Dashboard Test", `-DFD_APP_IDENTITY=test`): separate data folder, settings, installer identity, desktop entry, icon and window title — see `CMakeLists.txt` § App identity (#130) |
 | Version | Read from `version.json` — see `version.md` for the changelog |
 | Language | C++17 |
 | UI framework | Qt Quick / QML + Qt Graphs |
