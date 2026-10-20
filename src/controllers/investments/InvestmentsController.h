@@ -22,7 +22,8 @@ class InvestmentsController : public QObject
     // [{ label, value, color }] — allocation donut
     Q_PROPERTY(QVariantList allocation READ allocation CONSTANT)
     Q_PROPERTY(QStringList monthLabels READ monthLabels CONSTANT)
-    // Monthly performance % split into green/red bar sets
+    // Monthly performance % split into green/red bar sets: the change of the
+    // value without the deposit of the month (#56)
     Q_PROPERTY(QVariantList perfGains  READ perfGains  CONSTANT)
     Q_PROPERTY(QVariantList perfLosses READ perfLosses CONSTANT)
     Q_PROPERTY(double perfMax READ perfMax CONSTANT)

@@ -3,14 +3,23 @@
 //   #41   Projects: no monthly contribution gives "Never", a project with no
 //         gap has its own save-vs-borrow text, and "Still Needed" is never
 //         negative
+//   #42   Cash Flow: the two sides of the money flow have the same total, also
+//         when the spending is more than the income
+//   #56   Cash Flow: the 3-month average starts at the third month;
+//         Investments: the deposit of the month is not performance
 
+#include "CashFlowController.h"
+#include "InvestmentsController.h"
 #include "ProjectsController.h"
 #include "utils/Formatter.h"
 
 #include <QDate>
+#include <QDateTime>
+#include <QStringList>
 #include <QTest>
 #include <QVariantMap>
 
+#include <array>
 #include <limits>
 
 namespace {
@@ -24,6 +33,24 @@ QString kpiValue(const ProjectsController& controller, const QString& label)
         }
     }
     return {};
+}
+
+double total(const QVariantList& side)
+{
+    double sum = 0.0;
+    for (const QVariant& part : side) {
+        sum += part.toMap().value(QStringLiteral("value")).toDouble();
+    }
+    return sum;
+}
+
+QStringList names(const QVariantList& side)
+{
+    QStringList result;
+    for (const QVariant& part : side) {
+        result.append(part.toMap().value(QStringLiteral("name")).toString());
+    }
+    return result;
 }
 
 QVariantMap card(const ProjectsController& controller, const QString& name)
@@ -48,6 +75,10 @@ private slots:
     void projectWithNoGapSaysSo();
     void projectAboveItsTargetNeedsNothing();
     void projectWithATinyContributionStaysInRange();
+    void moneyFlowTotalsMatchWithAnOverspend();
+    void moneyFlowSavesTheLeftover();
+    void rollingAverageStartsAtTheThirdMonth();
+    void monthlyPerformanceLeavesTheDepositOut();
 };
 
 void CalcTest::projectWithNoMonthlyContributionIsNeverDone()
@@ -119,6 +150,68 @@ void CalcTest::projectWithATinyContributionStaysInRange()
     controller.addProject(QStringLiteral("Far"), 1000.0, 1201, 0.0, 10.0);
     controller.addProject(QStringLiteral("NaN"), 1000.0, 6, std::numeric_limits<double>::quiet_NaN(), 10.0);
     QCOMPARE(controller.projectNames().size(), before + 2);
+}
+
+void CalcTest::moneyFlowTotalsMatchWithAnOverspend()
+{
+    // 2 300 € spent with an income of 2 000 €: 300 € come from the savings.
+    const std::array<double, CashFlowController::kCategories> spending = {950, 450, 150, 180, 320, 250};
+    const CashFlowController::FlowSides sides = CashFlowController::moneyFlow(2000.0, spending);
+
+    QCOMPARE(total(sides.inputs), 2300.0);
+    QCOMPARE(total(sides.outputs), 2300.0);
+    QCOMPARE(names(sides.inputs), QStringList({QStringLiteral("Salary"), QStringLiteral("Overspend")}));
+    QCOMPARE(sides.inputs.last().toMap().value(QStringLiteral("value")).toDouble(), 300.0);
+    QVERIFY(!names(sides.outputs).contains(QStringLiteral("Savings")));
+}
+
+void CalcTest::moneyFlowSavesTheLeftover()
+{
+    const std::array<double, CashFlowController::kCategories> spending = {950, 450, 150, 180, 320, 250};
+    const CashFlowController::FlowSides sides = CashFlowController::moneyFlow(3000.0, spending);
+
+    QCOMPARE(total(sides.inputs), 3000.0);
+    QCOMPARE(total(sides.outputs), 3000.0);
+    QCOMPARE(names(sides.inputs), QStringList({QStringLiteral("Salary")}));
+    QCOMPARE(names(sides.outputs).last(), QStringLiteral("Savings"));
+    QCOMPARE(sides.outputs.last().toMap().value(QStringLiteral("value")).toDouble(), 700.0);
+
+    // A refund (a negative value) is not drawn, and not counted.
+    const std::array<double, CashFlowController::kCategories> withRefund = {950, -100, 0, 0, 0, 0};
+    const CashFlowController::FlowSides refund = CashFlowController::moneyFlow(1000.0, withRefund);
+    QCOMPARE(total(refund.inputs), 1000.0);
+    QCOMPARE(total(refund.outputs), 1000.0);
+    QCOMPARE(names(refund.outputs), QStringList({QStringLiteral("Rent"), QStringLiteral("Savings")}));
+}
+
+void CalcTest::rollingAverageStartsAtTheThirdMonth()
+{
+    CashFlowController controller;
+    const QVariantList timestamps = controller.rollingTimestamps();
+    const QVariantList values = controller.rollingValues();
+    const QVariantList expenses = controller.expenseValues();
+
+    QCOMPARE(expenses.size(), qsizetype(12));
+    QCOMPARE(timestamps.size(), qsizetype(10));
+    QCOMPARE(values.size(), qsizetype(10));
+    // The first point is the third month, with the mean of the first three.
+    const QDate first = QDateTime::fromMSecsSinceEpoch(qint64(controller.minTimeMs())).date();
+    QCOMPARE(QDateTime::fromMSecsSinceEpoch(qint64(timestamps.first().toDouble())).date(), first.addMonths(2));
+    const double mean = (expenses.at(0).toDouble() + expenses.at(1).toDouble() + expenses.at(2).toDouble()) / 3.0;
+    QCOMPARE(values.first().toDouble(), mean);
+    QCOMPARE(QDateTime::fromMSecsSinceEpoch(qint64(timestamps.last().toDouble())).date(),
+             QDateTime::fromMSecsSinceEpoch(qint64(controller.maxTimeMs())).date());
+}
+
+void CalcTest::monthlyPerformanceLeavesTheDepositOut()
+{
+    InvestmentsController controller;
+    // Month 2 of the mock data: 10 100 € → 10 600 €, with a 250 € deposit.
+    const double gain = controller.perfGains().at(1).toDouble();
+    QVERIFY2(qAbs(gain - ((10600.0 - 10100.0 - 250.0) / 10100.0 * 100.0)) < 1e-9, qPrintable(QString::number(gain)));
+    // Month 3: 10 600 € → 10 200 €, a loss on top of the deposit.
+    const double loss = controller.perfLosses().at(2).toDouble();
+    QVERIFY2(qAbs(loss - ((10200.0 - 10600.0 - 250.0) / 10600.0 * 100.0)) < 1e-9, qPrintable(QString::number(loss)));
 }
 
 QTEST_GUILESS_MAIN(CalcTest)

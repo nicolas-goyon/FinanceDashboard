@@ -34,12 +34,15 @@ class CashFlowController : public QObject
     Q_PROPERTY(QVariantList biggestRows READ biggestRows NOTIFY monthChanged)
 
     // Money flow (Sankey) of the selected month:
-    // inputs → month budget → outputs (categories + savings leftover)
-    // [{ name, value, color }] — totals of both sides are equal
+    // inputs (salary, an overspend) → month budget → outputs (categories +
+    // savings leftover). [{ name, value, color }] — totals of both sides are
+    // equal (see moneyFlow())
     Q_PROPERTY(QVariantList flowInputs  READ flowInputs  NOTIFY monthChanged)
     Q_PROPERTY(QVariantList flowOutputs READ flowOutputs NOTIFY monthChanged)
 
 public:
+    static constexpr int kCategories = 6;
+
     explicit CashFlowController(QObject* parent = nullptr);
 
     [[nodiscard]] QStringList  monthLabels()   const { return m_monthLabels; }
@@ -56,8 +59,9 @@ public:
     [[nodiscard]] QVariantList flowOutputs() const;
 
     // Rolling 3-month average of expenses — points for a LineSeries
-    // (x = ms since epoch, aligned with the month buckets)
-    Q_INVOKABLE [[nodiscard]] QVariantList rollingTimestamps() const { return m_timestamps; }
+    // (x = ms since epoch, aligned with the month buckets). The line starts at
+    // the third month: the first two months have no 3-month window (#56).
+    Q_INVOKABLE [[nodiscard]] QVariantList rollingTimestamps() const { return m_rollingTimestamps; }
     Q_INVOKABLE [[nodiscard]] QVariantList rollingValues()     const { return m_rollingValues; }
     Q_PROPERTY(double minTimeMs READ minTimeMs CONSTANT)
     Q_PROPERTY(double maxTimeMs READ maxTimeMs CONSTANT)
@@ -67,18 +71,30 @@ public:
     // Values of category `index` across all 12 months (for stacked BarSets)
     Q_INVOKABLE [[nodiscard]] QVariantList categoryValues(int index) const;
 
+    // One month of the money flow: [{ name, value, color }] for each side,
+    // with equal totals. What is left of the income goes out as "Savings".
+    // Spending above the income comes in as "Overspend" (taken from the
+    // savings), so the outputs do not add up to more than the inputs (#42).
+    // A part with no amount is left out. Public for the tests.
+    struct FlowSides {
+        QVariantList inputs;
+        QVariantList outputs;
+    };
+    [[nodiscard]] static FlowSides moneyFlow(double income, const std::array<double, kCategories>& spending);
+
 signals:
     void monthChanged();
 
 private:
     static constexpr int kMonths = 12;
-    static constexpr int kCategories = 6;
 
     QStringList  m_monthLabels;
     QVariantList m_incomeValues, m_expenseValues;
-    QVariantList m_timestamps, m_rollingValues;
+    QVariantList m_timestamps, m_rollingTimestamps, m_rollingValues;
     QVariantList m_categories;
     std::array<std::array<double, kMonths>, kCategories> m_categoryData = {};
+    // The spending of each category in `month` (0-11).
+    [[nodiscard]] std::array<double, kCategories> monthSpending(int month) const;
     double m_barsMax = 0, m_minTimeMs = 0, m_maxTimeMs = 0;
     int    m_selectedMonth = kMonths - 1;
 };

@@ -123,17 +123,25 @@ set_tests_properties(db_write_test PROPERTIES
 
 # calc_test
 #   The calculations behind the texts and charts of the pages: the Projects page
-#   (#41). No database. It compiles the page controllers that it tests.
+#   (#41), the money flow and the rolling average of the Cash Flow page (#42,
+#   #56), the performance of the Investments page (#56). No database. It
+#   compiles the page controllers that it tests.
 
 qt_add_executable(calc_test
     calc_test.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/Formatter.h
     ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.h
     ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow/CashFlowController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow/CashFlowController.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/investments/InvestmentsController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/investments/InvestmentsController.cpp
 )
 target_include_directories(calc_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/controllers/projects
+    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow
+    ${CMAKE_SOURCE_DIR}/src/controllers/investments
 )
 # Qt6::Qml for the QML_ELEMENT macros in the controller headers.
 target_link_libraries(calc_test PRIVATE Qt6::Core Qt6::Qml Qt6::Test)
