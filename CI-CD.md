@@ -65,7 +65,7 @@ A version number is never typed twice, so it can never disagree with itself.
 | **Tests (ctest)** | ubuntu-24.04 | yes | Configures with `-DFD_BUILD_TESTS=ON`, builds the `fd_tests` target (`predictor_selftest`, `import_save_test`, `db_migration_test`, `db_write_test`, `db_copy_test`, `update_test`, `calc_test`), runs `ctest`. |
 | **qmllint** | ubuntu-24.04 | no | Builds the `FinanceDashboard_qmllint` target that `qt_add_qml_module()` generates — the same check `tools/run-static-analysis.ps1` runs locally. |
 | **clang-tidy** | ubuntu-24.04 | no | Full build (so AUTOMOC and the QML type-registration sources exist), then `run-clang-tidy` over `src/*.cpp` only, using the repo's `.clang-tidy`. Counts land in the run summary; the log is an artifact. |
-| **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → setup `.exe` + portable `.zip` → setup test (install, update in place, uninstall, in both install modes). Then the Test app (same build directory, `-DFD_APP_IDENTITY=test`): its setup and ZIP, and a test that installs the prod and Test apps side by side and uninstalls the Test app without the prod app. |
+| **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → setup `.exe` + portable `.zip` → setup test (install, update in place, uninstall, in both install modes) → update from the app (the setup closes the running app, updates it and starts it again, #117). Then the Test app (same build directory, `-DFD_APP_IDENTITY=test`): its setup and ZIP, and a test that installs the prod and Test apps side by side and uninstalls the Test app without the prod app. |
 | **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` test in a clean `ubuntu:24.04` container. Then the Test app's AppImage, and its smoke test, which checks that it keeps its data in its own folder. |
 | **Package — source** | ubuntu-24.04 | yes | `git archive` → source `.tar.gz` and `.zip`. |
 | **Open the next version on develop** | ubuntu-24.04 | — | `release/**` pushes only, after the Changelog job. Opens a pull request into `develop` that opens the next version (`release_flow.py open-next`), and starts CI on its branch. Does nothing when `develop` already opened it. |
@@ -180,6 +180,11 @@ Both packaging jobs run the app before uploading anything:
   `offscreen` plugin is not in the tree. After `cpack`, the job runs the setup
   silently twice (the second run is an update in place), then the uninstaller,
   for "for me only" (`/CURRENTUSER`) and for "for all users" (`/ALLUSERS`).
+  Then the update from the app (#117): with the app running, the setup runs
+  with the arguments of `UpdateInstaller::setupArguments()`. It must close the
+  app (Restart Manager), install, and start it again
+  (`packaging/windows/update-restart.iss`); a silent setup without
+  `/RESTARTAPP=1` must not start it.
 * **Linux** — runs the finished `.AppImage` under `Xvfb` with the real `xcb`
   platform plugin, same 20 s rule. Then `packaging/linux/test-deb.sh` installs
   the `.deb` in a clean `ubuntu:24.04` container, where only the package and its

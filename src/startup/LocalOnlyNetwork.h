@@ -13,8 +13,9 @@ class QObject;
 // ── Startup::LocalOnlyNetworkAccessManager / LocalOnlyNetworkFactory ─────────
 //
 // The network access of the QML engine (#117). The app promises that the
-// update check (UpdateController, with its own QNetworkAccessManager) is its
-// only network call (ARCHITECTURE.MD § Network rule). But QML loads remote
+// update check and the download of a new version (UpdateController and
+// UpdateInstaller, with their own QNetworkAccessManager) are its only network
+// calls (ARCHITECTURE.MD § Network rule). But QML loads remote
 // files by itself: an image in the Markdown of release notes, an Image with an
 // http source. main.cpp gives the engine this factory, so the network access
 // of the QML engine reads local files and resources only: every other address

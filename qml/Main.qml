@@ -330,15 +330,19 @@ ApplicationWindow {
     }
 
     // ── Update banner (#117) ─────────────────────────────────────────────────
-    // Above the page content, when a newer version of the channel exists, but
-    // not on the Updates page itself. The pages and the overlays start below
-    // it; with no banner, its height is 0.
+    // Above the page content, when a newer version of the channel exists, and
+    // during its installation (UpdateController.installState), but not on the
+    // Updates page itself. The pages and the overlays start below it; with no
+    // banner, its height is 0. The setup and the AppImage show "Install"; then
+    // the download, "Install and restart" (setup) or "Restart now" (AppImage).
+    // Nothing is downloaded or restarted without a click (decisions of
+    // 2026-10-20).
     Rectangle {
         id: updateBanner
         anchors { top: parent.top; left: sidebarDivider.right; right: parent.right }
         height: UpdateController.bannerVisible && root.currentViewId !== "updates" ? 40 : 0
         visible: height > 0
-        color: "#1e3a5f"
+        color: UpdateController.installState === "failed" ? "#4c2032" : "#1e3a5f"
 
         RowLayout {
             anchors { fill: parent; leftMargin: 20; rightMargin: 12 }
@@ -347,18 +351,54 @@ ApplicationWindow {
             Text {
                 Layout.fillWidth: true
                 elide: Text.ElideRight
-                text: Application.displayName + " " + UpdateController.latestVersion + " is available."
+                textFormat: Text.PlainText
+                text: UpdateController.installState === "idle"
+                    ? Application.displayName + " " + UpdateController.latestVersion + " is available."
+                    : UpdateController.installState === "downloading"
+                        ? UpdateController.installText + " " + Math.round(UpdateController.installProgress * 100) + " %"
+                        : UpdateController.installText
                 font.pixelSize: 14
                 color: "#cdd6f4"
             }
             PillButton {
-                text: "See the versions"
+                visible: UpdateController.installState === "idle" && UpdateController.installsItself
+                text: "Install"
                 variant: "primary"
+                fontSize: 13
+                Layout.preferredHeight: 28
+                onClicked: UpdateController.install()
+            }
+            PillButton {
+                visible: UpdateController.installState === "ready"
+                text: "Install and restart"
+                variant: "primary"
+                fontSize: 13
+                Layout.preferredHeight: 28
+                onClicked: UpdateController.restartNow()
+            }
+            PillButton {
+                visible: UpdateController.installState === "installed"
+                text: "Restart now"
+                variant: "primary"
+                fontSize: 13
+                Layout.preferredHeight: 28
+                onClicked: UpdateController.restartNow()
+            }
+            GhostButton {
+                visible: UpdateController.installState === "downloading"
+                text: "Cancel"
+                onClicked: UpdateController.cancelInstall()
+            }
+            PillButton {
+                visible: UpdateController.installState === "idle" || UpdateController.installState === "failed"
+                text: "See the versions"
+                variant: UpdateController.installsItself ? "neutral" : "primary"
                 fontSize: 13
                 Layout.preferredHeight: 28
                 onClicked: root.currentViewId = "updates"
             }
             GhostButton {
+                visible: UpdateController.installState === "idle" || UpdateController.installState === "failed"
                 text: "×"
                 fontSize: 15
                 onClicked: UpdateController.dismissBanner()

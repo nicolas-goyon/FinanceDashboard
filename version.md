@@ -60,16 +60,22 @@ builds, source archives). Then CI opens a pull request that merges the release b
   when a newer version of its channel exists. The new Updates page (ADMIN) shows the version of
   the app, the versions of the channel with their notes and release pages, a "Check now" button
   and the setting that turns the check off. The prod app follows the releases; the Test app
-  follows Experimental (-exp and -rc) or Preprod (-rc). GitHub sees the internet address of the
-  computer and the version of the app: the app sends no token, no cookie and no data, and
-  English as the language. Without a network, when GitHub does not answer within 20 seconds, or
-  when GitHub refuses the call, the page tells why. The QML engine loads nothing from the
-  network, the notes of a version are shown without their images, and the page opens the pages
-  of the project on GitHub only. The check uses HTTPS: CI checks that the packages have the TLS
-  backend of Qt; on Linux it uses the OpenSSL 3 of the system, and the .deb depends on
-  libssl3t64 | libssl3 and ca-certificates. The Docker build ships the TLS plugins and builds
-  its static Linux Qt with OpenSSL. The installation itself comes later: for now the page opens
-  the release page (#117).
+  follows Experimental (-exp and -rc) or Preprod (-rc). "Install" (in the banner or on the
+  page) installs the newest version: the app downloads it from GitHub, with SHA256SUMS.txt, and
+  checks its SHA-256. With the setup, "Install and restart" then runs the setup with a progress
+  window: the setup closes the app, installs the new version and opens it (a copy "for all
+  users" asks for administrator rights first). With the AppImage, the app replaces its file,
+  and "Restart now" opens the new version. Nothing is downloaded or restarted without a click.
+  The portable ZIP, the .deb and the .tar.gz update by hand: the page gives the steps. GitHub
+  sees the internet address of the computer and the version of the app: the app sends no token,
+  no cookie and no data, and English as the language. Without a network, when GitHub does not
+  answer in time, or when GitHub refuses the call, the page tells why. The QML engine loads
+  nothing from the network, the notes of a version are shown without their images, and the page
+  opens the pages of the project on GitHub only. The check and the download use HTTPS: CI
+  checks that the packages have the TLS backend of Qt, and on Linux they use the OpenSSL 3 of
+  the system (the .deb depends on libssl3t64 | libssl3 and ca-certificates). CI also checks
+  that the setup closes the running app, updates it and starts it again, in both install modes.
+  The Docker build ships the TLS plugins and builds its static Linux Qt with OpenSSL (#117).
 
 ### Changed
 - The Git history on GitHub was rewritten on 2026-10-20 at 06:39 UTC to remove personal data. A

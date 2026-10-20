@@ -47,8 +47,14 @@ backed up everything.
 
 ### The update check
 
-The app connects to one network service only: at each start, it asks GitHub
+The app connects to one network service only, GitHub: at each start, it asks
 for the list of releases, to tell you when a new version exists. GitHub sees
 the internet address of your computer and the version of the app; the app
 sends nothing else. Turn the check off on the Updates page. On Linux, the check
 uses the OpenSSL 3 of the system (`libssl.so.3`).
+
+With the setup and the AppImage, **Install** downloads the new version from
+GitHub and checks its SHA-256 against `SHA256SUMS.txt`. Then **Install and
+restart** (setup) or **Restart now** (AppImage) opens the new version. The
+other packages update by hand: extract the new ZIP or `.tar.gz` over the old
+folder (your data is not in it), or install the new `.deb` with `apt`.

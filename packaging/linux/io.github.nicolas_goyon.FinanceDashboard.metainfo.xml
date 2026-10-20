@@ -21,9 +21,10 @@
     <p>
       Everything stays on the machine it runs on: the data lives in a local
       SQLite file, and there is no bank connectivity and no account linking.
-      The only network call is the update check: at each start, the app asks
-      GitHub for the list of releases. GitHub sees the internet address of the
-      computer and the version of the app. The check can be turned off.
+      The app connects to GitHub only: at each start, it asks for the list of
+      releases (this check can be turned off). The Windows setup and the
+      AppImage can also download a new version when you ask for it. GitHub
+      sees the internet address of the computer and the version of the app.
     </p>
   </description>
 
