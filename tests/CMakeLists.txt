@@ -121,6 +121,30 @@ set_tests_properties(db_write_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# calc_test
+#   The calculations behind the texts and charts of the pages: the Projects page
+#   (#41). No database. It compiles the page controllers that it tests.
+
+qt_add_executable(calc_test
+    calc_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/Formatter.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.cpp
+)
+target_include_directories(calc_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/controllers/projects
+)
+# Qt6::Qml for the QML_ELEMENT macros in the controller headers.
+target_link_libraries(calc_test PRIVATE Qt6::Core Qt6::Qml Qt6::Test)
+set_target_properties(calc_test PROPERTIES WIN32_EXECUTABLE OFF)
+
+add_test(NAME calc_test COMMAND calc_test)
+set_tests_properties(calc_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Every test target, so that CI and a local build need one target name:
 #   cmake --build build --target fd_tests
-add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test)
+add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test calc_test)
