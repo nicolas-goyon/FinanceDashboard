@@ -467,9 +467,10 @@ Item {
         Text {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: "Paste a fingerprint this account should also match on import (e.g. one printed by a "
-                + "different statement layout for the same account). Most accounts don't need this — link "
-                + "an account straight from the import review screen instead (\"Link this account\")."
+            text: "Paste a fingerprint (64 hexadecimal characters) that this account should also match on "
+                + "import, for example the one of another statement layout of the same account. A fingerprint "
+                + "belongs to one account only. Most accounts don't need this — link an account straight from "
+                + "the import review screen instead (\"Link this account\")."
             font.pixelSize: 13
             color: "#6c7086"
         }
@@ -478,7 +479,7 @@ Item {
         TextField {
             id: hashField
             Layout.fillWidth: true
-            placeholderText: "hash value"
+            placeholderText: "64 hexadecimal characters"
             placeholderTextColor: "#45475a"
             font.family: "monospace"
             color: "#cdd6f4"

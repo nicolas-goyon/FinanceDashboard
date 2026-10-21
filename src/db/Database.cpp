@@ -4,6 +4,7 @@
 #include "models/Category.h"
 #include "models/CategoryRule.h"
 #include "models/Transaction.h"
+#include "utils/AccountHashing.h"
 #include "utils/Money.h"
 
 #include <QDate>
@@ -11,7 +12,10 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
+#include <QLatin1Char>
 #include <QLatin1String>
+#include <QSet>
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QString>
@@ -23,6 +27,7 @@
 #include <array>
 #include <functional>
 #include <optional>
+#include <utility>
 
 namespace {
 
@@ -283,6 +288,13 @@ bool Database::openFile(const QString& path)
                                               "upgrade keeps the old values.")
                                    .arg(stats.roundedRows);
         }
+        if (stats.removedHashLinks > 0) {
+            m_upgradeReport += QStringLiteral("\n\n%1 link(s) of an account hash to another account were "
+                                              "removed. A hash now belongs to one account only: its most "
+                                              "recent link stays. The application log lists the accounts; "
+                                              "check their hashes in Account Management.")
+                                   .arg(stats.removedHashLinks);
+        }
         qInfo().noquote() << "[Database]" << m_upgradeReport;
     }
     return true;
@@ -442,13 +454,17 @@ bool Database::upgrade(int from, UpgradeStats& stats)
     m_lastError.clear();
     for (int step = from + 1; step <= kSchemaVersion; ++step) {
         bool ok = false;
+        // The case labels are schema versions, not magic numbers.
+        // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         switch (step) {
         case 1: ok = migrateTo1(stats); break;
         case 2: ok = migrateTo2(stats); break;
         case 3: ok = migrateTo3(); break;
         case 4: ok = migrateTo4(stats); break;
+        case 5: ok = migrateTo5(stats); break;
         default: m_lastError = QStringLiteral("there is no migration step %1.").arg(step); break;
         }
+        // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         if (!ok) {
             m_lastError = QStringLiteral("step %1 failed: %2").arg(step).arg(m_lastError);
             return false;
@@ -719,6 +735,78 @@ bool Database::roundAmountsToCents(const QString& table, const QStringList& colu
     return true;
 }
 
+// Version 5 — an account hash belongs to one account, in lower case (#47).
+// SQLite compares text with its case, but the import compared the hashes
+// without it: a hash typed in upper case was not found, and Save added a
+// second link. And several accounts could have one hash: the import always
+// suggested the first one, also after the user picked another one. For each
+// hash (in lower case), this step keeps its most recent link (the highest
+// id: the last link that a save or the user made) and removes the others,
+// then writes the hashes in lower case. The index on `hash` becomes UNIQUE,
+// with the name of createTable(), so that createTable() does not create the
+// old index again. The UNIQUE(account_id, hash) of the table stays: SQLite
+// cannot drop it without a rebuild, and the new index includes it.
+bool Database::migrateTo5(UpgradeStats& stats)
+{
+    // The stored form of AccountHashing::storedForm(): no white space around
+    // it, in lower case. SQLite trim() removes spaces only, unless it gets
+    // the characters to remove.
+    const QString stored = QStringLiteral("lower(trim(hash, ' ' || char(9, 10, 11, 12, 13)))");
+
+    // Count and log the links to other accounts that go: only the
+    // fingerprints (a typed value that is not one never matched), with the
+    // names of the accounts and without the hashes.
+    QHash<int, QString> names;
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("SELECT id, name FROM accounts;"))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    while (query.next()) {
+        names.insert(query.value(0).toInt(), query.value(1).toString());
+    }
+    if (!query.exec(QStringLiteral("SELECT account_id, %1 FROM account_hashes ORDER BY id;").arg(stored))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    QHash<QString, int> keptAccount; // hash -> the account of its most recent link
+    QVector<std::pair<QString, int>> links; // (hash, account), in id order
+    while (query.next()) {
+        const int account = query.value(0).toInt();
+        const QString hash = query.value(1).toString();
+        keptAccount.insert(hash, account); // ORDER BY id: the last one stays
+        links.append({hash, account});
+    }
+    query.finish();
+    QSet<QString> removed; // "hash/account": an account can have a hash in two cases
+    for (const auto& [hash, account] : links) {
+        const int kept = keptAccount.value(hash);
+        const QString link = hash + QLatin1Char('/') + QString::number(account);
+        if (account == kept || !AccountHashing::isFingerprint(hash) || removed.contains(link)) {
+            continue;
+        }
+        removed.insert(link);
+        qInfo().noquote() << "[Database] migration step 5: the account" << names.value(account)
+                          << "loses an account hash that the account" << names.value(kept) << "keeps";
+    }
+    stats.removedHashLinks = static_cast<int>(removed.size());
+
+    const std::array<QString, 4> statements = {
+        QStringLiteral("DELETE FROM account_hashes WHERE id NOT IN"
+                       " (SELECT MAX(id) FROM account_hashes GROUP BY %1);").arg(stored),
+        QStringLiteral("UPDATE account_hashes SET hash = %1 WHERE hash <> %1;").arg(stored),
+        QStringLiteral("DROP INDEX IF EXISTS idx_account_hashes_hash;"),
+        QStringLiteral("CREATE UNIQUE INDEX idx_account_hashes_hash ON account_hashes(hash);"),
+    };
+    for (const QString& statement : statements) {
+        if (!query.exec(statement)) {
+            m_lastError = sqlText(query.lastError());
+            return false;
+        }
+    }
+    return true;
+}
+
 bool    Database::isOpen()     const { return m_db.isOpen(); }
 QString Database::lastError()  const { return m_lastError; }
 
@@ -809,6 +897,10 @@ bool hasText(const QString& value)
 {
     return !value.trimmed().isEmpty();
 }
+
+// A hash that the user typed must be a fingerprint as the app computes it:
+// only such a value can match a statement (#47).
+constexpr const char* kNotAFingerprint = "An account hash has 64 hexadecimal characters (0-9, a-f).";
 
 // An amount must be a number, not larger than Money::kMaxAmount (#33): the
 // app rounds amounts to the cent before it writes them. Refused before any
@@ -966,7 +1058,55 @@ int Database::addAccountHash(int accountId, const QString& hash, const QString& 
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
     if (!hasText(hash)) { m_lastError = QStringLiteral("The account hash is empty."); return -1; }
     if (!hasText(source)) { m_lastError = QStringLiteral("The source of the account hash is empty."); return -1; }
-    return m_accountHashesTable.insert(accountId, hash, source);
+    const QString stored = AccountHashing::storedForm(hash);
+    if (!AccountHashing::isFingerprint(stored)) { m_lastError = QString::fromLatin1(kNotAFingerprint); return -1; }
+    // One account for each hash (#47): a typed hash does not move a link.
+    const int owner = m_accountHashesTable.accountOf(stored);
+    if (owner == accountId) { m_lastError = QStringLiteral("The account already has this hash."); return -1; }
+    if (owner >= 0) { m_lastError = QStringLiteral("Another account has this hash."); return -1; }
+    const int hashId = m_accountHashesTable.insert(accountId, stored, source);
+    if (hashId < 0) {
+        m_lastError = QStringLiteral("Could not add the account hash.");
+    }
+    return hashId;
+}
+
+bool Database::linkAccountHash(int accountId, const QString& hash, const QString& source)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    if (!hasText(source)) { m_lastError = QStringLiteral("The source of the account hash is empty."); return false; }
+    return linkHashTo(accountId, hash, source);
+}
+
+// The two strings are a hash and a literal source ("auto"/"manual"), as in
+// AccountHashesTable::insert(): not easily swapped.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+bool Database::linkHashTo(int accountId, const QString& hash, const QString& source)
+{
+    const QString stored = AccountHashing::storedForm(hash);
+    if (!AccountHashing::isFingerprint(stored)) {
+        m_lastError = QString::fromLatin1(kNotAFingerprint);
+        return false;
+    }
+    const int owner = m_accountHashesTable.accountOf(stored);
+    if (owner == accountId) {
+        return true; // already linked
+    }
+    if (owner >= 0) {
+        // The user picked another account for this statement: the hash moves.
+        if (!m_accountHashesTable.moveToAccount(stored, accountId, source)) {
+            m_lastError = QStringLiteral("Could not move the account fingerprint to this account.");
+            return false;
+        }
+        qInfo().noquote() << "[Database] the account fingerprint moves from the account" << accountName(owner)
+                          << "to the account" << accountName(accountId);
+        return true;
+    }
+    if (m_accountHashesTable.insert(accountId, stored, source) < 0) {
+        m_lastError = QStringLiteral("Could not link the account fingerprint.");
+        return false;
+    }
+    return true;
 }
 
 bool Database::removeAccountHash(int hashId)
@@ -979,6 +1119,22 @@ bool Database::accountHasHash(int accountId, const QString& hash) const
 {
     if (!isOpen()) { return false; }
     return m_accountHashesTable.existsForAccount(accountId, hash);
+}
+
+QString Database::accountName(int accountId) const
+{
+    QSqlQuery query(m_db);
+    if (!query.prepare(QStringLiteral("SELECT name FROM accounts WHERE id = ?;"))) {
+        return QString::number(accountId);
+    }
+    query.addBindValue(accountId);
+    return query.exec() && query.next() ? query.value(0).toString() : QString::number(accountId);
+}
+
+int Database::accountOfHash(const QString& hash) const
+{
+    if (!isOpen()) { return -1; }
+    return m_accountHashesTable.accountOf(hash);
 }
 
 // ── Account categories ────────────────────────────────────────────────────────
@@ -1127,9 +1283,10 @@ bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, 
     if (!m_transactionsTable.insertBatch(accountId, txs, inserted)) {
         return fail(QStringLiteral("Could not save the transactions."));
     }
-    if (!accountHash.isEmpty() && !m_accountHashesTable.existsForAccount(accountId, accountHash) &&
-        m_accountHashesTable.insert(accountId, accountHash, QStringLiteral("auto")) < 0) {
-        return fail(QStringLiteral("Could not link the account fingerprint."));
+    // Added, or moved from another account (#47).
+    if (!accountHash.isEmpty() && !linkHashTo(accountId, accountHash, QStringLiteral("auto"))) {
+        const QString detail = m_lastError;
+        return fail(detail);
     }
     for (const Data::AccountBalanceCheckpoint& checkpoint : checkpoints) {
         if (m_balanceCheckpointsTable.insert(accountId, checkpoint.date, checkpoint.balance, checkpoint.note) < 0) {

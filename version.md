@@ -190,6 +190,14 @@ builds, source archives). Then CI opens a pull request that merges the release b
   before the upgrade keeps the old values). An amount that is not a number or is larger than
   10^13 is refused: in a statement, in the transaction and checkpoint dialogs, and in the
   database (#33).
+- Account hashes: a hash belongs to one account, and it is stored in lower case. The import
+  suggests the account that has the hash of the statement. When you save the statement to
+  another account (or click "Link this account"), the hash moves to that account, and the next
+  import suggests it; the review screen tells it before the save. Before, a hash typed in upper
+  case was not found (the save added a second link), and after one wrong link the import kept
+  suggesting the first account. A typed hash must be 64 hexadecimal characters that no other
+  account has: the message names that account. The upgrade to schema version 5 keeps the most
+  recent link of each hash and tells how many links it removed (#47).
 
 ---
 

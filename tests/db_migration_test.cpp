@@ -25,7 +25,11 @@
 //     defaults count as written; emptied by a reset, it records nothing (#37);
 //   - step 4 rounds the stored amounts to the cent, keeps the fingerprints
 //     and says how many rows changed; the backup copy keeps the old values
-//     (#33).
+//     (#33);
+//   - step 5 keeps the most recent link of each account hash, in lower
+//     case, makes the hash UNIQUE, and says how many links to another
+//     account it removed; a new file and a reset get the UNIQUE index, and
+//     an open does not add the old index again (#47).
 
 #include "db/Database.h"
 #include "db/tables/TransactionsTable.h"
@@ -127,6 +131,7 @@ private slots:
     void resetKeepsTheLatestSchema();
     void version2DatabaseIsUpgraded();
     void version3AmountsAreRoundedToTheCent();
+    void version4HashesGetOneAccount();
 
 private:
     // Runs SQL on `path` through its own connection, then closes it.
@@ -597,6 +602,78 @@ void DbMigrationTest::version3AmountsAreRoundedToTheCent()
     const QString backup = m_dir->filePath(backups().first());
     QCOMPARE(countOn(backup, QStringLiteral("SELECT ROUND(debit * 1000) FROM transactions WHERE id = 1;")), 12344);
     QCOMPARE(countOn(backup, QStringLiteral("PRAGMA user_version;")), 3);
+}
+
+void DbMigrationTest::version4HashesGetOneAccount()
+{
+    // A file at schema version 4: the index on the hash is not UNIQUE, and
+    // the hashes keep the case in which they were written.
+    Database& db = Database::instance();
+    const QString path = m_dir->filePath(QStringLiteral("v4.db"));
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    db.close();
+    const QString shared = QStringLiteral("ABCDEF0123456789").repeated(4);
+    const QString own = QStringLiteral("0123456789abcdef").repeated(4);
+    const QString tabbed = QStringLiteral("fedcba9876543210").repeated(4);
+    execOn(path, {
+        QStringLiteral("DROP INDEX idx_account_hashes_hash;"),
+        QStringLiteral("CREATE INDEX idx_account_hashes_hash ON account_hashes(hash);"),
+        QStringLiteral("INSERT INTO accounts (name, type, category, currency, notes) VALUES"
+                       " ('Checking', 'CCP', '', 'EUR', ''), ('Savings', 'CCP', '', 'EUR', '');"),
+        // Ids 1–3: the shared hash, typed in upper case on Checking, linked
+        // in lower case to Savings by a save, then linked again to Checking
+        // (a second row in another case: the most recent link). Id 4: a hash
+        // of Savings only. Ids 5–6: a hash with a tab after it on Checking,
+        // then on Savings. Ids 7–8: a typed value that is not a fingerprint,
+        // on both accounts in two cases: removed from Checking, not counted.
+        QStringLiteral("INSERT INTO account_hashes (account_id, hash, source) VALUES"
+                       " (1, '%1', 'manual'), (2, '%2', 'auto'), (1, '%2', 'auto'), (2, '%3', 'auto'),"
+                       " (1, '%4' || char(9), 'manual'), (2, '%4', 'auto'),"
+                       " (1, 'MY OLD HASH', 'manual'), (2, 'my old hash', 'manual');")
+            .arg(shared, shared.toLower(), own, tabbed),
+        QStringLiteral("PRAGMA user_version = 4;"),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
+    // Savings loses the shared hash and Checking the tabbed one; the second
+    // row of Checking is not a link to another account, and the value that is
+    // not a fingerprint is not counted.
+    QVERIFY2(db.upgradeReport().contains(QStringLiteral("2 link(s) of an account hash to another account were removed")),
+             qPrintable(db.upgradeReport()));
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM account_hashes;")), 4);
+    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = '%1' AND account_id = 1;").arg(shared.toLower())), 3);
+    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = '%1' AND account_id = 2;").arg(own)), 4);
+    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = '%1' AND account_id = 2;").arg(tabbed)), 6);
+    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = 'my old hash' AND account_id = 2;")), 8);
+    QCOMPARE(db.accountOfHash(shared), 1);
+    const QString uniqueIndex =
+        QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_account_hashes_hash'"
+                       " AND sql LIKE 'CREATE UNIQUE INDEX%';");
+    const QString namedIndexes = QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index'"
+                                                " AND tbl_name = 'account_hashes' AND name NOT LIKE 'sqlite_%';");
+    QCOMPARE(count(uniqueIndex), 1);
+    QCOMPARE(count(namedIndexes), 2); // the account index and the UNIQUE hash index
+    // A second account cannot get the hash, in any case.
+    QSqlQuery insert(db.sqlDatabase());
+    QVERIFY(!insert.exec(QStringLiteral("INSERT INTO account_hashes (account_id, hash, source) VALUES (2, '%1', 'auto');")
+                             .arg(shared.toLower())));
+    insert.finish();
+    db.close();
+
+    // At the next open, createTable() does not add the old index again.
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    QVERIFY(db.upgradeReport().isEmpty());
+    QCOMPARE(count(uniqueIndex), 1);
+    QCOMPARE(count(namedIndexes), 2);
+    // A reset and a new file have the UNIQUE index too.
+    QVERIFY2(db.resetAll(), qPrintable(db.lastError()));
+    QCOMPARE(count(uniqueIndex), 1);
+    db.close();
+    QVERIFY2(db.open(m_dir->filePath(QStringLiteral("new.db"))), qPrintable(db.lastError()));
+    QCOMPARE(count(uniqueIndex), 1);
+    QCOMPARE(count(namedIndexes), 2);
 }
 
 QTEST_GUILESS_MAIN(DbMigrationTest)

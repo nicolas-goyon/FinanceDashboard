@@ -1,6 +1,7 @@
 #include "AccountHashesTable.h"
 #include "SqlPrepare.h"
 #include "models/Account.h"
+#include "utils/AccountHashing.h"
 
 #include <QSqlDatabase>
 #include <QSqlQuery>
@@ -62,7 +63,7 @@ int AccountHashesTable::insert(int accountId, const QString& hash, const QString
         return -1;
     }
     query.addBindValue(accountId);
-    query.addBindValue(hash);
+    query.addBindValue(AccountHashing::storedForm(hash));
     query.addBindValue(source);
 
     if (!query.exec()) {
@@ -114,13 +115,47 @@ bool AccountHashesTable::existsForAccount(int accountId, const QString& hash) co
         return false;
     }
     query.addBindValue(accountId);
-    query.addBindValue(hash);
+    query.addBindValue(AccountHashing::storedForm(hash));
 
     if (!query.exec()) {
         qWarning() << "[AccountHashesTable] existsForAccount error:" << query.lastError().text();
         return false;
     }
     return query.next();
+}
+
+int AccountHashesTable::accountOf(const QString& hash) const
+{
+    QSqlQuery query(db());
+    if (!query.prepare(QStringLiteral("SELECT account_id FROM account_hashes WHERE hash = ? ORDER BY id DESC LIMIT 1;"))) {
+        Sql::logPrepareError(query, "[AccountHashesTable] accountOf");
+        return -1;
+    }
+    query.addBindValue(AccountHashing::storedForm(hash));
+    if (!query.exec()) {
+        qWarning() << "[AccountHashesTable] accountOf error:" << query.lastError().text();
+        return -1;
+    }
+    return query.next() ? query.value(0).toInt() : -1;
+}
+
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — the two strings are
+// a hash and a literal source ("auto"/"manual"), as in insert().
+bool AccountHashesTable::moveToAccount(const QString& hash, int accountId, const QString& source)
+{
+    QSqlQuery query(db());
+    if (!query.prepare(QStringLiteral("UPDATE account_hashes SET account_id = ?, source = ? WHERE hash = ?;"))) {
+        Sql::logPrepareError(query, "[AccountHashesTable] moveToAccount");
+        return false;
+    }
+    query.addBindValue(accountId);
+    query.addBindValue(source);
+    query.addBindValue(AccountHashing::storedForm(hash));
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[AccountHashesTable] moveToAccount error:" << query.lastError().text();
+    }
+    return success;
 }
 
 QVector<Data::AccountHash> AccountHashesTable::allForAccount(int accountId) const

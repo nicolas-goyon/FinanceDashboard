@@ -110,12 +110,15 @@ public:
     Q_INVOKABLE void renameAccountType(int index, const QString& newName);
     Q_INVOKABLE void removeAccountType(int index);
 
-    // Hash management (index into accounts()). addHash() is for a
-    // user-typed hash (source "manual"); linkAccountHash() is for a hash
-    // computed from a statement's IBAN/BIC during import review (source
-    // "auto") — see ImportSnapshotPage.qml's "Link this account" action.
-    // Both no-op (return false) if the hash is empty or already stored for
-    // this account.
+    // Hash management (index into accounts()). A hash belongs to one account
+    // (#47). addHash() is for a user-typed hash (source "manual"): it must be
+    // 64 hexadecimal characters, and another account must not have it (the
+    // status tells which one). linkAccountHash() is for a hash computed from
+    // a statement's IBAN/BIC during import review (source "auto") — see
+    // ImportSnapshotPage.qml's "Link this account" action: it moves the hash
+    // when another account has it. Both return false (with a status) when
+    // nothing changed, and false with no status when the account already
+    // has the hash (linkAccountHash()).
     Q_INVOKABLE bool addHash(int accountIndex, const QString& hash);
     Q_INVOKABLE bool linkAccountHash(int accountIndex, const QString& hash);
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
@@ -246,10 +249,8 @@ private:
     // has no record of its defaults — not after a reset (#37). The
     // constructor then loads them.
     void seedDefaults();
-    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — private helper,
-    // both call sites (addHash/linkAccountHash below) pass a literal source
-    // ("manual"/"auto"), not a variable that could be swapped with hash.
-    bool addHashInternal(int accountIndex, const QString& hash, const QString& source);
+    // The name of the account `accountId`, for a status text.
+    [[nodiscard]] QString nameOfAccount(int accountId) const;
 
     QVector<Data::Account>         m_accounts;
     QVector<Data::AccountCategory> m_accountCategories;

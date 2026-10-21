@@ -80,6 +80,12 @@ and `Database` refuses an amount that is not a number or is larger than `Money::
 balance, a total) adds whole cents (`Money::toCents()`, a `qint64`), not doubles: in a double,
 0.10 + 0.20 is not 0.30.
 
+An account hash (`account_hashes`, `AccountHashing::compute()`: an HMAC-SHA256 of the IBAN of a
+statement, keyed by its BIC) links the statements of a bank account to an account of the app,
+and the import suggests that account. A hash belongs to one account, in lower case (#47): a save
+to another account moves it there (`Database::linkAccountHash()`), and a typed hash must be 64
+hexadecimal characters that no other account has.
+
 A transaction's `fingerprint` is its identity in the bank's statement
 (`TransactionsTable::fingerprints()`): the bank's reference and the amount when the row has a
 reference (`bankReference()`), else every field. A row that the account already has is not saved

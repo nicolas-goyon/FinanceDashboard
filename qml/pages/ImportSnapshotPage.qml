@@ -50,6 +50,10 @@ Item {
     readonly property var selectedAccount:
         page.selectedAccountIndex >= 0 && page.selectedAccountIndex < AccountController.accounts.length
             ? AccountController.accounts[page.selectedAccountIndex] : null
+    // The account that has the hash of the statement (one at most, #47).
+    readonly property string matchedAccountName:
+        page.matchedAccountIndex >= 0 && page.matchedAccountIndex < AccountController.accounts.length
+            ? AccountController.accounts[page.matchedAccountIndex].name : ""
 
     function goToReview() {
         matchedAccountIndex = controller.matchAccountIndex(AccountController.accounts)
@@ -353,10 +357,18 @@ Item {
                                 onActivated: page.selectedAccountIndex = currentIndex
                             }
                             Text {
-                                visible: page.matchedAccountIndex >= 0
+                                visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex === page.selectedAccountIndex
                                 text: "✓ matched by account hash"
                                 font.pixelSize: 13
                                 color: "#a6e3a1"
+                            }
+                            // A hash belongs to one account (#47): Save (or
+                            // "Link this account") moves it to the picked one.
+                            Text {
+                                visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex !== page.selectedAccountIndex
+                                text: "⚠ the account hash is on \"" + page.matchedAccountName + "\": Save moves it to this account"
+                                font.pixelSize: 13
+                                color: "#f9e2af"
                             }
                             Text {
                                 visible: page.matchedAccountIndex < 0
@@ -415,8 +427,13 @@ Item {
                                 variant: "primary"
                                 Layout.preferredHeight: 24
                                 fontSize: 13
-                                onClicked: AccountController.linkAccountHash(
-                                    page.selectedAccountIndex, controller.statementInfo.accountHashRaw)
+                                onClicked: {
+                                    if (AccountController.linkAccountHash(page.selectedAccountIndex,
+                                                                          controller.statementInfo.accountHashRaw)) {
+                                        // The hash can move from another account (#47).
+                                        page.matchedAccountIndex = controller.matchAccountIndex(AccountController.accounts)
+                                    }
+                                }
                             }
                         }
                     }

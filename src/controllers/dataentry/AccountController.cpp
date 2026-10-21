@@ -1,6 +1,7 @@
 #include "AccountController.h"
 
 #include "db/Database.h"
+#include "utils/AccountHashing.h"
 #include "utils/Formatter.h"
 #include "utils/Money.h"
 #include "models/Account.h"
@@ -426,55 +427,72 @@ void AccountController::removeAccountType(int index)
     emit accountTypesChanged();
 }
 
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — private helper, both
-// call sites below pass a literal source ("manual"/"auto"), not a variable
-// that could be swapped with hash.
-bool AccountController::addHashInternal(int accountIndex, const QString& hash, const QString& source)
+QString AccountController::nameOfAccount(int accountId) const
+{
+    const auto account = std::find_if(m_accounts.cbegin(), m_accounts.cend(),
+                                      [accountId](const Data::Account& candidate) { return candidate.id == accountId; });
+    return account != m_accounts.cend() ? account->name : QStringLiteral("another account");
+}
+
+bool AccountController::addHash(int accountIndex, const QString& hash)
 {
     if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
         return false;
     }
-    const QString trimmed = hash.trimmed();
-    if (trimmed.isEmpty()) {
+    const QString stored = AccountHashing::storedForm(hash);
+    if (!AccountHashing::isFingerprint(stored)) {
+        setStatus(StatusMessage::Level::Warning,
+                  QStringLiteral("⚠  An account hash has 64 hexadecimal characters (0-9, a-f)"));
+        return false;
+    }
+    // One account for each hash (#47): a typed hash does not take the hash
+    // of another account.
+    const int owner = Database::instance().accountOfHash(stored);
+    if (owner == m_accounts.at(accountIndex).id) {
+        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  This account already has this hash"));
+        return false;
+    }
+    if (owner >= 0) {
+        setStatus(StatusMessage::Level::Warning,
+                  QStringLiteral("⚠  The account \"%1\" has this hash. Remove it there first").arg(nameOfAccount(owner)));
         return false;
     }
 
     // accountIndex bounds-checked above; QList's at() is const-only, so
     // mutating through operator[] is genuinely required here.
     Data::Account& acc = m_accounts[accountIndex]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-    for (const Data::AccountHash& existingHash : acc.hashes) {
-        if (existingHash.hash.compare(trimmed, Qt::CaseInsensitive) == 0) {
-            return false; // already linked
-        }
-    }
-
-    const int hashId = Database::instance().addAccountHash(acc.id, trimmed, source);
+    const int hashId = Database::instance().addAccountHash(acc.id, stored, QStringLiteral("manual"));
     if (hashId < 0) {
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not add the hash"));
         return false;
     }
-
-    acc.hashes.append(Data::AccountHash{ hashId, trimmed, source });
+    acc.hashes.append(Data::AccountHash{ hashId, stored, QStringLiteral("manual") });
+    emit accountsChanged();
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Hash added"));
     return true;
-}
-
-bool AccountController::addHash(int accountIndex, const QString& hash)
-{
-    const bool added = addHashInternal(accountIndex, hash, QStringLiteral("manual"));
-    if (added) {
-        emit accountsChanged();
-        setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Hash added"));
-    }
-    return added;
 }
 
 bool AccountController::linkAccountHash(int accountIndex, const QString& hash)
 {
-    const bool added = addHashInternal(accountIndex, hash, QStringLiteral("auto"));
-    if (added) {
-        emit accountsChanged();
-        setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account linked"));
+    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
+        return false;
     }
-    return added;
+    const int accountId = m_accounts.at(accountIndex).id;
+    const int owner = Database::instance().accountOfHash(hash);
+    if (owner == accountId) {
+        return false; // already linked
+    }
+    const QString previous = owner >= 0 ? nameOfAccount(owner) : QString();
+    // The hash moves when another account has it (#47).
+    if (!Database::instance().linkAccountHash(accountId, hash, QStringLiteral("auto"))) {
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not link the account"));
+        return false;
+    }
+    reload(); // two accounts can change: read them again
+    setStatus(StatusMessage::Level::Success,
+              previous.isEmpty() ? QStringLiteral("✓  Account linked")
+                                 : QStringLiteral("✓  Account linked: the hash is no longer on \"%1\"").arg(previous));
+    return true;
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called

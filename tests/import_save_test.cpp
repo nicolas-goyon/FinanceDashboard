@@ -37,6 +37,10 @@
 //   #33  the reconciliation compares whole cents: a gap of one cent is a
 //        gap, and the adjustment row is that cent; an amount larger than
 //        Money::kMaxAmount is refused
+//   #47  a hash typed in upper case matches, and a save adds no second
+//        link; a save to another account moves the hash, and the next
+//        import suggests that account; a failed save leaves the hash where
+//        it was
 
 #include "SnapshotImportController.h"
 #include "db/Database.h"
@@ -220,6 +224,8 @@ private slots:
     void manualPicksAreNotAutoFilled();
     void newStatusMessageStaysForTheWholeDelay();
     void startCheckUsesTheBookingOrder();
+    void pickedAccountTakesTheHash();
+    void failedSaveKeepsTheHashWhereItWas();
 
 private:
     // Runs the template alone on `csv`: the statement as it reads it, and its log.
@@ -231,6 +237,11 @@ private:
     [[nodiscard]] int transactionCount() const;
     [[nodiscard]] int checkpointCount() const;
     [[nodiscard]] bool hashLinked() const;
+    // The accounts as AccountController gives them to QML (for
+    // matchAccountIndex()): their ids and hashes.
+    [[nodiscard]] static QVariantList accountsForMatch();
+    [[nodiscard]] static int indexOfAccount(const QVariantList& accounts, int accountId);
+    [[nodiscard]] static int hashRowCount();
     void failInsertsNamed(const QString& name);
     static void categorizeAll(SnapshotImportController& controller);
 
@@ -293,6 +304,36 @@ bool ImportSaveTest::hashLinked() const
 {
     const QString hash = AccountHashing::compute(QString::fromLatin1(kIban), QString::fromLatin1(kBic));
     return !hash.isEmpty() && Database::instance().accountHasHash(m_account, hash);
+}
+
+QVariantList ImportSaveTest::accountsForMatch()
+{
+    QVariantList accounts;
+    for (const Data::Account& account : Database::instance().loadAccounts()) {
+        QVariantList hashes;
+        for (const Data::AccountHash& hash : account.hashes) {
+            hashes.append(QVariantMap{{QStringLiteral("hash"), hash.hash}});
+        }
+        accounts.append(QVariantMap{{QStringLiteral("id"), account.id}, {QStringLiteral("hashes"), hashes}});
+    }
+    return accounts;
+}
+
+int ImportSaveTest::indexOfAccount(const QVariantList& accounts, int accountId)
+{
+    for (int i = 0; i < accounts.size(); ++i) {
+        if (accounts.at(i).toMap().value(QStringLiteral("id")).toInt() == accountId) {
+            return i;
+        }
+    }
+    return -1;
+}
+
+int ImportSaveTest::hashRowCount()
+{
+    QSqlQuery query(Database::instance().sqlDatabase());
+    return query.exec(QStringLiteral("SELECT COUNT(*) FROM account_hashes;")) && query.next() ? query.value(0).toInt()
+                                                                                             : -1;
 }
 
 // Makes the INSERT of a transaction with this name fail, as a full disk or a
@@ -1104,6 +1145,68 @@ void ImportSaveTest::startCheckUsesTheBookingOrder()
     const QVariantMap laterCheck = later.checkReconciliation(m_account);
     QVERIFY(laterCheck.value(QStringLiteral("startOk")).toBool());
     QCOMPARE(laterCheck.value(QStringLiteral("startSourceDateText")).toString(), Fmt::dateOrDash(QDate(2026, 3, 2)));
+}
+
+void ImportSaveTest::pickedAccountTakesTheHash()
+{
+    Database& db = Database::instance();
+    const int savings = db.addAccount(QStringLiteral("Savings"), QStringLiteral("CCP"), QStringLiteral(""),
+                                      QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(savings >= 0);
+    // The hash of the statement, typed in upper case on Checking. Before
+    // #47, the save did not find it and added a second row.
+    const QString hash = AccountHashing::compute(QString::fromLatin1(kIban), QString::fromLatin1(kBic));
+    QVERIFY2(db.addAccountHash(m_account, hash.toUpper(), QStringLiteral("manual")) >= 0, qPrintable(db.lastError()));
+    {
+        SnapshotImportController controller;
+        parse(controller, marchStatement());
+        const QVariantList accounts = accountsForMatch();
+        QCOMPARE(controller.matchAccountIndex(accounts), indexOfAccount(accounts, m_account));
+        controller.save(m_account, QStringLiteral("Checking"));
+        QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓")), qPrintable(controller.statusText()));
+    }
+    QCOMPARE(hashRowCount(), 1);
+
+    // The user picks Savings for the next statement: the hash moves.
+    {
+        SnapshotImportController controller;
+        parse(controller, overlappingStatement());
+        controller.save(savings, QStringLiteral("Savings"));
+        QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓")), qPrintable(controller.statusText()));
+    }
+    QCOMPARE(hashRowCount(), 1);
+    QCOMPARE(db.accountOfHash(hash), savings);
+    QVERIFY(!db.accountHasHash(m_account, hash));
+
+    // The next import suggests Savings.
+    SnapshotImportController controller;
+    parse(controller, marchStatement());
+    const QVariantList accounts = accountsForMatch();
+    QCOMPARE(controller.matchAccountIndex(accounts), indexOfAccount(accounts, savings));
+}
+
+void ImportSaveTest::failedSaveKeepsTheHashWhereItWas()
+{
+    // The move of the hash is in the SQL transaction of the save.
+    Database& db = Database::instance();
+    const int savings = db.addAccount(QStringLiteral("Savings"), QStringLiteral("CCP"), QStringLiteral(""),
+                                      QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(savings >= 0);
+    const QString hash = AccountHashing::compute(QString::fromLatin1(kIban), QString::fromLatin1(kBic));
+    QVERIFY2(db.linkAccountHash(m_account, hash, QStringLiteral("auto")), qPrintable(db.lastError()));
+
+    SnapshotImportController controller;
+    parse(controller, marchStatement());
+    // The last writes of the save (the balance checkpoints) fail.
+    QSqlQuery query(db.sqlDatabase());
+    QVERIFY2(query.exec(QStringLiteral("CREATE TRIGGER fd_test_fail_checkpoint BEFORE INSERT ON account_balance_checkpoints"
+                                       " BEGIN SELECT RAISE(ABORT, 'forced by the test'); END;")),
+             qPrintable(query.lastError().text()));
+    query.finish();
+    QVERIFY(!controller.save(savings, QStringLiteral("Savings")));
+    QCOMPARE(db.accountOfHash(hash), m_account);
+    QCOMPARE(db.transactionCountForAccount(savings), 0);
+    QCOMPARE(hashRowCount(), 1);
 }
 
 QTEST_GUILESS_MAIN(ImportSaveTest)
