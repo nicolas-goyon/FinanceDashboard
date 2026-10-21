@@ -36,9 +36,10 @@
 //     Savings, Investments, Urgent savings, …) are BOTH DB-managed lists now
 //     (account_types / account_categories) — `category` also carries a
 //     `color` (used for badges), `type` doesn't.
-//   - No iban/bic/account-number fields are stored on an account — removed
-//     for security reasons (product decision). Matching a statement import
-//     to an account is purely via the account_hashes table.
+//   - No iban/bic/account-number fields are stored on an account — the app
+//     does not keep them (product decision). Matching a statement import
+//     to an account is purely via the account_hashes table (a fingerprint,
+//     not a security feature: see utils/AccountHashing.h).
 //
 // Hashes: an account can carry multiple stored fingerprints (see
 // AccountHashesTable). Since accounts no longer store their own iban/bic,
@@ -83,7 +84,7 @@ public:
     // Account CRUD (index into the current accounts() list). Each writes
     // through Database::instance() first; the in-memory list (and
     // accountsChanged()) only updates if that write succeeded. No
-    // iban/bic/number params — deliberately not stored (security decision).
+    // iban/bic/number params — deliberately not stored (product decision).
     // NOLINTBEGIN(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
     // positionally from AccountsManagePage.qml in this exact order; wrapping
     // params in a struct would require rewriting the QML call sites too.
@@ -120,7 +121,9 @@ public:
     // nothing changed, and false with no status when the account already
     // has the hash (linkAccountHash()).
     Q_INVOKABLE bool addHash(int accountIndex, const QString& hash);
-    Q_INVOKABLE bool linkAccountHash(int accountIndex, const QString& hash);
+    // `legacyHash`: the fingerprint of the statement from before #50
+    // (statementInfo().legacyHashRaw of the import): replaced too.
+    Q_INVOKABLE bool linkAccountHash(int accountIndex, const QString& hash, const QString& legacyHash = QString());
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
     // positionally from AccountsManagePage.qml as (accountIndex, hashIndex).
     Q_INVOKABLE void removeHash(int accountIndex, int hashIndex);

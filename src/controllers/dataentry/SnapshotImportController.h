@@ -124,7 +124,7 @@ public:
     // hashes: [{hash, ...}], ...}, ...]), returns the index of the account
     // matching this statement, or -1 if none matched (caller should ask the
     // user). Doesn't compare IBAN/BIC fields directly — accounts don't even
-    // store those (removed for security, see § Account Management): the
+    // store those (the app keeps the fingerprint only, see AccountHashing.h): the
     // statement's IBAN/BIC is folded into a fingerprint (AccountHashing::
     // compute(), § Statement Import in ARCHITECTURE.MD) and compared against
     // each candidate account's *stored* hashes list (account_hashes table,
@@ -133,6 +133,11 @@ public:
     // unmatched until linked (see the "not linked" badge / "Link this
     // account" action on ImportSnapshotPage.qml).
     Q_INVOKABLE [[nodiscard]] int matchAccountIndex(const QVariantList& accounts) const;
+    // The index of the account that has the fingerprint of this statement
+    // from before #50 (an 8-character BIC, AccountHashing::legacyCompute()),
+    // or -1. save() replaces it: the review screen tells it when another
+    // account has it.
+    Q_INVOKABLE [[nodiscard]] int legacyHashAccountIndex(const QVariantList& accounts) const;
 
     // ── Category prediction (see docs/category-prediction.md) ────────────────
 

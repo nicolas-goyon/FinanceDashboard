@@ -472,19 +472,26 @@ bool AccountController::addHash(int accountIndex, const QString& hash)
     return true;
 }
 
-bool AccountController::linkAccountHash(int accountIndex, const QString& hash)
+bool AccountController::linkAccountHash(int accountIndex, const QString& hash, const QString& legacyHash)
 {
     if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
         return false;
     }
     const int accountId = m_accounts.at(accountIndex).id;
     const int owner = Database::instance().accountOfHash(hash);
-    if (owner == accountId) {
+    const int legacyOwner = legacyHash.isEmpty() ? -1 : Database::instance().accountOfHash(legacyHash);
+    if (owner == accountId && legacyOwner < 0) {
         return false; // already linked
     }
-    const QString previous = owner >= 0 ? nameOfAccount(owner) : QString();
-    // The hash moves when another account has it (#47).
-    if (!Database::instance().linkAccountHash(accountId, hash, QStringLiteral("auto"))) {
+    QString previous;
+    if (owner >= 0 && owner != accountId) {
+        previous = nameOfAccount(owner);
+    } else if (legacyOwner >= 0 && legacyOwner != accountId) {
+        previous = nameOfAccount(legacyOwner);
+    }
+    // The hash moves when another account has it (#47); its form from before
+    // #50 goes (#50).
+    if (!Database::instance().linkAccountHash(accountId, hash, QStringLiteral("auto"), legacyHash)) {
         setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not link the account"));
         return false;
     }

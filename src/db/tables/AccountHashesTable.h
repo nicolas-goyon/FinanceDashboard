@@ -44,6 +44,8 @@ public:
     // account already has: the UNIQUE index on `hash`).
     int  insert(int accountId, const QString& hash, const QString& source);
     bool remove(int hashId);
+    // Removes `hash` from the account that has it (no row: nothing to do).
+    bool removeHash(const QString& hash);
     // Cascade helper for Database::removeAccount().
     bool removeForAccount(int accountId);
 

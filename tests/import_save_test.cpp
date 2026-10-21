@@ -41,6 +41,11 @@
 //        link; a save to another account moves the hash, and the next
 //        import suggests that account; a failed save leaves the hash where
 //        it was
+//   #50  an 8-character BIC and the same BIC on 11 characters give one hash;
+//        an account linked with the hash from before #50 is found, and
+//        the save replaces that hash; the new hash is tried first; the old
+//        hash of another account is shown, replaced by a save or by "Link
+//        this account", and kept when the save fails
 
 #include "SnapshotImportController.h"
 #include "db/Database.h"
@@ -54,7 +59,9 @@
 #include "utils/Formatter.h"
 #include "utils/StatusMessage.h"
 
+#include <QCryptographicHash>
 #include <QFile>
+#include <QMessageAuthenticationCode>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QTemporaryDir>
@@ -226,6 +233,8 @@ private slots:
     void startCheckUsesTheBookingOrder();
     void pickedAccountTakesTheHash();
     void failedSaveKeepsTheHashWhereItWas();
+    void bicOnEightOrElevenCharactersGivesOneHash();
+    void oldHashOnAnotherAccountIsReplaced();
 
 private:
     // Runs the template alone on `csv`: the statement as it reads it, and its log.
@@ -1206,6 +1215,100 @@ void ImportSaveTest::failedSaveKeepsTheHashWhereItWas()
     QVERIFY(!controller.save(savings, QStringLiteral("Savings")));
     QCOMPARE(db.accountOfHash(hash), m_account);
     QCOMPARE(db.transactionCountForAccount(savings), 0);
+    QCOMPARE(hashRowCount(), 1);
+}
+
+void ImportSaveTest::bicOnEightOrElevenCharactersGivesOneHash()
+{
+    const QString iban = QString::fromLatin1(kIban);
+    // The two forms of the BIC of a primary office give one hash.
+    const QString hash = AccountHashing::compute(iban, QStringLiteral("PSSTFRPP"));
+    QCOMPARE(AccountHashing::compute(iban, QStringLiteral("PSSTFRPPXXX")), hash);
+    QCOMPARE(AccountHashing::compute(iban, QStringLiteral(" psst frppxxx ")), hash);
+    // Another branch is another key, and has no form from before #50.
+    QVERIFY(AccountHashing::compute(iban, QStringLiteral("PSSTFRPPLIL")) != hash);
+    QVERIFY(AccountHashing::legacyCompute(iban, QStringLiteral("PSSTFRPPLIL")).isEmpty());
+    QVERIFY(AccountHashing::legacyCompute(QString(), QStringLiteral("PSSTFRPP")).isEmpty());
+    // Before #50, the key was the normalized BIC, without "XXX".
+    QMessageAuthenticationCode mac(QCryptographicHash::Sha256);
+    mac.setKey(QByteArrayLiteral("PSSTFRPP"));
+    mac.addData(QByteArray(kIban));
+    const QString legacy = QString::fromLatin1(mac.result().toHex());
+    QCOMPARE(AccountHashing::legacyCompute(iban, QStringLiteral("PSSTFRPP")), legacy);
+    QCOMPARE(AccountHashing::legacyCompute(iban, QStringLiteral("PSSTFRPPXXX")), legacy);
+    QVERIFY(legacy != hash);
+
+    // An account linked by v0.2.1 (the statement has the 8-character BIC) is
+    // found, and the save replaces its hash.
+    Database& db = Database::instance();
+    QVERIFY2(db.linkAccountHash(m_account, legacy, QStringLiteral("auto")), qPrintable(db.lastError()));
+    {
+        SnapshotImportController controller;
+        parse(controller, marchStatement());
+        const QVariantList accounts = accountsForMatch();
+        QCOMPARE(controller.matchAccountIndex(accounts), indexOfAccount(accounts, m_account));
+        controller.save(m_account, QStringLiteral("Checking"));
+        QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓")), qPrintable(controller.statusText()));
+    }
+    QCOMPARE(hashRowCount(), 1);
+    QVERIFY(db.accountHasHash(m_account, hash));
+    QVERIFY(!db.accountHasHash(m_account, legacy));
+
+    // A statement with the BIC on 11 characters finds the same account.
+    QByteArray csv = marchStatement();
+    QVERIFY(csv.contains("BIC,PSSTFRPP\n"));
+    csv.replace("BIC,PSSTFRPP\n", "BIC,PSSTFRPPXXX\n");
+    SnapshotImportController controller;
+    parse(controller, csv);
+    const QVariantList accounts = accountsForMatch();
+    QCOMPARE(controller.matchAccountIndex(accounts), indexOfAccount(accounts, m_account));
+    QCOMPARE(controller.statementInfo().value(QStringLiteral("accountHashRaw")).toString(), hash);
+}
+
+void ImportSaveTest::oldHashOnAnotherAccountIsReplaced()
+{
+    Database& db = Database::instance();
+    const int savings = db.addAccount(QStringLiteral("Savings"), QStringLiteral("CCP"), QStringLiteral(""),
+                                      QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(savings >= 0);
+    const QString iban = QString::fromLatin1(kIban);
+    const QString hash = AccountHashing::compute(iban, QString::fromLatin1(kBic));
+    const QString legacy = AccountHashing::legacyCompute(iban, QString::fromLatin1(kBic));
+    QVERIFY(!legacy.isEmpty());
+
+    // The old hash on Checking, the new one on Savings: the new one wins.
+    QVERIFY2(db.linkAccountHash(m_account, legacy, QStringLiteral("auto")), qPrintable(db.lastError()));
+    QVERIFY2(db.linkAccountHash(savings, hash, QStringLiteral("auto")), qPrintable(db.lastError()));
+    {
+        SnapshotImportController controller;
+        parse(controller, marchStatement());
+        const QVariantList accounts = accountsForMatch();
+        QCOMPARE(controller.matchAccountIndex(accounts), indexOfAccount(accounts, savings));
+        // The review screen tells that Checking has the old hash.
+        QCOMPARE(controller.legacyHashAccountIndex(accounts), indexOfAccount(accounts, m_account));
+        QCOMPARE(controller.statementInfo().value(QStringLiteral("legacyHashRaw")).toString(), legacy);
+
+        // A failed save keeps the old hash on Checking.
+        QSqlQuery query(db.sqlDatabase());
+        QVERIFY(query.exec(QStringLiteral("CREATE TRIGGER fd_test_fail_checkpoint BEFORE INSERT ON"
+                                          " account_balance_checkpoints BEGIN SELECT RAISE(ABORT, 'forced'); END;")));
+        QVERIFY(!controller.save(savings, QStringLiteral("Savings")));
+        QCOMPARE(db.accountOfHash(legacy), m_account);
+        QVERIFY(query.exec(QStringLiteral("DROP TRIGGER fd_test_fail_checkpoint;")));
+        query.finish();
+
+        // The save to Savings removes it: one hash, the new one, on Savings.
+        QVERIFY(controller.save(savings, QStringLiteral("Savings")));
+    }
+    QCOMPARE(db.accountOfHash(legacy), -1);
+    QCOMPARE(db.accountOfHash(hash), savings);
+    QCOMPARE(hashRowCount(), 1);
+
+    // "Link this account" replaces the old hash too.
+    QVERIFY(db.linkAccountHash(m_account, legacy, QStringLiteral("auto")));
+    QVERIFY2(db.linkAccountHash(m_account, hash, QStringLiteral("auto"), legacy), qPrintable(db.lastError()));
+    QCOMPARE(db.accountOfHash(legacy), -1);
+    QCOMPARE(db.accountOfHash(hash), m_account);
     QCOMPARE(hashRowCount(), 1);
 }
 

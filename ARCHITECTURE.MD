@@ -82,9 +82,14 @@ balance, a total) adds whole cents (`Money::toCents()`, a `qint64`), not doubles
 
 An account hash (`account_hashes`, `AccountHashing::compute()`: an HMAC-SHA256 of the IBAN of a
 statement, keyed by its BIC) links the statements of a bank account to an account of the app,
-and the import suggests that account. A hash belongs to one account, in lower case (#47): a save
-to another account moves it there (`Database::linkAccountHash()`), and a typed hash must be 64
-hexadecimal characters that no other account has.
+and the import suggests that account. The app does not keep the IBAN or the BIC. The hash is not
+a security feature: the BIC is public, and a person who has the database can find an IBAN by
+brute force (`src/utils/AccountHashing.h` gives the limit). The BIC is used on 11 characters
+(`PSSTFRPP` is `PSSTFRPPXXX`, #50); the import also tries the hash of an 8-character BIC from
+before #50, and the save (or "Link this account") replaces it, also on another account (the
+review screen tells it). A hash belongs to one account, in lower case (#47): a
+save to another account moves it there (`Database::linkAccountHash()`), and a typed hash must be
+64 hexadecimal characters that no other account has.
 
 A transaction's `fingerprint` is its identity in the bank's statement
 (`TransactionsTable::fingerprints()`): the bank's reference and the amount when the row has a

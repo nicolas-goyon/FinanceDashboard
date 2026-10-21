@@ -136,7 +136,7 @@ public:
 
     // Returns the new account's row id, or -1 on failure (DB not open, or a
     // UNIQUE(name) violation — callers check for duplicate names first). No
-    // iban/bic/number params — deliberately not stored (security decision,
+    // iban/bic/number params — deliberately not stored (product decision,
     // see § Account Management).
     int  addAccount(const QString& name, const QString& type, const QString& category,
                      const QString& currency, const QString& notes);
@@ -154,8 +154,12 @@ public:
     int  addAccountHash(int accountId, const QString& hash, const QString& source);
     // Links a fingerprint of a statement to `accountId`: added, or moved from
     // the account that had it (the user picked another account at import).
-    // False with a message in lastError() on failure.
-    bool linkAccountHash(int accountId, const QString& hash, const QString& source);
+    // `legacyHash`: the fingerprint of the same statement from before #50
+    // (AccountHashing::legacyCompute()), removed from the account that has it
+    // (#50). One SQL transaction. False with a message in lastError() on
+    // failure.
+    bool linkAccountHash(int accountId, const QString& hash, const QString& source,
+                         const QString& legacyHash = QString());
     bool removeAccountHash(int hashId);
     [[nodiscard]] bool accountHasHash(int accountId, const QString& hash) const;
     // The id of the account that has `hash`, or -1.
@@ -191,8 +195,11 @@ public:
     // A row that the account already has (same fingerprint, see
     // TransactionsTable) is skipped; `inserted`, when not null, receives the
     // number of rows written.
+    // `legacyHash`: the fingerprint of the same statement from before #50
+    // (AccountHashing::legacyCompute()); `accountHash` replaces it (#50).
     bool saveImport(int accountId, const QVector<Data::Transaction>& txs, const QString& accountHash,
-                    const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted = nullptr);
+                    const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted = nullptr,
+                    const QString& legacyHash = QString());
     // The fingerprints of the rows that `accountId` already has, each with
     // the operation date of its row (see TransactionsTable).
     [[nodiscard]] QHash<QString, QDate> transactionFingerprints(int accountId) const;
@@ -331,6 +338,9 @@ private:
     // cent, and counts the rows that changed.
     bool roundAmountsToCents(const QString& table, const QStringList& columns, int& changedRows);
     bool migrateTo5(UpgradeStats& stats); // account hashes: lower case, one account each (#47)
+    // Removes the fingerprint from before #50 (logged when it was on
+    // another account than `accountId`). Inside the caller's transaction.
+    bool removeLegacyHash(int accountId, const QString& legacyHash);
     // linkAccountHash() without its checks of the connection: also used by
     // saveImport(), inside its SQL transaction.
     // The two strings are a hash and a literal source, as in

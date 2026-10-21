@@ -17,9 +17,9 @@ import FinanceDashboard
 // read by ImportSnapshotPage.qml (target-account picker), so edits made
 // here show up immediately there too.
 //
-// No iban/bic/account-number fields anywhere on this page — deliberately
-// not stored on accounts for security reasons (see ARCHITECTURE.MD §
-// Account Management).
+// No iban/bic/account-number fields anywhere on this page — the app does
+// not keep them (product decision, see ARCHITECTURE.MD § Account
+// Management).
 //
 // "Transactions" opens a full routed page (AccountTransactionsPage.qml), not
 // a modal — see viewTransactionsRequested() below and Main.qml's overlay

@@ -26,6 +26,7 @@
 #include <QObject>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
@@ -98,6 +99,9 @@ QVariantMap SnapshotImportController::statementInfo() const
         // ImportSnapshotPage.qml's "Link this account" button actually
         // passes to AccountController.linkAccountHash().
         { "accountHashRaw",     hash },
+        // The fingerprint from before #50 (an 8-character BIC), or empty:
+        // "Link this account" replaces it too.
+        { "legacyHashRaw",      AccountHashing::legacyCompute(m_statement.iban, m_statement.bic) },
         { "periodFromText",     Fmt::dateOrDash(m_statement.periodFrom) },
         { "periodToText",       Fmt::dateOrDash(m_statement.periodTo) },
         // A balance line that could not be read has no date (#44): "—", not 0.
@@ -370,27 +374,52 @@ int SnapshotImportController::matchAccountIndex(const QVariantList& accounts) co
     // Sole match path: compare the statement's fingerprint against each
     // candidate account's *stored* hashes list (account_hashes table, via
     // AccountController — see § Account Management). Never raw IBAN/BIC/
-    // account-number comparisons — accounts don't even store those anymore
-    // (removed for security, see § Account Management), so an account only
+    // account-number comparisons — accounts don't store those (the app
+    // keeps the fingerprint only, see AccountHashing.h), so an account only
     // ever matches if it has actually been linked (see
     // AccountController::linkAccountHash()/addHash()). No hash on the
     // statement, or no account with a matching stored hash → -1, caller
     // shows the manual picker.
-    const QString targetHash = AccountHashing::compute(m_statement.iban, m_statement.bic);
-    if (targetHash.isEmpty()) {
+    // The fingerprint first, then its form from before #50 (an
+    // 8-character BIC, #50): save() replaces that one.
+    QStringList candidates = {AccountHashing::compute(m_statement.iban, m_statement.bic)};
+    const QString legacy = AccountHashing::legacyCompute(m_statement.iban, m_statement.bic);
+    if (!legacy.isEmpty()) {
+        candidates.append(legacy);
+    }
+    if (candidates.first().isEmpty()) {
         return -1;
     }
 
-    for (int i = 0; i < accounts.size(); ++i) {
-        const QVariantMap acc = accounts.at(i).toMap();
-        const QVariantList hashes = acc.value("hashes").toList();
-        for (const QVariant& hashEntry : hashes) {
-            if (hashEntry.toMap().value("hash").toString().compare(targetHash, Qt::CaseInsensitive) == 0) {
-                return i;
+    for (const QString& targetHash : candidates) {
+        for (int i = 0; i < accounts.size(); ++i) {
+            const QVariantMap acc = accounts.at(i).toMap();
+            const QVariantList hashes = acc.value("hashes").toList();
+            for (const QVariant& hashEntry : hashes) {
+                if (hashEntry.toMap().value("hash").toString().compare(targetHash, Qt::CaseInsensitive) == 0) {
+                    return i;
+                }
             }
         }
     }
 
+    return -1;
+}
+
+int SnapshotImportController::legacyHashAccountIndex(const QVariantList& accounts) const
+{
+    const QString legacy = AccountHashing::legacyCompute(m_statement.iban, m_statement.bic);
+    if (legacy.isEmpty()) {
+        return -1;
+    }
+    for (int i = 0; i < accounts.size(); ++i) {
+        const QVariantList hashes = accounts.at(i).toMap().value(QStringLiteral("hashes")).toList();
+        for (const QVariant& hashEntry : hashes) {
+            if (hashEntry.toMap().value(QStringLiteral("hash")).toString().compare(legacy, Qt::CaseInsensitive) == 0) {
+                return i;
+            }
+        }
+    }
     return -1;
 }
 
@@ -628,9 +657,12 @@ bool SnapshotImportController::save(int accountId, const QString& accountLabel)
     }
 
     const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
+    // The fingerprint from before #50 (an 8-character BIC): replaced by
+    // `hash` (#50).
+    const QString legacyHash = AccountHashing::legacyCompute(m_statement.iban, m_statement.bic);
     int inserted = 0;
     if (!Database::instance().saveImport(accountId, newRows, hash, statementCheckpointsToAdd(accountId),
-                                         &inserted)) {
+                                         &inserted, legacyHash)) {
         setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the import. Nothing was saved — see application log"));
         return false;
     }

@@ -198,6 +198,16 @@ builds, source archives). Then CI opens a pull request that merges the release b
   suggesting the first account. A typed hash must be 64 hexadecimal characters that no other
   account has: the message names that account. The upgrade to schema version 5 keeps the most
   recent link of each hash and tells how many links it removed (#47).
+- Account hashes: the BIC is used on 11 characters, so an 8-character BIC (`PSSTFRPP`) and the
+  same BIC on 11 characters (`PSSTFRPPXXX`) give one hash. Before, a change of the export
+  format unlinked the account, and the import no longer suggested it. The app keeps no IBAN or
+  BIC, so it cannot compute the stored hashes again: the import also tries the hash of an
+  8-character BIC from before this change, and the save (or "Link this account") replaces it
+  with the new one. When another account has that old hash, the review screen tells it before
+  the save. The header of `AccountHashing.h` tells what the hash is for (the grouping of the
+  statements of one account, and the suggestion) and its limit: it is not a security feature.
+  The comments and the Accounts page no longer call the decision not to keep account numbers a
+  "security decision" (#50).
 
 ---
 

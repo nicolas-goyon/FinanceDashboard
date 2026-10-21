@@ -1071,11 +1071,33 @@ int Database::addAccountHash(int accountId, const QString& hash, const QString& 
     return hashId;
 }
 
-bool Database::linkAccountHash(int accountId, const QString& hash, const QString& source)
+bool Database::linkAccountHash(int accountId, const QString& hash, const QString& source, const QString& legacyHash)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
     if (!hasText(source)) { m_lastError = QStringLiteral("The source of the account hash is empty."); return false; }
-    return linkHashTo(accountId, hash, source);
+    if (legacyHash.isEmpty()) {
+        return linkHashTo(accountId, hash, source);
+    }
+    return inTransaction(QStringLiteral("linkAccountHash"), [&]() {
+        return removeLegacyHash(accountId, legacyHash) && linkHashTo(accountId, hash, source);
+    });
+}
+
+bool Database::removeLegacyHash(int accountId, const QString& legacyHash)
+{
+    const int owner = m_accountHashesTable.accountOf(legacyHash);
+    if (owner < 0) {
+        return true; // no account has it
+    }
+    if (!m_accountHashesTable.removeHash(legacyHash)) {
+        m_lastError = QStringLiteral("Could not replace the old account fingerprint.");
+        return false;
+    }
+    if (owner != accountId) {
+        qInfo().noquote() << "[Database] the old account fingerprint (from before #50) moves from the account"
+                          << accountName(owner) << "to the account" << accountName(accountId);
+    }
+    return true;
 }
 
 // The two strings are a hash and a literal source ("auto"/"manual"), as in
@@ -1256,7 +1278,8 @@ bool Database::insertTransactions(int accountId, const QVector<Data::Transaction
 }
 
 bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, const QString& accountHash,
-                          const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted)
+                          const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted,
+                          const QString& legacyHash)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
     const bool validCheckpoints =
@@ -1283,7 +1306,12 @@ bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, 
     if (!m_transactionsTable.insertBatch(accountId, txs, inserted)) {
         return fail(QStringLiteral("Could not save the transactions."));
     }
-    // Added, or moved from another account (#47).
+    // The fingerprint from before #50 goes, whichever account had it
+    // (#50); the fingerprint is added, or moved from another account (#47).
+    if (!accountHash.isEmpty() && !legacyHash.isEmpty() && !removeLegacyHash(accountId, legacyHash)) {
+        const QString detail = m_lastError;
+        return fail(detail);
+    }
     if (!accountHash.isEmpty() && !linkHashTo(accountId, accountHash, QStringLiteral("auto"))) {
         const QString detail = m_lastError;
         return fail(detail);

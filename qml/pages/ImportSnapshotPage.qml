@@ -46,6 +46,9 @@ Item {
 
     property int matchedAccountIndex: -1
     property int selectedAccountIndex: -1
+    // The account that has the hash of this statement from before #50 (an
+    // 8-character BIC): Save replaces it.
+    property int legacyAccountIndex: -1
 
     readonly property var selectedAccount:
         page.selectedAccountIndex >= 0 && page.selectedAccountIndex < AccountController.accounts.length
@@ -54,9 +57,17 @@ Item {
     readonly property string matchedAccountName:
         page.matchedAccountIndex >= 0 && page.matchedAccountIndex < AccountController.accounts.length
             ? AccountController.accounts[page.matchedAccountIndex].name : ""
+    readonly property string legacyAccountName:
+        page.legacyAccountIndex >= 0 && page.legacyAccountIndex < AccountController.accounts.length
+            ? AccountController.accounts[page.legacyAccountIndex].name : ""
+
+    function readMatches() {
+        matchedAccountIndex = controller.matchAccountIndex(AccountController.accounts)
+        legacyAccountIndex = controller.legacyHashAccountIndex(AccountController.accounts)
+    }
 
     function goToReview() {
-        matchedAccountIndex = controller.matchAccountIndex(AccountController.accounts)
+        readMatches()
         selectedAccountIndex = matchedAccountIndex
         page.step = 1
     }
@@ -370,6 +381,15 @@ Item {
                                 font.pixelSize: 13
                                 color: "#f9e2af"
                             }
+                            // The old form of the hash (#50) on a third account.
+                            Text {
+                                visible: page.legacyAccountIndex >= 0 && page.legacyAccountIndex !== page.selectedAccountIndex
+                                         && page.legacyAccountIndex !== page.matchedAccountIndex
+                                text: "⚠ the old account hash (8-character BIC) is on \"" + page.legacyAccountName
+                                      + "\": Save moves it to this account"
+                                font.pixelSize: 13
+                                color: "#f9e2af"
+                            }
                             Text {
                                 visible: page.matchedAccountIndex < 0
                                 text: "⚠ no automatic match — please pick the account"
@@ -429,9 +449,11 @@ Item {
                                 fontSize: 13
                                 onClicked: {
                                     if (AccountController.linkAccountHash(page.selectedAccountIndex,
-                                                                          controller.statementInfo.accountHashRaw)) {
-                                        // The hash can move from another account (#47).
-                                        page.matchedAccountIndex = controller.matchAccountIndex(AccountController.accounts)
+                                                                          controller.statementInfo.accountHashRaw,
+                                                                          controller.statementInfo.legacyHashRaw)) {
+                                        // The hash can move from another account (#47), and
+                                        // its old form goes (#50).
+                                        page.readMatches()
                                     }
                                 }
                             }

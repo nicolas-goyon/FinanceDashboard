@@ -89,6 +89,21 @@ bool AccountHashesTable::remove(int hashId)
     return success;
 }
 
+bool AccountHashesTable::removeHash(const QString& hash)
+{
+    QSqlQuery query(db());
+    if (!query.prepare(QStringLiteral("DELETE FROM account_hashes WHERE hash = ?;"))) {
+        Sql::logPrepareError(query, "[AccountHashesTable] removeHash");
+        return false;
+    }
+    query.addBindValue(AccountHashing::storedForm(hash));
+    const bool success = query.exec();
+    if (!success) {
+        qWarning() << "[AccountHashesTable] removeHash error:" << query.lastError().text();
+    }
+    return success;
+}
+
 bool AccountHashesTable::removeForAccount(int accountId)
 {
     QSqlQuery query(db());
