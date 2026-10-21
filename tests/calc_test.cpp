@@ -9,11 +9,14 @@
 //         Investments: the deposit of the month is not performance
 //   #48   Fmt::money(): rounded to cents before the sign, "—" for NaN and
 //         infinity, and the currency of the amount
+//   #33   Money: whole cents (half away from zero), the amounts that the app
+//         can store, and cents that survive a round trip through a double
 
 #include "CashFlowController.h"
 #include "InvestmentsController.h"
 #include "ProjectsController.h"
 #include "utils/Formatter.h"
+#include "utils/Money.h"
 
 #include <QDate>
 #include <QDateTime>
@@ -22,6 +25,7 @@
 #include <QVariantMap>
 
 #include <array>
+#include <cmath>
 #include <limits>
 
 namespace {
@@ -91,6 +95,10 @@ private slots:
     void moneyIsRoundedBeforeItsSign();
     void moneyOfNotANumberIsADash();
     void moneyUsesTheGivenCurrency();
+    void centsAreRoundedHalfAwayFromZero();
+    void sumOfCentsIsExact();
+    void onlyValidAmountsAreRounded();
+    void centsSurviveARoundTrip();
 };
 
 void CalcTest::projectWithNoMonthlyContributionIsNeverDone()
@@ -255,6 +263,71 @@ void CalcTest::moneyUsesTheGivenCurrency()
     QCOMPARE(Fmt::currencyFromCode(QStringLiteral("EUR")), Fmt::Currency::EUR);
     QCOMPARE(Fmt::currencyFromCode(QString()), Fmt::Currency::EUR);
     QCOMPARE(Fmt::currencySymbol(Fmt::Currency::USD), QStringLiteral("$"));
+}
+
+void CalcTest::centsAreRoundedHalfAwayFromZero()
+{
+    QCOMPARE(Money::toCents(19.99), qint64(1999));
+    QCOMPARE(Money::toCents(-86.4), qint64(-8640));
+    QCOMPARE(Money::toCents(1.006), qint64(101));
+    QCOMPARE(Money::toCents(-2.004), qint64(-200));
+    QCOMPARE(Money::toCents(0.125), qint64(13));   // 0.125 is exact in a double
+    QCOMPARE(Money::toCents(-0.125), qint64(-13));
+    QCOMPARE(Money::toCents(0.00999999999999995), qint64(1));
+    QVERIFY(Money::fromCents(-8640) == -86.4);
+    // The same cents as Fmt::money().
+    QCOMPARE(Fmt::money(Money::roundToCents(0.125)), nb("0,13_€"));
+}
+
+void CalcTest::sumOfCentsIsExact()
+{
+    // The example of #33: 0.10 + 0.20 is not 0.30 in a double, so a check
+    // with a tolerance of 0.01 took a gap of one cent for no gap.
+    const double sum = 0.10 + 0.20;
+    QVERIFY(sum != 0.30);
+    QVERIFY(std::abs(0.31 - sum) < 0.01);
+    const qint64 gap = Money::toCents(0.31) - (Money::toCents(0.10) + Money::toCents(0.20));
+    QCOMPARE(gap, qint64(1));
+    QCOMPARE(Money::toCents(0.30) - (Money::toCents(0.10) + Money::toCents(0.20)), qint64(0));
+    QVERIFY(Money::roundToCents(sum) == 0.30); // exact, not a fuzzy QCOMPARE
+}
+
+void CalcTest::onlyValidAmountsAreRounded()
+{
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double infinity = std::numeric_limits<double>::infinity();
+    QVERIFY(Money::isValid(0.0));
+    QVERIFY(Money::isValid(Money::kMaxAmount));
+    QVERIFY(Money::isValid(-Money::kMaxAmount));
+    QVERIFY(!Money::isValid(nan));
+    QVERIFY(!Money::isValid(infinity));
+    QVERIFY(!Money::isValid(2e13));
+    // An amount that is not valid stays as it is, so that Database refuses it.
+    QVERIFY(std::isnan(Money::roundToCents(nan)));
+    QVERIFY(Money::roundToCents(2e13 + 0.004) == 2e13 + 0.004);
+    QVERIFY(Money::roundToCents(-infinity) == -infinity);
+    // toCents() has a result for every value: 0 for NaN, the limit for larger.
+    QCOMPARE(Money::toCents(nan), qint64(0));
+    QCOMPARE(Money::toCents(infinity), qint64(1'000'000'000'000'000));
+    QCOMPARE(Money::toCents(-1e300), qint64(-1'000'000'000'000'000));
+}
+
+void CalcTest::centsSurviveARoundTrip()
+{
+    // Up to kMaxAmount, an amount rounded to the cent gives back its cents:
+    // the migration keeps the fingerprints (TransactionsTable::fingerprint()).
+    const std::array<qint64, 8> cents = {
+        1, -1, 30, 1999, 123'456'789, -987'654'321'012, 999'999'999'999'999, -1'000'000'000'000'000,
+    };
+    for (const qint64 value : cents) {
+        const double amount = Money::fromCents(value);
+        QCOMPARE(Money::toCents(amount), value);
+        QCOMPARE(Money::toCents(Money::roundToCents(amount)), value);
+        QVERIFY(Money::roundToCents(amount) == amount);
+    }
+    for (qint64 value = -100'000; value <= 100'000; value += 7) {
+        QCOMPARE(Money::toCents(Money::fromCents(value)), value);
+    }
 }
 
 QTEST_GUILESS_MAIN(CalcTest)

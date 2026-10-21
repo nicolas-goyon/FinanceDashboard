@@ -22,9 +22,13 @@
 //     the account defaults were written, a new file records nothing, and
 //     resetAll() records both (#37);
 //   - a file from v0.2.1 (schema version 2) gets only step 3: with data, its
-//     defaults count as written; emptied by a reset, it records nothing (#37).
+//     defaults count as written; emptied by a reset, it records nothing (#37);
+//   - step 4 rounds the stored amounts to the cent, keeps the fingerprints
+//     and says how many rows changed; the backup copy keeps the old values
+//     (#33).
 
 #include "db/Database.h"
+#include "db/tables/TransactionsTable.h"
 
 #include <QDir>
 #include <QFile>
@@ -35,6 +39,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <array>
 #include <memory>
 
 namespace {
@@ -121,6 +126,7 @@ private slots:
     void accountCounterIsKept();
     void resetKeepsTheLatestSchema();
     void version2DatabaseIsUpgraded();
+    void version3AmountsAreRoundedToTheCent();
 
 private:
     // Runs SQL on `path` through its own connection, then closes it.
@@ -520,6 +526,77 @@ void DbMigrationTest::version2DatabaseIsUpgraded()
     QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
     QVERIFY(!db.defaultsWritten(Database::Defaults::Categories));
     QVERIFY(!db.defaultsWritten(Database::Defaults::Accounts));
+}
+
+void DbMigrationTest::version3AmountsAreRoundedToTheCent()
+{
+    // A file as the builds of v0.2.2 before #33 left it: schema version 3,
+    // amounts with more than two decimals (a typed amount, a reconciliation
+    // adjustment, a sum), and the fingerprints of the unrounded amounts.
+    Database& db = Database::instance();
+    const QString path = m_dir->filePath(QStringLiteral("v3.db"));
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    db.close();
+    const QString typed = TransactionsTable::fingerprint(QStringLiteral("2026-03-02"), QStringLiteral("2026-03-02"),
+                                                         12.344, 0.0, 487.656, QStringLiteral("Typed amount"));
+    const QString adjustment = TransactionsTable::fingerprint(QStringLiteral("2026-03-31"), QStringLiteral("2026-03-31"),
+                                                              0.0, 0.00999999999999995, 0.31,
+                                                              QStringLiteral("Auto-added"));
+    const QString exact = TransactionsTable::fingerprint(QStringLiteral("2026-03-05"), QStringLiteral("2026-03-05"),
+                                                         5.0, 0.0, 482.66, QStringLiteral("Exact amount"));
+    execOn(path, {
+        QStringLiteral("INSERT INTO accounts (name, type, category, currency, notes)"
+                       " VALUES ('Checking', 'CCP', '', 'EUR', '');"),
+        QStringLiteral("INSERT INTO transactions (account_id, confirmation_date, operation_date, name, description,"
+                       " debit, credit, balance_after, fingerprint) VALUES"
+                       " (1, '2026-03-02', '2026-03-02', 'SHOP', 'Typed amount', 12.344, 0, 487.656, '%1'),"
+                       " (1, '2026-03-31', '2026-03-31', 'ADJUSTMENT', 'Auto-added', 0, 0.00999999999999995, 0.31, '%2'),"
+                       " (1, '2026-03-05', '2026-03-05', 'BAKERY', 'Exact amount', 5, 0, 482.66, '%3');")
+            .arg(typed, adjustment, exact),
+        QStringLiteral("INSERT INTO account_balance_checkpoints (account_id, date, balance, note) VALUES"
+                       " (1, '2026-03-01', 500.0000001, ''), (1, '2026-03-31', 0.31, '');"),
+        QStringLiteral("PRAGMA user_version = 3;"),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
+    // Two transactions and one checkpoint changed.
+    QVERIFY2(db.upgradeReport().contains(QStringLiteral("3 row(s) had an amount with more than two decimals")),
+             qPrintable(db.upgradeReport()));
+
+    // Exact comparisons: the stored doubles are the ones of whole cents.
+    QSqlQuery query(db.sqlDatabase());
+    QVERIFY(query.exec(QStringLiteral("SELECT debit, credit, balance_after, fingerprint FROM transactions ORDER BY id;")));
+    const std::array<std::array<double, 3>, 3> expected = {{{12.34, 0.0, 487.66}, {0.0, 0.01, 0.31}, {5.0, 0.0, 482.66}}};
+    const QStringList fingerprints = {typed, adjustment, exact};
+    for (qsizetype row = 0; row < 3; ++row) {
+        QVERIFY(query.next());
+        const auto& amounts = expected.at(static_cast<size_t>(row));
+        for (int column = 0; column < 3; ++column) {
+            QVERIFY2(query.value(column).toDouble() == amounts.at(static_cast<size_t>(column)),
+                     qPrintable(QStringLiteral("row %1, column %2: %3").arg(row).arg(column)
+                                    .arg(query.value(column).toDouble(), 0, 'g', 17)));
+        }
+        // The fingerprint stays, and it is also the one of the rounded amounts.
+        QCOMPARE(query.value(3).toString(), fingerprints.at(row));
+    }
+    QCOMPARE(TransactionsTable::fingerprint(QStringLiteral("2026-03-02"), QStringLiteral("2026-03-02"), 12.34, 0.0,
+                                            487.66, QStringLiteral("Typed amount")),
+             typed);
+    QVERIFY(query.exec(QStringLiteral("SELECT balance FROM account_balance_checkpoints ORDER BY id;")));
+    QVERIFY(query.next());
+    QVERIFY(query.value(0).toDouble() == 500.0);
+    QVERIFY(query.next());
+    QVERIFY(query.value(0).toDouble() == 0.31);
+    query.finish();
+    db.close();
+
+    // The copy from before the upgrade keeps the old values.
+    QCOMPARE(backups().size(), qsizetype(1));
+    const QString backup = m_dir->filePath(backups().first());
+    QCOMPARE(countOn(backup, QStringLiteral("SELECT ROUND(debit * 1000) FROM transactions WHERE id = 1;")), 12344);
+    QCOMPARE(countOn(backup, QStringLiteral("PRAGMA user_version;")), 3);
 }
 
 QTEST_GUILESS_MAIN(DbMigrationTest)

@@ -181,6 +181,15 @@ builds, source archives). Then CI opens a pull request that merges the release b
   confirmation date, else the operation date), as the balance history does. Before, it took the
   row with the latest operation date: a card payment made before the start of a statement but
   booked after it gave a false gap (#133).
+- Amounts: the reconciliation of an import compares whole cents, so a gap of one cent is a gap.
+  Before, it compared doubles with a tolerance of 0.01: start 0.00, 0.10 and 0.20 in, 0.31
+  declared at the end gave "End balance OK". The adjustment row is the exact gap, and the
+  import report, the balance history and the category totals add whole cents too. The app
+  rounds each amount to the cent before it writes it, and the upgrade to schema version 4
+  rounds the stored amounts (the upgrade message tells how many rows changed; the copy from
+  before the upgrade keeps the old values). An amount that is not a number or is larger than
+  10^13 is refused: in a statement, in the transaction and checkpoint dialogs, and in the
+  database (#33).
 
 ---
 

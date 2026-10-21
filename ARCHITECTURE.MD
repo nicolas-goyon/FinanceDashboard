@@ -73,6 +73,13 @@ upgraded or unchanged. A database that does not open (it cannot be read, a newer
 it, or the upgrade failed) closes the connection and stops the app at start-up, with the cause
 (a fatal step in `StartupChecks`).
 
+An amount is a `double` in the models and a `REAL` in SQLite, in the unit of its account
+(`src/utils/Money.h`, #33). The table classes round each amount to the cent before they write it,
+and `Database` refuses an amount that is not a number or is larger than `Money::kMaxAmount`
+(10^13). A sum or a comparison that must be exact (the reconciliation of an import, a running
+balance, a total) adds whole cents (`Money::toCents()`, a `qint64`), not doubles: in a double,
+0.10 + 0.20 is not 0.30.
+
 A transaction's `fingerprint` is its identity in the bank's statement
 (`TransactionsTable::fingerprints()`): the bank's reference and the amount when the row has a
 reference (`bankReference()`), else every field. A row that the account already has is not saved

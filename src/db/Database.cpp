@@ -4,6 +4,7 @@
 #include "models/Category.h"
 #include "models/CategoryRule.h"
 #include "models/Transaction.h"
+#include "utils/Money.h"
 
 #include <QDate>
 #include <QDateTime>
@@ -17,6 +18,7 @@
 #include <QVector>
 #include <QDebug>
 #include <QtLogging>
+#include <QtTypes>
 #include <algorithm>
 #include <array>
 #include <functional>
@@ -275,6 +277,12 @@ bool Database::openFile(const QString& path)
                                    .arg(stats.reusedReferences)
                                    .arg(QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
         }
+        if (stats.roundedRows > 0) {
+            m_upgradeReport += QStringLiteral("\n\n%1 row(s) had an amount with more than two decimals. The "
+                                              "amounts are now rounded to the cent; the copy from before the "
+                                              "upgrade keeps the old values.")
+                                   .arg(stats.roundedRows);
+        }
         qInfo().noquote() << "[Database]" << m_upgradeReport;
     }
     return true;
@@ -438,6 +446,7 @@ bool Database::upgrade(int from, UpgradeStats& stats)
         case 1: ok = migrateTo1(stats); break;
         case 2: ok = migrateTo2(stats); break;
         case 3: ok = migrateTo3(); break;
+        case 4: ok = migrateTo4(stats); break;
         default: m_lastError = QStringLiteral("there is no migration step %1.").arg(step); break;
         }
         if (!ok) {
@@ -634,6 +643,82 @@ bool Database::migrateTo3()
     return true;
 }
 
+// Version 4 — every stored amount is rounded to the cent (#33). Since this
+// version, the app rounds each amount before it writes it (utils/Money.h).
+// Before, an amount typed in a dialog (12.344) or a reconciliation adjustment
+// (a difference of two doubles: 0.00999999999999995) could keep more
+// decimals. The rounding keeps the cents that the fingerprints use, so the
+// fingerprints and their UNIQUE index do not change. A new or reset database
+// has no rows: nothing changes. Not asset_entries: no part of the app writes
+// it.
+bool Database::migrateTo4(UpgradeStats& stats)
+{
+    return roundAmountsToCents(QStringLiteral("transactions"),
+                               {QStringLiteral("debit"), QStringLiteral("credit"), QStringLiteral("balance_after")},
+                               stats.roundedRows)
+           && roundAmountsToCents(QStringLiteral("account_balance_checkpoints"), {QStringLiteral("balance")},
+                                  stats.roundedRows);
+}
+
+bool Database::roundAmountsToCents(const QString& table, const QStringList& columns, int& changedRows)
+{
+    // Read every row first, then write the changed ones: no UPDATE while the
+    // SELECT is still open.
+    struct Change {
+        qint64 id = 0;
+        QVector<double> values;
+    };
+    QVector<Change> changes;
+    QSqlQuery select(m_db);
+    if (!select.exec(QStringLiteral("SELECT id, %1 FROM %2;").arg(columns.join(QStringLiteral(", ")), table))) {
+        m_lastError = sqlText(select.lastError());
+        return false;
+    }
+    while (select.next()) {
+        Change change;
+        change.id = select.value(0).toLongLong();
+        bool changed = false;
+        for (qsizetype column = 0; column < columns.size(); ++column) {
+            const double stored = select.value(static_cast<int>(column) + 1).toDouble();
+            const double rounded = Money::roundToCents(stored);
+            // An exact comparison on purpose: any other value is rewritten.
+            changed = changed || rounded != stored;
+            change.values.append(rounded);
+        }
+        if (changed) {
+            changes.append(change);
+        }
+    }
+    select.finish();
+    if (changes.isEmpty()) {
+        return true;
+    }
+
+    QStringList assignments;
+    for (const QString& column : columns) {
+        assignments.append(column + QStringLiteral(" = ?"));
+    }
+    QSqlQuery update(m_db);
+    if (!update.prepare(QStringLiteral("UPDATE %1 SET %2 WHERE id = ?;")
+                            .arg(table, assignments.join(QStringLiteral(", "))))) {
+        m_lastError = sqlText(update.lastError());
+        return false;
+    }
+    for (const Change& change : changes) {
+        for (const double value : change.values) {
+            update.addBindValue(value);
+        }
+        update.addBindValue(change.id);
+        if (!update.exec()) {
+            m_lastError = sqlText(update.lastError());
+            return false;
+        }
+    }
+    update.finish();
+    changedRows += static_cast<int>(changes.size());
+    return true;
+}
+
 bool    Database::isOpen()     const { return m_db.isOpen(); }
 QString Database::lastError()  const { return m_lastError; }
 
@@ -723,6 +808,19 @@ namespace {
 bool hasText(const QString& value)
 {
     return !value.trimmed().isEmpty();
+}
+
+// An amount must be a number, not larger than Money::kMaxAmount (#33): the
+// app rounds amounts to the cent before it writes them. Refused before any
+// write, as an empty name.
+constexpr const char* kInvalidAmount = "An amount is not a number, or it is too large.";
+
+bool hasValidAmounts(const QVector<Data::Transaction>& txs)
+{
+    return std::all_of(txs.cbegin(), txs.cend(), [](const Data::Transaction& transaction) {
+        return Money::isValid(transaction.debit) && Money::isValid(transaction.credit)
+               && Money::isValid(transaction.balanceAfter);
+    });
 }
 } // namespace
 
@@ -997,6 +1095,7 @@ bool Database::removeAccountType(int typeId)
 bool Database::insertTransactions(int accountId, const QVector<Data::Transaction>& txs)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    if (!hasValidAmounts(txs)) { m_lastError = QString::fromLatin1(kInvalidAmount); return false; }
     return m_transactionsTable.insertBatch(accountId, txs);
 }
 
@@ -1004,6 +1103,14 @@ bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, 
                           const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    const bool validCheckpoints =
+        std::all_of(checkpoints.cbegin(), checkpoints.cend(),
+                    [](const Data::AccountBalanceCheckpoint& checkpoint) { return Money::isValid(checkpoint.balance); });
+    if (!hasValidAmounts(txs) || !validCheckpoints) {
+        m_lastError = QString::fromLatin1(kInvalidAmount);
+        qWarning() << "[Database] saveImport:" << m_lastError << "— nothing saved";
+        return false;
+    }
 
     if (!m_db.transaction()) {
         m_lastError = QStringLiteral("Cannot start a transaction: %1").arg(m_db.lastError().text());
@@ -1056,6 +1163,10 @@ int Database::transactionCountForAccount(int accountId) const
 bool Database::updateTransaction(const Data::Transaction& tx)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    if (!Money::isValid(tx.debit) || !Money::isValid(tx.credit)) {
+        m_lastError = QString::fromLatin1(kInvalidAmount);
+        return false;
+    }
     return m_transactionsTable.updateById(tx);
 }
 
@@ -1135,6 +1246,7 @@ int Database::addBalanceCheckpoint(int accountId, const QDate& date, double bala
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
     if (!date.isValid()) { m_lastError = QStringLiteral("The date of the checkpoint is not valid."); return -1; }
+    if (!Money::isValid(balance)) { m_lastError = QString::fromLatin1(kInvalidAmount); return -1; }
     return m_balanceCheckpointsTable.insert(accountId, date, balance, note);
 }
 

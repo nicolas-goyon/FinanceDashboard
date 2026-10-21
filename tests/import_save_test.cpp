@@ -34,6 +34,9 @@
 //        delay
 //   #133 the start check takes the last saved row in booking order (the
 //        confirmation date), not in operation-date order
+//   #33  the reconciliation compares whole cents: a gap of one cent is a
+//        gap, and the adjustment row is that cent; an amount larger than
+//        Money::kMaxAmount is refused
 
 #include "SnapshotImportController.h"
 #include "db/Database.h"
@@ -179,6 +182,7 @@ private slots:
     void firstImportWithoutCategories();
     void categoryWithoutSubcategory();
     void reconciliationAdjustmentRow();
+    void oneCentGapIsAGap();
     void categoryOnlyRule();
     void clearedDateOnUpdate();
     void failedSaveWritesNothing();
@@ -198,6 +202,7 @@ private slots:
     void missingPeriodFailsTheParse();
     void groupedAndCommaAmountsAreRead();
     void nonFiniteAmountsAreRefused();
+    void tooLargeAmountIsRefused();
     void malformedAmountsAreRefused();
     void longPeriodGetsTheLaterYear();
     void dateOutsideThePeriodIsLogged();
@@ -358,6 +363,48 @@ void ImportSaveTest::reconciliationAdjustmentRow()
     controller.save(m_account, QStringLiteral("Checking"));
     QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓")), qPrintable(controller.statusText()));
     QCOMPARE(transactionCount(), 4);
+}
+
+void ImportSaveTest::oneCentGapIsAGap()
+{
+    // The example of #33: 0.00 at the start, 0.10 and 0.20 in, 0.31 declared
+    // at the end. In doubles, the gap is 0.00999999999999995, under the old
+    // tolerance of 0.01: "End balance OK".
+    const QByteArray rows =
+        "03/02,03/02,\"Transfer from: ALICE\nInternal ref.: C1\",,0.10,0.10\n"
+        "03/03,03/03,\"Transfer from: BOB\nInternal ref.: C2\",,0.20,0.30\n";
+    {
+        SnapshotImportController controller;
+        parse(controller, statement("From 03/01/2026 to 03/31/2026", "03/01/2026,0.00 \xE2\x82\xAC",
+                                    "03/31/2026,0.31 \xE2\x82\xAC", rows));
+        const QVariantMap check = controller.checkReconciliation(m_account);
+        QVERIFY(!check.value(QStringLiteral("endOk")).toBool());
+        QCOMPARE(check.value(QStringLiteral("endDiffCents")).toLongLong(), qint64(1));
+        QCOMPARE(check.value(QStringLiteral("endDiffText")).toString(), Fmt::money(0.01, true));
+        QCOMPARE(check.value(QStringLiteral("endComputedText")).toString(), Fmt::money(0.30));
+
+        // The adjustment row is that cent, and closes the gap.
+        controller.addReconciliationAdjustment(m_account);
+        QVERIFY(controller.checkReconciliation(m_account).value(QStringLiteral("endOk")).toBool());
+        controller.save(m_account, QStringLiteral("Checking"));
+        QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓")), qPrintable(controller.statusText()));
+        const QVector<Data::Transaction> saved = Database::instance().transactionsForAccount(m_account);
+        QCOMPARE(saved.size(), qsizetype(3));
+        const auto adjustment = std::find_if(saved.cbegin(), saved.cend(), [](const Data::Transaction& tx) {
+            return tx.category == QStringLiteral("Reconciliation Adjustment");
+        });
+        QVERIFY(adjustment != saved.cend());
+        QVERIFY(adjustment->credit == 0.01); // exact: the row is rounded to the cent
+        QVERIFY(adjustment->debit == 0.0);
+    }
+
+    // The same rows with 0.30 at the end: no gap.
+    SnapshotImportController controller;
+    parse(controller, statement("From 03/01/2026 to 03/31/2026", "03/01/2026,0.00 \xE2\x82\xAC",
+                                "03/31/2026,0.30 \xE2\x82\xAC", rows));
+    const QVariantMap check = controller.checkReconciliation(m_account);
+    QVERIFY(check.value(QStringLiteral("endOk")).toBool());
+    QCOMPARE(check.value(QStringLiteral("endDiffCents")).toLongLong(), qint64(0));
 }
 
 void ImportSaveTest::categoryOnlyRule()
@@ -570,8 +617,7 @@ void ImportSaveTest::oneMoreIdenticalRowIsAdded()
 
 void ImportSaveTest::nullAmountFailsTheSave()
 {
-    // A NaN amount binds as NULL. INSERT OR IGNORE skipped such a row without
-    // an error; only a fingerprint conflict may be skipped.
+    // Since #33, Database refuses a NaN amount before any write.
     Data::Transaction row;
     row.operationDate = QDate(2026, 3, 2);
     row.confirmationDate = row.operationDate;
@@ -579,6 +625,12 @@ void ImportSaveTest::nullAmountFailsTheSave()
     row.debit = std::numeric_limits<double>::quiet_NaN();
     int inserted = -1;
     QVERIFY(!Database::instance().saveImport(m_account, {row}, QString(), {}, &inserted));
+    QCOMPARE(transactionCount(), 0);
+    // The table refuses it too: a NaN amount binds as NULL, and INSERT OR
+    // IGNORE skipped such a row without an error; only a fingerprint
+    // conflict may be skipped (#18).
+    QVERIFY(!Database::instance().transactionsTable().insertBatch(m_account, {row}, &inserted));
+    QCOMPARE(inserted, 0);
     QCOMPARE(transactionCount(), 0);
 }
 
@@ -661,6 +713,30 @@ void ImportSaveTest::nonFiniteAmountsAreRefused()
         "03/04,03/04,\"Card payment 1234: ODDER\nInternal ref.: N2\",-inf,,480.00\n"));
     QCOMPARE(controller.transactionRows().size(), qsizetype(1)); // both rows skipped
     QVERIFY(controller.warningCount() >= 2);
+}
+
+void ImportSaveTest::tooLargeAmountIsRefused()
+{
+    // Larger than Money::kMaxAmount (10^13): the app cannot store its cents.
+    SnapshotImportController controller;
+    parse(controller, statement(
+        "From 03/01/2026 to 03/31/2026", "03/01/2026,500.00 \xE2\x82\xAC", "03/31/2026,480.00 \xE2\x82\xAC",
+        "03/02,03/02,\"Card payment 1234: CARREFOUR\nInternal ref.: A1\",-20.00,,480.00\n"
+        "03/03,03/03,\"Card payment 1234: HUGE\nInternal ref.: N1\",-20000000000000.00,,480.00\n"
+        "03/04,03/04,\"Card payment 1234: LIMIT\nInternal ref.: N2\",,10000000000000.00,480.00\n"));
+    // The row at the limit stays; the larger one is skipped, and the log
+    // tells why.
+    QCOMPARE(controller.transactionRows().size(), qsizetype(2));
+    Data::ImportedStatement statementRead;
+    QVector<Data::ImportLogEntry> log;
+    QVERIFY(readStatement(statement("From 03/01/2026 to 03/31/2026", "03/01/2026,500.00 \xE2\x82\xAC",
+                                    "03/31/2026,480.00 \xE2\x82\xAC",
+                                    "03/03,03/03,\"Card payment 1234: HUGE\nInternal ref.: N1\",-20000000000000.00,,480.00\n"),
+                          statementRead, log));
+    const bool told = std::any_of(log.cbegin(), log.cend(), [](const Data::ImportLogEntry& entry) {
+        return entry.message.contains(QStringLiteral("larger than 10^13"));
+    });
+    QVERIFY(told);
 }
 
 void ImportSaveTest::malformedAmountsAreRefused()

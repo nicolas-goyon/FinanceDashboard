@@ -194,12 +194,14 @@ set_tests_properties(update_test PROPERTIES
 # calc_test
 #   The calculations behind the texts and charts of the pages: the Projects page
 #   (#41), the money flow and the rolling average of the Cash Flow page (#42,
-#   #56), the performance of the Investments page (#56) and the money format
-#   (#48). No database. It compiles the page controllers that it tests.
+#   #56), the performance of the Investments page (#56), the money format
+#   (#48) and the whole cents of Money (#33). No database. It compiles the page
+#   controllers that it tests.
 
 qt_add_executable(calc_test
     calc_test.cpp
     ${CMAKE_SOURCE_DIR}/src/utils/Formatter.h
+    ${CMAKE_SOURCE_DIR}/src/utils/Money.h
     ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.h
     ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.cpp
     ${CMAKE_SOURCE_DIR}/src/controllers/cashflow/CashFlowController.h

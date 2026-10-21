@@ -150,6 +150,7 @@ set(FD_CORE_SOURCES
     src/db/Database.h
     src/db/Database.cpp
     src/utils/Formatter.h
+    src/utils/Money.h
     src/utils/AccountHashing.h
     src/utils/StatusMessage.h
     src/utils/StatusMessage.cpp

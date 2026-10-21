@@ -153,11 +153,12 @@ ctest --test-dir build --output-on-failure
 `ctest` runs `predictor_selftest` (category prediction), `import_save_test` (the statement
 import, saved to a temporary database), `db_migration_test` (the schema upgrades),
 `db_write_test` (the writes of the table classes, the renames, the default data, the mock data,
-the balance history, the currency of an account and the checked database results), `db_copy_test`
+the balance history, the currency of an account, the checked database results and the amounts
+rounded to the cent), `db_copy_test`
 (the copy of the prod database in the Test app), `update_test` (the versions, the update check and
 the installation, with a local test server instead of GitHub, and the QML engine that reads no
 file from the network) and `calc_test` (the calculations behind the texts and charts of the pages,
-and the money format).
+the money format and the whole cents of `Money`).
 `cmake --build build --target fd_tests` builds only the tests. The release tools have their own
 tests: `python -m unittest discover -s tools -p "test_*.py"`.
 

@@ -3,6 +3,7 @@
 #include "import/ImportTemplateRegistry.h"
 #include "utils/Formatter.h"
 #include "utils/AccountHashing.h"
+#include "utils/Money.h"
 #include "db/Database.h"
 #include "db/tables/TransactionsTable.h"
 #include "models/Account.h"
@@ -30,14 +31,11 @@
 #include <QVariantMap>
 #include <QVector>
 #include <Qt>
+#include <QtTypes>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
 
 namespace {
 constexpr int kStatusClearDelayMs = 4000; // how long a status message stays visible
-// Amounts within this many euros/dollars of each other count as "reconciled"
-// — guards against float rounding noise, not a real tolerance for genuine
-// discrepancies (bank statements are exact to the cent).
-constexpr double kReconciliationEpsilon = 0.01;
 // Percent scale for the predictor's evaluation numbers (evaluatePredictor()).
 constexpr double kPercentScale = 100.0;
 
@@ -719,26 +717,28 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
     result["startSourceDateText"] = Fmt::dateOrDash(startSourceDate);
     result["startDeclaredText"]   = hasDeclaredStart ? Fmt::money(m_statement.balanceStart) : QStringLiteral("—");
     result["startExpectedText"]   = hasStartReference ? Fmt::money(expectedStart) : QStringLiteral("—");
-    const double startDiff = m_statement.balanceStart - expectedStart;
-    result["startOk"]       = !hasStartReference || std::abs(startDiff) < kReconciliationEpsilon;
-    result["startDiffText"] = hasStartReference ? Fmt::money(startDiff, true) : QStringLiteral("—");
+    // Whole cents (#33): a statement is exact to the cent, and a difference of
+    // doubles is not (0.30 - 0.10 - 0.20 is not 0).
+    const qint64 startDiffCents = Money::toCents(m_statement.balanceStart) - Money::toCents(expectedStart);
+    result["startOk"]       = !hasStartReference || startDiffCents == 0;
+    result["startDiffText"] = hasStartReference ? Fmt::money(Money::fromCents(startDiffCents), true) : QStringLiteral("—");
 
     // ── Check 2: declared start + kept (included) rows vs. declared end ────
-    double sumIncluded = 0.0;
+    qint64 sumIncludedCents = 0;
     for (const Data::ImportedTransaction& transaction : m_statement.transactions) {
         if (transaction.included) {
-            sumIncluded += (transaction.credit - transaction.debit);
+            sumIncludedCents += Money::toCents(transaction.credit) - Money::toCents(transaction.debit);
         }
     }
-    const double computedEnd = m_statement.balanceStart + sumIncluded;
-    const double endDiff = endAvailable ? m_statement.balanceEnd - computedEnd : 0.0;
+    const qint64 computedEndCents = Money::toCents(m_statement.balanceStart) + sumIncludedCents;
+    const qint64 endDiffCents = endAvailable ? Money::toCents(m_statement.balanceEnd) - computedEndCents : 0;
 
-    result["endComputedText"] = endAvailable ? Fmt::money(computedEnd) : QStringLiteral("—");
+    result["endComputedText"] = endAvailable ? Fmt::money(Money::fromCents(computedEndCents)) : QStringLiteral("—");
     result["endDeclaredText"] = hasDeclaredEnd ? Fmt::money(m_statement.balanceEnd) : QStringLiteral("—");
-    result["endDiffText"]     = endAvailable ? Fmt::money(endDiff, true) : QStringLiteral("—");
-    result["endDiffRaw"]      = endDiff;
+    result["endDiffText"]     = endAvailable ? Fmt::money(Money::fromCents(endDiffCents), true) : QStringLiteral("—");
+    result["endDiffCents"]    = endDiffCents; // for addReconciliationAdjustment()
     // Not checked is not a mismatch: no adjustment, no warning before the save.
-    result["endOk"]           = !endAvailable || std::abs(endDiff) < kReconciliationEpsilon;
+    result["endOk"]           = !endAvailable || endDiffCents == 0;
 
     // ── Rows of this statement that the account already has (#18) ─────────
     // save() skips them; the review screen can tell the user before saving.
@@ -783,7 +783,8 @@ void SnapshotImportController::addReconciliationAdjustment(int accountId)
         return; // nothing parsed, or already reconciled — nothing to add
     }
 
-    const double diff = check.value(QStringLiteral("endDiffRaw")).toDouble(); // declared end - computed end
+    // Declared end - computed end, in whole cents: the row has the exact gap.
+    const double diff = Money::fromCents(check.value(QStringLiteral("endDiffCents")).toLongLong());
     static const QString kAdjustmentCategory = QStringLiteral("Reconciliation Adjustment");
     ensureCategoryExists(kAdjustmentCategory);
 
@@ -863,19 +864,20 @@ QVector<Data::AccountBalanceCheckpoint> SnapshotImportController::statementCheck
 void SnapshotImportController::buildImportReport(const QString& accountLabel, const QVector<Data::Transaction>& saved,
                                                    const QVariantMap& reconciliation)
 {
-    double totalIncome = 0.0;
-    double totalExpense = 0.0;
+    // Totals in whole cents (#33), given to QML in the unit of the account.
+    qint64 totalIncomeCents = 0;
+    qint64 totalExpenseCents = 0;
     // Category -> net total (credit - debit); Category -> Subcategory -> net total.
-    QMap<QString, double> categoryTotals;
-    QMap<QString, QMap<QString, double>> subcategoryTotals;
+    QMap<QString, qint64> categoryTotals;
+    QMap<QString, QMap<QString, qint64>> subcategoryTotals;
 
     for (const Data::Transaction& transaction : saved) {
-        totalIncome  += transaction.credit;
-        totalExpense += transaction.debit;
+        totalIncomeCents  += Money::toCents(transaction.credit);
+        totalExpenseCents += Money::toCents(transaction.debit);
 
         const QString category    = transaction.category.isEmpty() ? QStringLiteral("Uncategorized") : transaction.category;
         const QString subcategory = transaction.subcategory.isEmpty() ? QStringLiteral("—") : transaction.subcategory;
-        const double net = transaction.credit - transaction.debit;
+        const qint64 net = Money::toCents(transaction.credit) - Money::toCents(transaction.debit);
 
         categoryTotals[category] += net;
         subcategoryTotals[category][subcategory] += net;
@@ -884,28 +886,32 @@ void SnapshotImportController::buildImportReport(const QString& accountLabel, co
     QVariantList byCategory;
     for (auto categoryIt = categoryTotals.constBegin(); categoryIt != categoryTotals.constEnd(); ++categoryIt) {
         QVariantList subcategories;
-        const QMap<QString, double> subMap = subcategoryTotals.value(categoryIt.key());
+        const QMap<QString, qint64> subMap = subcategoryTotals.value(categoryIt.key());
         for (auto subIt = subMap.constBegin(); subIt != subMap.constEnd(); ++subIt) {
+            const double total = Money::fromCents(subIt.value());
             subcategories.append(QVariantMap{
                 { "subcategory", subIt.key() },
-                { "totalText",   Fmt::money(subIt.value(), true) },
-                { "totalRaw",    subIt.value() },
+                { "totalText",   Fmt::money(total, true) },
+                { "totalRaw",    total },
             });
         }
+        const double total = Money::fromCents(categoryIt.value());
         byCategory.append(QVariantMap{
             { "category",      categoryIt.key() },
-            { "totalText",     Fmt::money(categoryIt.value(), true) },
-            { "totalRaw",      categoryIt.value() },
+            { "totalText",     Fmt::money(total, true) },
+            { "totalRaw",      total },
             { "subcategories", subcategories },
         });
     }
+    const double totalIncome = Money::fromCents(totalIncomeCents);
+    const double totalExpense = Money::fromCents(totalExpenseCents);
 
     m_lastImportReport = QVariantMap{
         { "accountLabel",      accountLabel },
         { "transactionCount",  saved.size() },
         { "totalIncomeText",   Fmt::money(totalIncome, true) },
         { "totalExpenseText",  Fmt::money(-totalExpense, true) },
-        { "netChangeText",     Fmt::money(totalIncome - totalExpense, true) },
+        { "netChangeText",     Fmt::money(Money::fromCents(totalIncomeCents - totalExpenseCents), true) },
         { "byCategory",        byCategory },
         { "reconciliation",    reconciliation },
     };

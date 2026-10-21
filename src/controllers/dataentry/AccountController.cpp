@@ -2,6 +2,7 @@
 
 #include "db/Database.h"
 #include "utils/Formatter.h"
+#include "utils/Money.h"
 #include "models/Account.h"
 #include "models/Transaction.h"
 
@@ -15,6 +16,7 @@
 #include <QVariantMap>
 #include <Qt>
 #include <QtLogging>
+#include <QtTypes>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
 
 #include <algorithm>
@@ -559,6 +561,10 @@ bool AccountController::updateTransaction(int transactionId, const QString& conf
     if (transactionId < 0) {
         return false;
     }
+    if (!Money::isValid(debit) || !Money::isValid(credit)) {
+        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  The amount is not a number, or it is too large"));
+        return false;
+    }
 
     Data::Transaction tx;
     tx.id               = transactionId;
@@ -608,6 +614,10 @@ bool AccountController::addBalanceCheckpoint(int accountIndex, const QString& da
     const QDate date = QDate::fromString(dateIso, Qt::ISODate);
     if (!date.isValid()) {
         setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  Invalid date — use yyyy-MM-dd"));
+        return false;
+    }
+    if (!Money::isValid(balance)) {
+        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  The balance is not a number, or it is too large"));
         return false;
     }
     const int checkpointId = Database::instance().addBalanceCheckpoint(m_accounts.at(accountIndex).id, date, balance, note);
@@ -670,17 +680,19 @@ QVariantList AccountController::accountBalanceHistory(int accountIndex) const
         return dateA != dateB ? dateA < dateB : a.id < b.id;
     });
 
-    double running = 0.0;
+    // The running balance in whole cents (#33): a sum of thousands of doubles
+    // drifts away from the cents.
+    qint64 runningCents = 0;
     const std::optional<Data::AccountBalanceCheckpoint> checkpoint =
         Database::instance().latestCheckpointOnOrBefore(accountId, Data::bookingDate(dated.first()));
     if (checkpoint.has_value()) {
-        running = checkpoint->balance;
+        runningCents = Money::toCents(checkpoint->balance);
     } else {
         // No checkpoint at or before the first transaction — infer the
         // balance just before it from its own declared balanceAfter, rather
         // than starting the line at a misleading 0 (product decision).
         const Data::Transaction& first = dated.first();
-        running = first.balanceAfter - (first.credit - first.debit);
+        runningCents = Money::toCents(first.balanceAfter) - (Money::toCents(first.credit) - Money::toCents(first.debit));
     }
 
     const Fmt::Currency unit = currencyOf(accountIndex);
@@ -697,12 +709,12 @@ QVariantList AccountController::accountBalanceHistory(int accountIndex) const
     QDate day = Data::bookingDate(dated.first());
     for (const Data::Transaction& tx : dated) {
         if (Data::bookingDate(tx) != day) {
-            pushPoint(day, running);
+            pushPoint(day, Money::fromCents(runningCents));
             day = Data::bookingDate(tx);
         }
-        running += (tx.credit - tx.debit);
+        runningCents += Money::toCents(tx.credit) - Money::toCents(tx.debit);
     }
-    pushPoint(day, running); // last day's cumulative balance
+    pushPoint(day, Money::fromCents(runningCents)); // last day's cumulative balance
 
     return points;
 }
@@ -758,42 +770,48 @@ QVariantMap AccountController::accountCategoryBreakdown(int accountIndex) const
     // Category -> magnitude total; Category -> Subcategory -> magnitude total.
     // Kept as two separate income/expense pairs (rather than one net-total
     // map, like buildImportReport()'s) since a pie slice's value can't be
-    // negative — see the header doc comment.
-    QMap<QString, double> incomeCategoryTotals, expenseCategoryTotals;
-    QMap<QString, QMap<QString, double>> incomeSubTotals, expenseSubTotals;
+    // negative — see the header doc comment. The totals are whole cents (#33).
+    QMap<QString, qint64> incomeCategoryTotals;
+    QMap<QString, qint64> expenseCategoryTotals;
+    QMap<QString, QMap<QString, qint64>> incomeSubTotals;
+    QMap<QString, QMap<QString, qint64>> expenseSubTotals;
 
     for (const Data::Transaction& transaction : txs) {
         const QString category    = transaction.category.isEmpty() ? QStringLiteral("Uncategorized") : transaction.category;
         const QString subcategory = transaction.subcategory.isEmpty() ? QStringLiteral("—") : transaction.subcategory;
 
-        if (transaction.credit > 0.0) {
-            incomeCategoryTotals[category] += transaction.credit;
-            incomeSubTotals[category][subcategory] += transaction.credit;
+        const qint64 credit = Money::toCents(transaction.credit);
+        const qint64 debit = Money::toCents(transaction.debit);
+        if (credit > 0) {
+            incomeCategoryTotals[category] += credit;
+            incomeSubTotals[category][subcategory] += credit;
         }
-        if (transaction.debit > 0.0) {
-            expenseCategoryTotals[category] += transaction.debit;
-            expenseSubTotals[category][subcategory] += transaction.debit;
+        if (debit > 0) {
+            expenseCategoryTotals[category] += debit;
+            expenseSubTotals[category][subcategory] += debit;
         }
     }
 
     const Fmt::Currency unit = currencyOf(accountIndex);
-    auto buildList = [unit](const QMap<QString, double>& categoryTotals,
-                             const QMap<QString, QMap<QString, double>>& subTotals) {
+    auto buildList = [unit](const QMap<QString, qint64>& categoryTotals,
+                             const QMap<QString, QMap<QString, qint64>>& subTotals) {
         QVariantList list;
         for (auto categoryIt = categoryTotals.constBegin(); categoryIt != categoryTotals.constEnd(); ++categoryIt) {
             QVariantList subcategories;
-            const QMap<QString, double> subMap = subTotals.value(categoryIt.key());
+            const QMap<QString, qint64> subMap = subTotals.value(categoryIt.key());
             for (auto subIt = subMap.constBegin(); subIt != subMap.constEnd(); ++subIt) {
+                const double total = Money::fromCents(subIt.value());
                 subcategories.append(QVariantMap{
                     { "subcategory", subIt.key() },
-                    { "totalRaw",    subIt.value() },
-                    { "totalText",   Fmt::money(subIt.value(), unit) },
+                    { "totalRaw",    total },
+                    { "totalText",   Fmt::money(total, unit) },
                 });
             }
+            const double total = Money::fromCents(categoryIt.value());
             list.append(QVariantMap{
                 { "category",      categoryIt.key() },
-                { "totalRaw",      categoryIt.value() },
-                { "totalText",     Fmt::money(categoryIt.value(), unit) },
+                { "totalRaw",      total },
+                { "totalText",     Fmt::money(total, unit) },
                 { "subcategories", subcategories },
             });
         }

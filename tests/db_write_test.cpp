@@ -17,6 +17,8 @@
 //   #48   the amounts of a USD account are shown in $
 //   #49   a statement that cannot be prepared logs the SQLite error; a write
 //         that cannot start its own SQL transaction fails and writes nothing
+//   #33   each amount is rounded to the cent before it is written; an amount
+//         that is not a number or is too large is refused before any write
 
 #include "AccountController.h"
 #include "CategoryController.h"
@@ -40,6 +42,8 @@
 #include <QVariantMap>
 
 #include <algorithm>
+#include <array>
+#include <limits>
 
 namespace {
 
@@ -128,6 +132,8 @@ private slots:
     void usdAccountShowsItsCurrency();
     void prepareErrorIsLogged();
     void writeWithoutItsTransactionFails();
+    void amountsAreWrittenToTheCent();
+    void invalidAmountsAreRefused();
 
 private:
     QTemporaryDir m_dir;
@@ -583,6 +589,89 @@ void DbWriteTest::writeWithoutItsTransactionFails()
     const QVector<Data::Account> accounts = db.loadAccounts();
     QCOMPARE(accounts.size(), qsizetype(1));
     QCOMPARE(accounts.at(0).id, account);
+}
+
+void DbWriteTest::amountsAreWrittenToTheCent()
+{
+    Database& db = Database::instance();
+    const int account = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
+                                      QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(account >= 0);
+    Data::Transaction row = transaction(QStringLiteral("SHOP"), QStringLiteral(""), QStringLiteral(""));
+    row.debit = 12.344;           // a typed amount
+    row.balanceAfter = 0.1 + 0.2; // 0.30000000000000004
+    QVERIFY2(db.insertTransactions(account, {row}), qPrintable(db.lastError()));
+    QVERIFY2(db.addBalanceCheckpoint(account, QDate(2026, 3, 1), 1250.006, QStringLiteral("")) >= 0,
+             qPrintable(db.lastError()));
+
+    // Exact comparisons: the stored doubles are the ones of whole cents.
+    Data::Transaction saved = db.transactionsForAccount(account).first();
+    QVERIFY(saved.debit == 12.34);
+    QVERIFY(saved.balanceAfter == 0.3);
+    QVERIFY(db.loadBalanceCheckpoints(account).first().balance == 1250.01);
+
+    // The edit dialog of the Transactions page.
+    saved.debit = 7.006;
+    saved.credit = 0.004;
+    QVERIFY2(db.updateTransaction(saved), qPrintable(db.lastError()));
+    const Data::Transaction updated = db.transactionsForAccount(account).first();
+    QVERIFY(updated.debit == 7.01);
+    QVERIFY(updated.credit == 0.0);
+}
+
+void DbWriteTest::invalidAmountsAreRefused()
+{
+    Database& db = Database::instance();
+    const int account = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
+                                      QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(account >= 0);
+    const QString refused = QStringLiteral("An amount is not a number, or it is too large.");
+    const std::array<double, 4> invalid = {
+        std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity(), 2e13,
+    };
+    for (const double amount : invalid) {
+        Data::Transaction row = transaction(QStringLiteral("BAD"), QStringLiteral(""), QStringLiteral(""));
+        row.balanceAfter = amount;
+        QVERIFY(!db.insertTransactions(account, {row}));
+        QCOMPARE(db.lastError(), refused);
+        QVERIFY(!db.saveImport(account, {row}, QString(), {}));
+        QCOMPARE(db.lastError(), refused);
+
+        Data::AccountBalanceCheckpoint checkpoint;
+        checkpoint.accountId = account;
+        checkpoint.date = QDate(2026, 3, 31);
+        checkpoint.balance = amount;
+        QVERIFY(!db.saveImport(account, {transaction(QStringLiteral("GOOD"), QStringLiteral(""), QStringLiteral(""))},
+                               QString(), {checkpoint}));
+        QCOMPARE(db.lastError(), refused);
+        QVERIFY(db.addBalanceCheckpoint(account, QDate(2026, 3, 1), amount, QStringLiteral("")) < 0);
+        QCOMPARE(db.lastError(), refused);
+    }
+    QCOMPARE(db.transactionCountForAccount(account), 0);
+    QVERIFY(db.loadBalanceCheckpoints(account).isEmpty());
+
+    // An update with such an amount changes nothing.
+    QVERIFY(db.insertTransactions(account, {transaction(QStringLiteral("GOOD"), QStringLiteral(""), QStringLiteral(""))}));
+    Data::Transaction saved = db.transactionsForAccount(account).first();
+    saved.credit = 2e13;
+    QVERIFY(!db.updateTransaction(saved));
+    QCOMPARE(db.lastError(), refused);
+    QVERIFY(db.transactionsForAccount(account).first().credit == 0.0);
+
+    // The dialogs of the accounts pages say why.
+    AccountController controller;
+    const int index = indexOfName(controller.accounts(), QStringLiteral("Checking"));
+    QVERIFY(index >= 0);
+    QVERIFY(!controller.addBalanceCheckpoint(index, QStringLiteral("2026-03-01"), 2e13, QStringLiteral("")));
+    QVERIFY2(controller.statusText().contains(QStringLiteral("not a number, or it is too large")),
+             qPrintable(controller.statusText()));
+    QVERIFY(!controller.updateTransaction(saved.id, QStringLiteral("2026-03-02"), QStringLiteral("2026-03-02"),
+                                          saved.name, saved.description,
+                                          std::numeric_limits<double>::infinity(), 0.0, QString(), QString()));
+    QVERIFY2(controller.statusText().contains(QStringLiteral("not a number, or it is too large")),
+             qPrintable(controller.statusText()));
+    QVERIFY(db.loadBalanceCheckpoints(account).isEmpty());
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)

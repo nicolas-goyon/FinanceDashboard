@@ -71,11 +71,12 @@ public:
     // ── Schema version (PRAGMA user_version) ─────────────────────────────────
     // The schema version that this app writes. Each version after 0 is one
     // ordered migration step in upgrade().
-    static constexpr int kSchemaVersion = 3;
+    static constexpr int kSchemaVersion = 4;
     [[nodiscard]] int schemaVersion() const;
     // Empty, unless the last open() upgraded an existing database: then one
-    // or two sentences for the user (old and new version, where the backup
-    // copy is, how many duplicate transactions were removed).
+    // or more sentences for the user (old and new version, where the backup
+    // copy is, how many duplicate transactions were removed, how many rows
+    // had an amount rounded to the cent).
     [[nodiscard]] QString upgradeReport() const { return m_upgradeReport; }
 
     // ── Table accessors (for future direct use by specialised services) ────────
@@ -296,6 +297,7 @@ private:
         int  removedDuplicates = 0;         // step 2
         int  removedWithOtherValues = 0;    // of those: another category, label, date…
         int  reusedReferences = 0;          // of those: same bank reference, another operation date
+        int  roundedRows = 0;               // step 4: rows with an amount rounded to the cent
     };
     // The iban / bic / number columns that the accounts table still has.
     [[nodiscard]] QStringList accountNumberColumns() const;
@@ -309,6 +311,10 @@ private:
     bool migrateTo1(UpgradeStats& stats); // accounts: drop iban / bic / number
     bool migrateTo2(UpgradeStats& stats); // transactions: fingerprint + UNIQUE index
     bool migrateTo3();                    // settings table, with the defaults already written
+    bool migrateTo4(UpgradeStats& stats); // amounts rounded to the cent (#33)
+    // Step 4 for one table: rounds `columns` (REAL amounts) of each row to the
+    // cent, and counts the rows that changed.
+    bool roundAmountsToCents(const QString& table, const QStringList& columns, int& changedRows);
     // Records in the settings table that the defaults of `set` are written.
     // In the SQL transaction of writeDefaults() or resetAll().
     bool recordDefaults(Defaults set);
