@@ -12,6 +12,7 @@
 #include <QDate>
 #include <QHashFunctions>
 #include <QString>
+#include <QUuid>
 #include <QVector>
 
 #include <cstdio>
@@ -52,6 +53,111 @@ Predict::Example makeExample(const QString& name, const QString& category, const
     return example;
 }
 
+QString keyOf(const QString& name, const QString& description = QString())
+{
+    return Predict::LabelNormalizer::normalize(name, description).key;
+}
+
+// #40: short merchant names keep their own key. #55: ligatures, month names,
+// masked card numbers, the English boilerplate of the Sumeria export.
+void testShortNamesAndEnglishLabels()
+{
+    checkEqual(keyOf(QStringLiteral("Card payment 1234: H&M")), QStringLiteral("H&M"), QStringLiteral("H&M keeps its name"));
+    checkEqual(keyOf(QStringLiteral("Card payment 1234: C&A")), QStringLiteral("C&A"), QStringLiteral("C&A keeps its name"));
+    checkEqual(keyOf(QStringLiteral("Card payment 1234: AS24")), QStringLiteral("AS24"),
+               QStringLiteral("a short code is the name when there is no other"));
+    checkEqual(keyOf(QStringLiteral("Card payment 1234: O2")), QStringLiteral("O2"), QStringLiteral("O2 is a name too"));
+    checkEqual(keyOf(QStringLiteral("Card payment 1234: SHOP T3")), QStringLiteral("SHOP"),
+               QStringLiteral("a short code next to a name stays a reference"));
+    checkEqual(keyOf(QStringLiteral("Card payment 1234: AS24 LYON")), QStringLiteral("LYON"),
+               QStringLiteral("...also when it is a name (a known limit)"));
+    check(keyOf(QStringLiteral("Card payment 1234: X")).isEmpty(), QStringLiteral("a one-letter name gives no key"));
+    checkEqual(keyOf(QStringLiteral("PROCTER & GAMBLE")), QStringLiteral("PROCTER GAMBLE"),
+               QStringLiteral("an & between spaces is a separator"));
+
+    checkEqual(keyOf(QStringLiteral("CŒUR BŒUF")), QStringLiteral("COEUR BOEUF"), QStringLiteral("ligatures are folded"));
+    checkEqual(keyOf(QStringLiteral("Œuvre ÆGIS straße")), QStringLiteral("OEUVRE AEGIS STRASSE"),
+               QStringLiteral("Œ, Æ and ß in upper and lower case"));
+    checkEqual(keyOf(QStringLiteral("MARS CARREFOUR")), QStringLiteral("CARREFOUR"), QStringLiteral("French month names go"));
+    checkEqual(keyOf(QStringLiteral("Transfer: RENT MARCH")), QStringLiteral("RENT"),
+               QStringLiteral("English month names go"));
+    checkEqual(keyOf(QStringLiteral("Card payment 1234: MARS")), QStringLiteral("MARS"),
+               QStringLiteral("a month name is the name when there is no other"));
+    checkEqual(keyOf(QStringLiteral("Direct debit: APRIL")), QStringLiteral("APRIL"),
+               QStringLiteral("...in English too"));
+    check(keyOf(QStringLiteral("FACTURE MARS 2026")).isEmpty(), QStringLiteral("a month before a year is a date"));
+    check(keyOf(QStringLiteral("PRLV SEPA ECHEANCE 05 MARS")).isEmpty(), QStringLiteral("...after a day too"));
+    check(keyOf(QStringLiteral("FACTURE MARS 26")).isEmpty(), QStringLiteral("...before a year on two digits"));
+    check(keyOf(QStringLiteral("FACTURE 2026 MARS")).isEmpty(), QStringLiteral("...after a year"));
+    checkEqual(keyOf(QStringLiteral("Transfer: RENT MARCH 2026")), QStringLiteral("RENT"),
+               QStringLiteral("...next to a name too"));
+    checkEqual(keyOf(QStringLiteral("FACTURE MARS")), QStringLiteral("MARS"),
+               QStringLiteral("boilerplate and a month alone give the month (a known limit)"));
+    checkEqual(keyOf(QStringLiteral("Card payment 1234: INSTANT GAMING")), QStringLiteral("INSTANT GAMING"),
+               QStringLiteral("INSTANT is a name"));
+    checkEqual(keyOf(QStringLiteral("XXXXXXXXXXXX4972 CARREFOUR")), QStringLiteral("CARREFOUR"),
+               QStringLiteral("a masked card number is a reference"));
+    checkEqual(keyOf(QStringLiteral("Payment received from JOHN DOE")), QStringLiteral("JOHN DOE"),
+               QStringLiteral("English boilerplate goes"));
+    checkEqual(keyOf(QStringLiteral("Direct debit: POWER")), QStringLiteral("POWER"),
+               QStringLiteral("DIRECT DEBIT goes as a pair"));
+    checkEqual(keyOf(QStringLiteral("DEBIT EXPRESS")), QStringLiteral("DEBIT EXPRESS"), QStringLiteral("DEBIT alone stays"));
+    checkEqual(keyOf(QStringLiteral("DIRECT 12/03 DEBIT FREE MOBILE")), QStringLiteral("FREE MOBILE"),
+               QStringLiteral("DIRECT DEBIT is a pair with a date between"));
+    check(keyOf(QStringLiteral(" "), QStringLiteral("Internal ref.: a1b2c3d4-0000-4000-8000-000000000001")).isEmpty(),
+          QStringLiteral("a reference block gives no key"));
+    check(keyOf(QStringLiteral("Card payment 1234:"),
+                QStringLiteral("Card payment 1234: End-to-end ref.: NOTPROVIDED Internal ref.: K1")).isEmpty(),
+          QStringLiteral("the fallback to the description stops at the first reference"));
+    for (const QString& label : {QStringLiteral("Mandate"), QStringLiteral("Creditor"), QStringLiteral("Order")}) {
+        check(keyOf(QStringLiteral("Direct debit:"),
+                    QStringLiteral("Direct debit: %1 ref.: ABC Internal ref.: K1").arg(label)).isEmpty(),
+              QStringLiteral("...with the word before it (%1 ref.)").arg(label));
+    }
+
+    // Random UUIDs (version 4): their groups of four ("4E8B", "BCDE") are
+    // not names, in the name and in the description.
+    constexpr int kUuids = 500;
+    int uuidKeys = 0;
+    QString uuidSeen;
+    for (int i = 0; i < kUuids; ++i) {
+        const QString uuid = QUuid::createUuid().toString(QUuid::WithoutBraces);
+        for (const QString& key : {keyOf(QStringLiteral("Internal ref.: ") + uuid),
+                                   keyOf(QStringLiteral("Transfer to"), QStringLiteral("Transfer to Internal ref.: ") + uuid),
+                                   keyOf(QStringLiteral("Transfer to"), QStringLiteral("Transfer to ") + uuid)}) {
+            if (!key.isEmpty()) {
+                ++uuidKeys;
+                uuidSeen = uuid + QStringLiteral(" gives ") + key;
+            }
+        }
+    }
+    check(uuidKeys == 0, QStringLiteral("%1 random UUIDs give no key (%2)").arg(kUuids).arg(uuidSeen));
+    checkEqual(keyOf(QStringLiteral("SHOP ") + QUuid::createUuid().toString(QUuid::WithoutBraces)), QStringLiteral("SHOP"),
+               QStringLiteral("a name next to a UUID keeps its key"));
+    const double senders = Predict::LabelNormalizer::tokenJaccard(
+        Predict::LabelNormalizer::normalize(QStringLiteral("RECEIVED FROM JOHN DOE")).tokens,
+        Predict::LabelNormalizer::normalize(QStringLiteral("RECEIVED FROM JOHN SMITH")).tokens);
+    check(senders < Predict::kFuzzyMinSimilarity, QStringLiteral("two senders with one first name are not one merchant"));
+
+    // normalize() of a key gives the key: schema step 6 normalizes the
+    // stored rule patterns again.
+    const QStringList labels = {
+        QStringLiteral("Card payment 1234: H&M"),       QStringLiteral("Card payment 1234: AS24"),
+        QStringLiteral("CARTE 12/03 CARREFOUR MARKET 4972 LYON"), QStringLiteral("CŒUR BŒUF"),
+        QStringLiteral("Payment received from JOHN DOE"), QStringLiteral("Direct debit: POWER"),
+        QStringLiteral("Crédit Agricole  Intérêts"),     QStringLiteral("Card payment 1234: SHOP T3"),
+        QStringLiteral("Card payment 1234: MARS"),      QStringLiteral("DIRECT 12/03 DEBIT FREE MOBILE"),
+        QStringLiteral("DIRECT SEPA DEBIT FREE MOBILE"), QStringLiteral("DIRECT DIRECT DEBIT DEBIT POWER"),
+        QStringLiteral("Transfer: RENT MARCH 2026"),     QStringLiteral("MAY JUNE"),
+        QStringLiteral("DIRECT MARS DEBIT"),            QStringLiteral("Card payment 1234: AS24 MARS"),
+        QStringLiteral("PRLV SEPA ECHEANCE 05 MARS"),   QStringLiteral("FACTURE MARS"),
+    };
+    for (const QString& label : labels) {
+        const QString key = keyOf(label);
+        checkEqual(keyOf(key), key, QStringLiteral("normalize() of the key of \"%1\" is the key").arg(label));
+    }
+}
+
 void testNormalizer()
 {
     std::printf("\n── LabelNormalizer ─────────────────────────────────────────\n");
@@ -68,15 +174,18 @@ void testNormalizer()
     checkEqual(Predict::LabelNormalizer::normalize(QStringLiteral("Crédit Agricole  Intérêts")).key,
                 QStringLiteral("CREDIT AGRICOLE INTERETS"), QStringLiteral("accents removed, case folded"));
 
-    // Every token is boilerplate — the fallback pass must still produce a key.
-    check(!Predict::LabelNormalizer::normalize(QStringLiteral("VIREMENT EN VOTRE FAVEUR")).key.isEmpty(),
-           QStringLiteral("all-boilerplate label still yields a key"));
+    // Every token is boilerplate: no key (#40). Before, the label got the key
+    // of its boilerplate, which every such label shared.
+    check(Predict::LabelNormalizer::normalize(QStringLiteral("VIREMENT EN VOTRE FAVEUR")).key.isEmpty(),
+           QStringLiteral("all-boilerplate label yields no key"));
 
     checkEqual(Predict::LabelNormalizer::normalize(QStringLiteral("  "), QStringLiteral("PAIEMENT CB SPOTIFY")).key,
                 QStringLiteral("SPOTIFY"), QStringLiteral("falls back to the description"));
 
     check(Predict::LabelNormalizer::normalize(QStringLiteral("")).key.isEmpty(),
            QStringLiteral("empty input yields an empty key"));
+
+    testShortNamesAndEnglishLabels();
 
     const double self = Predict::LabelNormalizer::tokenJaccard({ QStringLiteral("A"), QStringLiteral("B") },
                                                                 { QStringLiteral("A"), QStringLiteral("B") });

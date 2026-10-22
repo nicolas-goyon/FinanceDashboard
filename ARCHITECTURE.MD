@@ -91,6 +91,17 @@ review screen tells it). A hash belongs to one account, in lower case (#47): a
 save to another account moves it there (`Database::linkAccountHash()`), and a typed hash must be
 64 hexadecimal characters that no other account has.
 
+The pattern of a category rule (`category_rules`) is a merchant key of
+`Predict::LabelNormalizer::normalize()`, not a raw label. So a change of the keys (a new noise
+word, another rule for the tokens) needs a schema step that normalizes the stored patterns again,
+as step 6 does (#40, #55): a rule with only generic words goes; rules that get one key merge when
+they give one category, and go when they give different categories (one rule cannot give two).
+The upgrade message gives the counts and the log names each rule. Such a step calls the normalizer
+of the build that runs it, and it needs `normalize()` of a key to give the same key
+(`tools/predictor_selftest.cpp` checks it). A key has no direction words ("TRANSFER TO",
+"RECEIVED FROM"), and a rule does not look at the sign of a row: a rule covers the debits and the
+credits of a name (maintainer decision of 2026-10-22, `TODO.md`).
+
 A transaction's `fingerprint` is its identity in the bank's statement
 (`TransactionsTable::fingerprints()`): the bank's reference and the amount when the row has a
 reference (`bankReference()`), else every field. A row that the account already has is not saved

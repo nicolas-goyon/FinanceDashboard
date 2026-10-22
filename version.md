@@ -214,6 +214,27 @@ builds, source archives). Then CI opens a pull request that merges the release b
   could change at each start. Now a tie goes to the label of the most recent row, in every rung
   of the predictor, and two rules of the same rank that both match give the category of the
   rule made last (#51).
+- Category prediction: short merchant names keep their own key. "Card payment 1234: H&M",
+  "C&A", "AS24" and "O2" all gave the key "CARD PAYMENT", so they shared their suggestions and
+  their rules: after two H&M rows in "Shopping / Clothes", AS24 (fuel) and O2 (telecom) got
+  "Shopping / Clothes" in green. A label with only generic words ("VIREMENT EN VOTRE FAVEUR")
+  now gets no key: no suggestion, and no rule. A reference ("Internal ref.: …", a UUID) is not
+  a name either. The upgrade to schema version 6 normalizes the patterns of the stored category
+  rules again: a rule whose label had only generic words (such as "CARD PAYMENT") is removed;
+  rules that get one label merge into the newer one when they give one category, and are
+  removed when they give different categories ("TRANSFER TO JOHN DOE" for the rent and
+  "RECEIVED FROM JOHN DOE" for a refund are both "JOHN DOE" now, and one rule cannot give two
+  categories). The upgrade message tells how many. Note: a key has no direction words now, so a
+  rule covers both directions of a transfer (a rule for "Transfer to JOHN DOE" also applies to
+  "Payment received from JOHN DOE"): check the suggestions for the transfers from a person who
+  has a rule (#40).
+- Category prediction: ligatures are folded ("CŒUR BŒUF" is "COEUR BOEUF"), and month names
+  ("MARS CARREFOUR", "RENT MARCH"), masked card numbers ("XXXXXXXXXXXX4972") and the English
+  boilerplate of the Sumeria export ("Payment received from", "Transfer to", "Direct debit")
+  are no longer part of the merchant key. A month name stays the name of a label that has no
+  other one ("MARS", "APRIL"), and a month next to a day or a year ("05 MARS", "MARS 2026") is
+  a date. Before, "RECEIVED FROM JOHN DOE" was close enough to "…JOHN SMITH" to get its
+  category (#55).
 
 ---
 

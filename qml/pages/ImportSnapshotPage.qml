@@ -702,7 +702,10 @@ Item {
                                               + txRow.modelData.category
                                               + (txRow.modelData.subcategory !== ""
                                                   ? " / " + txRow.modelData.subcategory : "")
-                                            : "Pick a category for this row first"
+                                            : (txRow.modelData.category === ""
+                                               ? "Pick a category for this row first"
+                                               // A label with only generic words has no key (#40).
+                                               : "This label has no merchant name to build a rule from")
                                         ToolTip.visible: ruleHover.hovered
                                         ToolTip.delay: 300
                                     }

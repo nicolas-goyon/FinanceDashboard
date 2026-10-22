@@ -71,13 +71,13 @@ public:
     // ── Schema version (PRAGMA user_version) ─────────────────────────────────
     // The schema version that this app writes. Each version after 0 is one
     // ordered migration step in upgrade().
-    static constexpr int kSchemaVersion = 5;
+    static constexpr int kSchemaVersion = 6;
     [[nodiscard]] int schemaVersion() const;
     // Empty, unless the last open() upgraded an existing database: then one
     // or more sentences for the user (old and new version, where the backup
     // copy is, how many duplicate transactions were removed, how many rows
     // had an amount rounded to the cent, how many links of an account hash
-    // to another account were removed).
+    // to another account were removed, what happened to the category rules).
     [[nodiscard]] QString upgradeReport() const { return m_upgradeReport; }
 
     // ── Table accessors (for future direct use by specialised services) ────────
@@ -320,6 +320,10 @@ private:
         int  reusedReferences = 0;          // of those: same bank reference, another operation date
         int  roundedRows = 0;               // step 4: rows with an amount rounded to the cent
         int  removedHashLinks = 0;          // step 5: links of a hash to another account
+        int  rewrittenRules = 0;            // step 6: a new pattern
+        int  removedGenericRules = 0;       // step 6: the pattern had only generic words
+        int  mergedRules = 0;               // step 6: a newer rule has the same pattern and category
+        int  conflictingRules = 0;          // step 6: one pattern, different categories: removed
     };
     // The iban / bic / number columns that the accounts table still has.
     [[nodiscard]] QStringList accountNumberColumns() const;
@@ -338,6 +342,7 @@ private:
     // cent, and counts the rows that changed.
     bool roundAmountsToCents(const QString& table, const QStringList& columns, int& changedRows);
     bool migrateTo5(UpgradeStats& stats); // account hashes: lower case, one account each (#47)
+    bool migrateTo6(UpgradeStats& stats); // category rules: the label keys of #40 and #55
     // Removes the fingerprint from before #50 (logged when it was on
     // another account than `accountId`). Inside the caller's transaction.
     bool removeLegacyHash(int accountId, const QString& legacyHash);

@@ -29,7 +29,10 @@
 //   - step 5 keeps the most recent link of each account hash, in lower
 //     case, makes the hash UNIQUE, and says how many links to another
 //     account it removed; a new file and a reset get the UNIQUE index, and
-//     an open does not add the old index again (#47).
+//     an open does not add the old index again (#47);
+//   - step 6 normalizes the patterns of the category rules again: a pattern
+//     with only generic words goes, two that become one keep the newer rule,
+//     and the others are rewritten; the report counts them (#40, #55).
 
 #include "db/Database.h"
 #include "db/tables/TransactionsTable.h"
@@ -132,6 +135,7 @@ private slots:
     void version2DatabaseIsUpgraded();
     void version3AmountsAreRoundedToTheCent();
     void version4HashesGetOneAccount();
+    void version5RulesAreNormalizedAgain();
 
 private:
     // Runs SQL on `path` through its own connection, then closes it.
@@ -674,6 +678,63 @@ void DbMigrationTest::version4HashesGetOneAccount()
     QVERIFY2(db.open(m_dir->filePath(QStringLiteral("new.db"))), qPrintable(db.lastError()));
     QCOMPARE(count(uniqueIndex), 1);
     QCOMPARE(count(namedIndexes), 2);
+}
+
+void DbMigrationTest::version5RulesAreNormalizedAgain()
+{
+    // A file at schema version 5, with rules that the normalizer of v0.2.1
+    // made: "CARD PAYMENT" (taught from an H&M row), a month name, a pattern
+    // that becomes another rule with the same category, a ligature, English
+    // boilerplate, three rules with different categories that become one
+    // label, a month name alone, and a newer rule that takes the pattern of
+    // an older one (the older one goes before the rename: UNIQUE pattern).
+    Database& db = Database::instance();
+    const QString path = m_dir->filePath(QStringLiteral("v5.db"));
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    db.close();
+    execOn(path, {
+        QStringLiteral("INSERT INTO category_rules (pattern, category, subcategory) VALUES"
+                       " ('CARD PAYMENT', 'Shopping', 'Clothes'),"            // id 1: removed
+                       " ('MARS CARREFOUR', 'Groceries', ''),"               // id 2: merged into id 3
+                       " ('CARREFOUR', 'Groceries', 'Supermarket'),"         // id 3: stays
+                       " ('CŒUR BŒUF', 'Restaurants', ''),"      // id 4: COEUR BOEUF
+                       " ('RECEIVED FROM JANE ROE', 'Income', 'Rent'),"     // id 5: JANE ROE
+                       " ('EDF', 'Utilities', 'Power'),"                     // id 6: unchanged
+                       " ('TRANSFER TO JOHN DOE', 'Housing', 'Rent'),"      // id 7: removed (JOHN DOE)
+                       " ('RECEIVED FROM JOHN DOE', 'Income', 'Refund'),"   // id 8: removed (JOHN DOE)
+                       " ('JOHN DOE', 'Gifts', ''),"                         // id 9: removed (JOHN DOE)
+                       " ('DIRECT DEBIT FREE MOBILE', 'Utilities', 'Phone')," // id 10: FREE MOBILE
+                       " ('MARS', 'Groceries', 'Sweets'),"                    // id 11: unchanged
+                       " ('CARREFOUR MARKET', 'Groceries', ''),"             // id 12: merged into id 13
+                       " ('MARS CARREFOUR MARKET', 'Groceries', 'Market');"), // id 13: CARREFOUR MARKET
+        QStringLiteral("PRAGMA user_version = 5;"),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
+    const QString report = db.upgradeReport();
+    QVERIFY2(report.contains(QStringLiteral("1 category rule(s) were removed: their label had only generic words")),
+             qPrintable(report));
+    QVERIFY2(report.contains(QStringLiteral("4 rule(s) were rewritten, and 2 merged")), qPrintable(report));
+    QVERIFY2(report.contains(QStringLiteral("3 category rule(s) were removed: with the new rules for merchant names")),
+             qPrintable(report));
+
+    QSqlQuery query(db.sqlDatabase());
+    QVERIFY(query.exec(QStringLiteral("SELECT id, pattern, category, subcategory FROM category_rules ORDER BY id;")));
+    const QStringList expected = {
+        QStringLiteral("3|CARREFOUR|Groceries|Supermarket"), QStringLiteral("4|COEUR BOEUF|Restaurants|"),
+        QStringLiteral("5|JANE ROE|Income|Rent"),            QStringLiteral("6|EDF|Utilities|Power"),
+        QStringLiteral("10|FREE MOBILE|Utilities|Phone"),    QStringLiteral("11|MARS|Groceries|Sweets"),
+        QStringLiteral("13|CARREFOUR MARKET|Groceries|Market"),
+    };
+    QStringList rows;
+    while (query.next()) {
+        rows.append(QStringLiteral("%1|%2|%3|%4").arg(query.value(0).toString(), query.value(1).toString(),
+                                                     query.value(2).toString(), query.value(3).toString()));
+    }
+    query.finish();
+    QCOMPARE(rows, expected);
 }
 
 QTEST_GUILESS_MAIN(DbMigrationTest)
