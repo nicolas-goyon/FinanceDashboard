@@ -27,6 +27,15 @@ logic; the `.qml` file only renders what the controller hands it. See `docs/back
 full pattern and `docs/build-and-tooling.md` for the checklist to follow when adding a new
 page.
 
+Long work runs in a worker thread, not on the GUI thread: the category prediction of an import
+(`SnapshotImportController`, `QtConcurrent::run`, #52). The `Database` connection works only in
+the thread that made it (the GUI thread), so the controller reads the database first and gives
+copies to the worker. The result comes back on the GUI thread through a `QFutureWatcher`. A new
+job cancels the older one (`QPromise::isCanceled()`, checked after the training and between two
+rows), so quick clicks do not queue jobs. Before the rows get the result, the controller emits
+`predictionsAboutToBeApplied()`: the page gives the text of a NAME field that has the focus to
+`setRowName()` first, because the new rows replace the field.
+
 ## Data rule
 
 Writes that belong together go in one SQL transaction, in one `Database` method. Example:

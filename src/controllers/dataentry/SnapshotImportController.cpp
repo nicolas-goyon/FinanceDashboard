@@ -17,9 +17,16 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <optional>
+#include <utility>
 #include <QDate>
 #include <QFileInfo>
+#include <QFuture>
+#include <QFutureWatcher>
+#include <QPromise>
+#include <QtConcurrentRun>
+#include <QtLogging>
 #include <QHash>
 #include <QLatin1String>
 #include <QMap>
@@ -73,6 +80,8 @@ SnapshotImportController::SnapshotImportController(QObject* parent)
     : QObject(parent)
     , m_status(this, kStatusClearDelayMs, [this]() { emit statusChanged(); })
 {
+    connect(&m_predictionWatcher, &QFutureWatcher<PredictionJob>::finished, this,
+            &SnapshotImportController::predictionsReady);
     for (const ImportTemplate* tpl : ImportTemplateRegistry::all()) {
         m_templates.append(QVariantMap{
             { "id",          tpl->id() },
@@ -80,6 +89,15 @@ SnapshotImportController::SnapshotImportController(QObject* parent)
             { "fileFilter",  tpl->fileFilter() },
         });
     }
+}
+
+SnapshotImportController::~SnapshotImportController()
+{
+    // The job copies its data, so it can end after this object. Cancelled,
+    // it stops after its training or after its current row: at the exit of
+    // the app, the global thread pool waits for that much, not for all the
+    // rows.
+    m_predictionWatcher.future().cancel();
 }
 
 QVariantMap SnapshotImportController::statementInfo() const
@@ -242,6 +260,8 @@ int SnapshotImportController::warningCount() const
 
 void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& templateId)
 {
+    dropPredictions(); // a job for the earlier statement counts for nothing now
+    m_predictor.clear();
     m_statement = Data::ImportedStatement{};
     m_log.clear();
     m_userEditedRows.clear(); // fresh statement — nobody has decided anything yet
@@ -267,13 +287,11 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
         m_hasParsed = success;
         m_lastParseFailed = !success;
         if (success) {
-            // Pre-fill categories before the user ever sees the table. Rows
-            // the predictor isn't confident enough about are left blank on
+            // Pre-fill categories, in the worker thread (#52): the rows show
+            // now, and their suggestions come when the job is done. Rows the
+            // predictor isn't confident enough about are left blank on
             // purpose — see Predict::kMinConfidenceToSuggest.
-            retrainPredictor();
-            for (int row = 0; row < static_cast<int>(m_statement.transactions.size()); ++row) {
-                applyPrediction(row);
-            }
+            startPredictions();
         }
     }
 
@@ -425,6 +443,7 @@ int SnapshotImportController::legacyHashAccountIndex(const QVariantList& account
 
 void SnapshotImportController::reset()
 {
+    dropPredictions();
     m_statement = Data::ImportedStatement{};
     m_log.clear();
     m_hasParsed = false;
@@ -458,6 +477,16 @@ void SnapshotImportController::retrainPredictor()
 
 void SnapshotImportController::applyPrediction(int row)
 {
+    if (row < 0 || row >= m_statement.transactions.size() || m_userEditedRows.contains(row)) {
+        return;
+    }
+    const Data::ImportedTransaction& transaction = m_statement.transactions.at(row);
+    setPrediction(row, m_predictor.predict(transaction.name, transaction.description, signedAmountOf(transaction),
+                                           effectiveDateOf(transaction)));
+}
+
+void SnapshotImportController::setPrediction(int row, const Predict::Prediction& prediction)
+{
     if (row < 0 || row >= m_statement.transactions.size()) {
         return;
     }
@@ -468,9 +497,6 @@ void SnapshotImportController::applyPrediction(int row)
     // row bounds-checked above; QList's at() is const-only, so mutating
     // through operator[] is genuinely required here.
     Data::ImportedTransaction& transaction = m_statement.transactions[row]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-
-    const Predict::Prediction prediction = m_predictor.predict(
-        transaction.name, transaction.description, signedAmountOf(transaction), effectiveDateOf(transaction));
 
     // An empty prediction clears the row rather than leaving the previous
     // suggestion in place: after a NAME edit the old suggestion was about a
@@ -483,11 +509,115 @@ void SnapshotImportController::applyPrediction(int row)
 
 void SnapshotImportController::refreshPredictions()
 {
-    retrainPredictor();
-    for (int row = 0; row < static_cast<int>(m_statement.transactions.size()); ++row) {
-        applyPrediction(row);
+    startPredictions();
+}
+
+void SnapshotImportController::startPredictions()
+{
+    // An older job stops at its next check: five quick "+" clicks give one
+    // job of work, not five in a row.
+    m_predictionWatcher.future().cancel();
+
+    // The database is read here, on the GUI thread: a Qt SQL connection works
+    // only in the thread that made it. The worker gets copies (Qt containers
+    // share their data, so a copy costs nothing until one side writes).
+    const QVector<Data::Transaction> categorized = Database::instance().allCategorizedTransactions();
+    const QVector<Data::CategoryRule> rules = Database::instance().loadCategoryRules();
+    QVector<RowInput> inputs;
+    inputs.reserve(m_statement.transactions.size());
+    for (const Data::ImportedTransaction& transaction : m_statement.transactions) {
+        inputs.append(RowInput{transaction.name, transaction.description, signedAmountOf(transaction),
+                               effectiveDateOf(transaction)});
     }
+
+    const int generation = ++m_predictionGeneration;
+    setPredicting(true);
+    // The job reads only its copies: no pointer to this controller, which the
+    // page can destroy while the job runs (its result then goes nowhere). A
+    // cancelled job stops after the training or after a row, with no result.
+    m_predictionWatcher.setFuture(QtConcurrent::run(
+        [generation, categorized, rules, inputs](QPromise<PredictionJob>& promise) {
+            std::optional<PredictionJob> job = runPredictionJob(generation, categorized, rules, inputs,
+                                                                [&promise]() { return promise.isCanceled(); });
+            if (job) {
+                promise.addResult(std::move(*job));
+            }
+        }));
+}
+
+std::optional<SnapshotImportController::PredictionJob> SnapshotImportController::runPredictionJob(
+    int generation, const QVector<Data::Transaction>& categorized, const QVector<Data::CategoryRule>& rules,
+    const QVector<RowInput>& inputs, const std::function<bool()>& isCanceled)
+{
+    PredictionJob job;
+    job.generation = generation;
+    job.predictor.train(Predict::CategoryPredictor::examplesFromTransactions(categorized), rules);
+    if (isCanceled()) {
+        return std::nullopt;
+    }
+    job.predictions.reserve(inputs.size());
+    for (const RowInput& input : inputs) {
+        job.predictions.append(job.predictor.predict(input.name, input.description, input.signedAmount, input.date));
+        if (isCanceled()) {
+            return std::nullopt;
+        }
+    }
+    job.inputs = inputs;
+    return job;
+}
+
+void SnapshotImportController::predictionsReady()
+{
+    const QFuture<PredictionJob> future = m_predictionWatcher.future();
+    if (future.isCanceled() || future.resultCount() == 0) {
+        // Cancelled: the statement changed (`predicting` is already false).
+        // An exception in the job cancels it too: then the rows keep no
+        // suggestion, and Save works again.
+        if (m_predicting) {
+            qWarning() << "[SnapshotImportController] the job of the category suggestions stopped with no result";
+        }
+        setPredicting(false);
+        return;
+    }
+    const PredictionJob job = future.result();
+    if (job.generation != m_predictionGeneration) {
+        return; // a newer job runs, or the statement changed: this result counts for nothing
+    }
+    m_predictor = job.predictor;
+    // The page gives the text of a NAME field that has the focus to
+    // setRowName() now (it is scored with m_predictor): the rows are rebuilt
+    // below.
+    emit predictionsAboutToBeApplied();
+    if (job.generation != m_predictionGeneration) {
+        return; // a handler started another job
+    }
+    for (int row = 0; row < static_cast<int>(m_statement.transactions.size()); ++row) {
+        const Data::ImportedTransaction& transaction = m_statement.transactions.at(row);
+        if (row < job.inputs.size() && transaction.name == job.inputs.at(row).name
+            && transaction.description == job.inputs.at(row).description) {
+            setPrediction(row, job.predictions.at(row));
+        } else {
+            // Renamed (or added) during the job: score its label of now.
+            applyPrediction(row);
+        }
+    }
+    setPredicting(false);
     emit statementChanged();
+}
+
+void SnapshotImportController::dropPredictions()
+{
+    m_predictionWatcher.future().cancel();
+    ++m_predictionGeneration;
+    setPredicting(false);
+}
+
+void SnapshotImportController::setPredicting(bool predicting)
+{
+    if (m_predicting != predicting) {
+        m_predicting = predicting;
+        emit predictingChanged();
+    }
 }
 
 bool SnapshotImportController::rememberRowAsRule(int row)
@@ -576,6 +706,13 @@ bool SnapshotImportController::save(int accountId, const QString& accountLabel)
 {
     if (accountId < 0) {
         setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  Please select an account before saving"));
+        return false;
+    }
+    // The rows get their suggestions in the worker thread (#52): a save now
+    // would write them without.
+    if (m_predicting) {
+        setStatus(StatusMessage::Level::Warning,
+                  QStringLiteral("⚠  The category suggestions are not ready yet: save again in a moment"));
         return false;
     }
 

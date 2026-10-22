@@ -93,7 +93,7 @@ if(WIN32)
 endif()
 
 # Qt Quick / QML + Qt Graphs (2D). Qt Charts and Widgets are no longer used.
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2 Network)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2 Network Concurrent)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -307,6 +307,8 @@ target_link_libraries(FinanceDashboard PRIVATE
     Qt6::QuickControls2
     # The update check (#117): QNetworkAccessManager, HTTPS to api.github.com.
     Qt6::Network
+    # The category prediction of the import runs in a worker thread (#52).
+    Qt6::Concurrent
 )
 
 target_compile_definitions(FinanceDashboard PRIVATE

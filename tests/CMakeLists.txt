@@ -60,7 +60,8 @@ target_include_directories(import_save_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src/controllers/dataentry
 )
 # Qt6::Qml for the QML_ELEMENT macros in the controller header only.
-target_link_libraries(import_save_test PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Test)
+# Qt6::Concurrent: the controller predicts in a worker thread (#52).
+target_link_libraries(import_save_test PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Concurrent Qt6::Test)
 set_target_properties(import_save_test PROPERTIES WIN32_EXECUTABLE OFF)
 
 add_test(NAME import_save_test COMMAND import_save_test)

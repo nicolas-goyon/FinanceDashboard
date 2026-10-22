@@ -41,6 +41,10 @@
 //        link; a save to another account moves the hash, and the next
 //        import suggests that account; a failed save leaves the hash where
 //        it was
+//   #52  the predictor trains and scores in a worker thread: the rows show at
+//        once, a save waits, a category picked or a name changed during the
+//        job stays the choice of the user, and the result of an older job
+//        (another file, reset()) counts for nothing
 //   #50  an 8-character BIC and the same BIC on 11 characters give one hash;
 //        an account linked with the hash from before #50 is found, and
 //        the save replaces that hash; the new hash is tried first; the old
@@ -59,19 +63,25 @@
 #include "utils/Formatter.h"
 #include "utils/StatusMessage.h"
 
+#include <QCoreApplication>
 #include <QCryptographicHash>
+#include <QDate>
 #include <QFile>
+#include <QFuture>
 #include <QMessageAuthenticationCode>
 #include <QSqlError>
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QStringEncoder>
+#include <QSignalSpy>
 #include <QTest>
+#include <QThreadPool>
 #include <QUrl>
 #include <QVariantMap>
 
 #include <algorithm>
 #include <limits>
+#include <optional>
 
 namespace {
 
@@ -135,6 +145,24 @@ QByteArray marchStatementLaterExport()
     csv += "03/03,03/02,\"Card payment 1234: CARREFOUR\nInternal ref.: A1\",-20.00,,481.00\n";
     csv += "03/06,03/05,\"Card payment 1234: SNCF\nInternal ref.: A2\",-30.00,,451.00\n";
     csv += "03/10,03/09,\"Card payment 1234: BOULANGERIE\nInternal ref.: A3\",-10.00,,441.00\n";
+    return csv;
+}
+
+// An April statement with one new merchant, twice: no row of the history
+// has its label.
+QByteArray newMerchantTwiceStatement()
+{
+    QByteArray csv;
+    csv += "IBAN,";
+    csv += kIban;
+    csv += "\nBIC,";
+    csv += kBic;
+    csv += "\nPeriod,From 04/01/2026 to 04/30/2026\n";
+    csv += "Account balance on 04/01/2026,440.00 \xE2\x82\xAC\n";
+    csv += "Account balance on 04/30/2026,410.00 \xE2\x82\xAC\n";
+    csv += "Confirmation date/ value,Operation date,Description and identifier,Debit (-),Credit (+),Balance\n";
+    csv += "04/02,04/02,\"Card payment 1234: WIDGET EMPORIUM\nInternal ref.: B1\",-10.00,,430.00\n";
+    csv += "04/09,04/09,\"Card payment 1234: WIDGET EMPORIUM\nInternal ref.: B2\",-20.00,,410.00\n";
     return csv;
 }
 
@@ -235,12 +263,27 @@ private slots:
     void failedSaveKeepsTheHashWhereItWas();
     void bicOnEightOrElevenCharactersGivesOneHash();
     void oldHashOnAnotherAccountIsReplaced();
+    void predictionsRunInAWorkerThread();
+    void olderPredictionJobCountsForNothing();
+    void nameGivenBeforeTheSuggestionsIsScored();
+    void newJobCancelsTheOlderOne();
+    void cancelledJobGivesNoResult();
 
 private:
     // Runs the template alone on `csv`: the statement as it reads it, and its log.
     bool readStatement(const QByteArray& csv, Data::ImportedStatement& out,
                        QVector<Data::ImportLogEntry>& log);
+    // Parses `csv`, then waits for the suggestions of the worker thread (#52).
     void parse(SnapshotImportController& controller, const QByteArray& csv);
+    // The same, without the wait.
+    void parseWithoutWaiting(SnapshotImportController& controller, const QByteArray& csv);
+    // Every job of the worker thread ends, and its signals reach the
+    // controller.
+    static void waitForTheWorker();
+    [[nodiscard]] static QString rowCategory(const SnapshotImportController& controller, int row);
+    // A first import of the March statement, with another category for each
+    // merchant: Groceries, Transport, Food.
+    void saveMarchWithThreeCategories();
     // Parses and saves `csv`, then returns the saved rows, oldest first.
     QVector<Data::Transaction> parseAndSave(const QByteArray& csv);
     [[nodiscard]] int transactionCount() const;
@@ -277,6 +320,12 @@ void ImportSaveTest::init()
 
 void ImportSaveTest::parse(SnapshotImportController& controller, const QByteArray& csv)
 {
+    parseWithoutWaiting(controller, csv);
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.predicting(), 10000);
+}
+
+void ImportSaveTest::parseWithoutWaiting(SnapshotImportController& controller, const QByteArray& csv)
+{
     const QString path = m_dir.filePath(QStringLiteral("statement.csv"));
     QFile file(path);
     QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
@@ -285,6 +334,29 @@ void ImportSaveTest::parse(SnapshotImportController& controller, const QByteArra
     controller.parseFile(QUrl::fromLocalFile(path), QString::fromLatin1(kTemplate));
     QVERIFY(controller.hasParsed());
     QVERIFY(!controller.lastParseFailed());
+}
+
+void ImportSaveTest::waitForTheWorker()
+{
+    QVERIFY(QThreadPool::globalInstance()->waitForDone(10000));
+    QCoreApplication::processEvents();
+}
+
+QString ImportSaveTest::rowCategory(const SnapshotImportController& controller, int row)
+{
+    return controller.transactionRows().at(row).toMap().value(QStringLiteral("category")).toString();
+}
+
+void ImportSaveTest::saveMarchWithThreeCategories()
+{
+    QVERIFY(Database::instance().addCategory(QStringLiteral("Transport"), QStringLiteral("#89b4fa")) >= 0);
+    QVERIFY(Database::instance().addCategory(QStringLiteral("Food"), QStringLiteral("#f9e2af")) >= 0);
+    SnapshotImportController controller;
+    parse(controller, marchStatement());
+    controller.setRowCategory(0, QStringLiteral("Groceries")); // CARREFOUR
+    controller.setRowCategory(1, QStringLiteral("Transport")); // SNCF
+    controller.setRowCategory(2, QStringLiteral("Food"));      // BOULANGERIE
+    QVERIFY(controller.save(m_account, QStringLiteral("Checking")));
 }
 
 QVector<Data::Transaction> ImportSaveTest::parseAndSave(const QByteArray& csv)
@@ -1310,6 +1382,188 @@ void ImportSaveTest::oldHashOnAnotherAccountIsReplaced()
     QCOMPARE(db.accountOfHash(legacy), -1);
     QCOMPARE(db.accountOfHash(hash), m_account);
     QCOMPARE(hashRowCount(), 1);
+}
+
+void ImportSaveTest::predictionsRunInAWorkerThread()
+{
+    saveMarchWithThreeCategories();
+
+    SnapshotImportController controller;
+    QSignalSpy predicting(&controller, &SnapshotImportController::predictingChanged);
+    parseWithoutWaiting(controller, marchStatementLaterExport());
+    // The rows show at once; their suggestions come from the worker thread.
+    QVERIFY(controller.predicting());
+    QCOMPARE(controller.transactionRows().size(), qsizetype(3));
+    QVERIFY(rowCategory(controller, 0).isEmpty());
+
+    // During the job: a category picked by hand, and a name changed.
+    controller.setRowCategory(1, QStringLiteral("Food"));
+    controller.setRowName(2, QStringLiteral("ZZQQ WIDGET EMPORIUM"));
+    // A save waits for the suggestions.
+    QVERIFY(!controller.save(m_account, QStringLiteral("Checking")));
+    QVERIFY2(controller.statusText().contains(QStringLiteral("not ready yet")), qPrintable(controller.statusText()));
+    QCOMPARE(transactionCount(), 3);
+
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.predicting(), 10000);
+    QCOMPARE(predicting.count(), 2); // true, then false
+    QCOMPARE(rowCategory(controller, 0), QStringLiteral("Groceries"));
+    QCOMPARE(rowCategory(controller, 1), QStringLiteral("Food"));   // the choice of the user stays
+    QVERIFY(rowCategory(controller, 2).isEmpty());                    // scored with its new name: unknown
+    QVERIFY2(controller.save(m_account, QStringLiteral("Checking")), qPrintable(controller.statusText()));
+
+    // "+ rule" scores the other rows again in the worker thread: the second
+    // row of a new merchant gets the category of the rule, and only the rule
+    // gives it.
+    SnapshotImportController next;
+    parse(next, newMerchantTwiceStatement());
+    QVERIFY(rowCategory(next, 1).isEmpty());
+    next.setRowCategory(0, QStringLiteral("Food"));
+    QVERIFY2(next.rememberRowAsRule(0), qPrintable(next.statusText()));
+    QVERIFY(next.predicting());
+    QVERIFY(rowCategory(next, 1).isEmpty());
+    QTRY_VERIFY_WITH_TIMEOUT(!next.predicting(), 10000);
+    QCOMPARE(rowCategory(next, 1), QStringLiteral("Food"));
+}
+
+void ImportSaveTest::olderPredictionJobCountsForNothing()
+{
+    saveMarchWithThreeCategories();
+
+    // Another file during a job: only the job of the second file writes its
+    // suggestions (SNCF, BOULANGERIE, then a new merchant).
+    SnapshotImportController controller;
+    QSignalSpy applied(&controller, &SnapshotImportController::predictionsAboutToBeApplied);
+    parseWithoutWaiting(controller, marchStatement());
+    parseWithoutWaiting(controller, overlappingStatement());
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.predicting(), 10000);
+    waitForTheWorker();
+    QCOMPARE(applied.count(), 1);
+    QCOMPARE(rowCategory(controller, 0), QStringLiteral("Transport"));
+    QCOMPARE(rowCategory(controller, 1), QStringLiteral("Food"));
+    QVERIFY(rowCategory(controller, 2).isEmpty());
+
+    // reset(), or a file that does not parse, while the job runs, or when
+    // the job is done and its signal waits in the event queue: the job
+    // changes nothing.
+    for (const bool withReset : {true, false}) {
+        for (const bool jobDone : {false, true}) {
+            parseWithoutWaiting(controller, marchStatement());
+            QVERIFY(controller.predicting());
+            if (jobDone) {
+                QVERIFY(QThreadPool::globalInstance()->waitForDone(10000));
+            }
+            if (withReset) {
+                controller.reset();
+            } else {
+                controller.parseFile(QUrl::fromLocalFile(m_dir.filePath(QStringLiteral("missing.csv"))),
+                                     QString::fromLatin1(kTemplate));
+                QVERIFY(controller.lastParseFailed());
+            }
+            QVERIFY(!controller.predicting());
+            QSignalSpy changed(&controller, &SnapshotImportController::statementChanged);
+            waitForTheWorker();
+            QCOMPARE(changed.count(), 0);
+            QCOMPARE(applied.count(), 1);
+            QVERIFY(controller.transactionRows().isEmpty());
+        }
+    }
+}
+
+void ImportSaveTest::nameGivenBeforeTheSuggestionsIsScored()
+{
+    saveMarchWithThreeCategories();
+
+    // The page gives the text of a NAME field with the focus to setRowName()
+    // when predictionsAboutToBeApplied() comes, before the rows get their
+    // suggestions: the row is scored with its new name, by the new predictor.
+    SnapshotImportController controller;
+    QString categoryBefore = QStringLiteral("not called");
+    connect(&controller, &SnapshotImportController::predictionsAboutToBeApplied, &controller,
+            [&controller, &categoryBefore]() {
+                categoryBefore = rowCategory(controller, 0);
+                controller.setRowName(2, QStringLiteral("CARREFOUR"));
+            });
+    parseWithoutWaiting(controller, marchStatement());
+    QTRY_VERIFY_WITH_TIMEOUT(!controller.predicting(), 10000);
+    QVERIFY(categoryBefore.isEmpty()); // the rows had no suggestion yet
+    QCOMPARE(rowCategory(controller, 0), QStringLiteral("Groceries"));
+    QCOMPARE(rowCategory(controller, 2), QStringLiteral("Groceries")); // BOULANGERIE is CARREFOUR now
+}
+
+void ImportSaveTest::newJobCancelsTheOlderOne()
+{
+    saveMarchWithThreeCategories();
+
+    // A refresh, another file, reset() and the destructor cancel the job of
+    // the worker thread: it stops at its next check (cancelledJobGivesNoResult).
+    // The test reads the private watcher (friend class).
+    SnapshotImportController controller;
+    parseWithoutWaiting(controller, marchStatement());
+    const QFuture<SnapshotImportController::PredictionJob> first = controller.m_predictionWatcher.future();
+    QVERIFY(!first.isCanceled());
+    controller.refreshPredictions();
+    QVERIFY(first.isCanceled());
+
+    const QFuture<SnapshotImportController::PredictionJob> second = controller.m_predictionWatcher.future();
+    QVERIFY(!second.isCanceled());
+    parseWithoutWaiting(controller, overlappingStatement());
+    QVERIFY(second.isCanceled());
+
+    const QFuture<SnapshotImportController::PredictionJob> third = controller.m_predictionWatcher.future();
+    QVERIFY(!third.isCanceled());
+    controller.reset();
+    QVERIFY(third.isCanceled());
+
+    QFuture<SnapshotImportController::PredictionJob> fourth;
+    {
+        SnapshotImportController other;
+        parseWithoutWaiting(other, marchStatement());
+        fourth = other.m_predictionWatcher.future();
+        QVERIFY(!fourth.isCanceled());
+    }
+    QVERIFY(fourth.isCanceled());
+    waitForTheWorker();
+}
+
+void ImportSaveTest::cancelledJobGivesNoResult()
+{
+    saveMarchWithThreeCategories();
+
+    // The work of a job, as the worker thread runs it: isCanceled() is called
+    // after the training and after each row.
+    const QVector<Data::Transaction> categorized = Database::instance().allCategorizedTransactions();
+    const QVector<Data::CategoryRule> rules = Database::instance().loadCategoryRules();
+    QVector<SnapshotImportController::RowInput> inputs;
+    for (const QString& name : {QStringLiteral("Card payment 1234: CARREFOUR"), QStringLiteral("Card payment 1234: SNCF"),
+                                QStringLiteral("Card payment 1234: BOULANGERIE")}) {
+        inputs.append(SnapshotImportController::RowInput{name, QString(), -10.0, QDate(2026, 4, 2)});
+    }
+
+    int checks = 0;
+    std::optional<SnapshotImportController::PredictionJob> job = SnapshotImportController::runPredictionJob(
+        7, categorized, rules, inputs, [&checks]() { ++checks; return false; });
+    QVERIFY(job.has_value());
+    QCOMPARE(checks, 1 + static_cast<int>(inputs.size()));
+    QCOMPARE(job->generation, 7);
+    QCOMPARE(job->predictions.size(), inputs.size());
+    QCOMPARE(job->predictions.at(1).category, QStringLiteral("Transport"));
+
+    // Cancelled during the training: no row is scored, no result.
+    checks = 0;
+    job = SnapshotImportController::runPredictionJob(8, categorized, rules, inputs, [&checks]() {
+        ++checks;
+        return true;
+    });
+    QVERIFY(!job.has_value());
+    QCOMPARE(checks, 1);
+
+    // Cancelled while the first row is scored: the job stops after it.
+    checks = 0;
+    job = SnapshotImportController::runPredictionJob(9, categorized, rules, inputs, [&checks]() {
+        return ++checks == 2;
+    });
+    QVERIFY(!job.has_value());
+    QCOMPARE(checks, 2);
 }
 
 QTEST_GUILESS_MAIN(ImportSaveTest)

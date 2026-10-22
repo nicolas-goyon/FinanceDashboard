@@ -58,11 +58,16 @@
 // the user recategorizes, because purity falls.
 //
 // **Training is just indexing.** train() is a single pass over the examples —
-// no iteration, no convergence, no persisted model file. A few thousand rows
-// is single-digit milliseconds, so callers rebuild rather than maintaining
-// incremental updates; that also means corrections made anywhere (the import
-// review screen, AccountTransactionsPage's edit action) feed straight back in
-// with no extra plumbing, which is what PROJECT.md § Category System asks for.
+// no iteration, no convergence, no persisted model file. Measured on
+// synthetic data (2026-10, #52): about 40 ms for 1 000 examples and 400 ms
+// for 10 000; scoring 200 rows on 10 000 examples takes about 0.8 s (the
+// fuzzy rung compares each row with every known key). So the import runs
+// both in a worker thread (SnapshotImportController), and callers still
+// rebuild rather than maintaining incremental updates; that also means
+// corrections made anywhere (the import review screen,
+// AccountTransactionsPage's edit action) feed straight back in with no extra
+// plumbing, which is what PROJECT.md § Category System asks for. The class
+// has no static state that changes: one instance for each thread.
 //
 // **Ties (#51).** The same data gives the same suggestion in every run: sums
 // of doubles add their terms in a fixed order (a QHash has another order in

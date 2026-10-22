@@ -235,6 +235,14 @@ builds, source archives). Then CI opens a pull request that merges the release b
   other one ("MARS", "APRIL"), and a month next to a day or a year ("05 MARS", "MARS 2026") is
   a date. Before, "RECEIVED FROM JOHN DOE" was close enough to "…JOHN SMITH" to get its
   category (#55).
+- Import: the category suggestions are computed in a worker thread. With a large history, the
+  training and the scoring of a statement took seconds on the interface thread (about 0.4 s to
+  train and 0.8 s to score 200 rows with 10 000 categorized rows, on test data), at each import
+  and at each "＋" rule: the window froze. Now the rows show at once, "The app calculates the
+  category suggestions…" tells that the suggestions come, and Save waits for them. A category
+  picked or a name changed during the computation stays the choice of the user, also when the
+  suggestions come while you type a name. A new computation (another file, a new rule) stops
+  the older one: five quick "＋" clicks cost one computation, not five (#52).
 
 ---
 
