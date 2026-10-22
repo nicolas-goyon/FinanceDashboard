@@ -32,6 +32,19 @@ Item {
     property int step: 0   // 0 = pick template/file · 1 = review/edit · 2 = import report
 
     SnapshotImportController { id: controller }
+    // The worker thread of the prediction (#52) rebuilds the rows when its
+    // suggestions come. A NAME field with the focus would lose the text that
+    // the user typed, so it gives the text to setRowName() first: it loses the
+    // focus (focus = false, also inside a FocusScope), and its
+    // editingFinished handler runs. The new field does not get the focus.
+    Connections {
+        target: controller
+        function onPredictionsAboutToBeApplied() {
+            const focused = page.Window.activeFocusItem
+            if (focused !== null && focused.objectName === "rowNameField")
+                focused.focus = false
+        }
+    }
     // Accounts now come from AccountController (QML_SINGLETON,
     // src/controllers/dataentry/AccountController.h) — the real, DB-backed
     // accounts list (see ARCHITECTURE.MD § Account Management), same
@@ -46,13 +59,28 @@ Item {
 
     property int matchedAccountIndex: -1
     property int selectedAccountIndex: -1
+    // The account that has the hash of this statement from before #50 (an
+    // 8-character BIC): Save replaces it.
+    property int legacyAccountIndex: -1
 
     readonly property var selectedAccount:
         page.selectedAccountIndex >= 0 && page.selectedAccountIndex < AccountController.accounts.length
             ? AccountController.accounts[page.selectedAccountIndex] : null
+    // The account that has the hash of the statement (one at most, #47).
+    readonly property string matchedAccountName:
+        page.matchedAccountIndex >= 0 && page.matchedAccountIndex < AccountController.accounts.length
+            ? AccountController.accounts[page.matchedAccountIndex].name : ""
+    readonly property string legacyAccountName:
+        page.legacyAccountIndex >= 0 && page.legacyAccountIndex < AccountController.accounts.length
+            ? AccountController.accounts[page.legacyAccountIndex].name : ""
+
+    function readMatches() {
+        matchedAccountIndex = controller.matchAccountIndex(AccountController.accounts)
+        legacyAccountIndex = controller.legacyHashAccountIndex(AccountController.accounts)
+    }
 
     function goToReview() {
-        matchedAccountIndex = controller.matchAccountIndex(AccountController.accounts)
+        readMatches()
         selectedAccountIndex = matchedAccountIndex
         page.step = 1
     }
@@ -353,10 +381,27 @@ Item {
                                 onActivated: page.selectedAccountIndex = currentIndex
                             }
                             Text {
-                                visible: page.matchedAccountIndex >= 0
+                                visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex === page.selectedAccountIndex
                                 text: "✓ matched by account hash"
                                 font.pixelSize: 13
                                 color: "#a6e3a1"
+                            }
+                            // A hash belongs to one account (#47): Save (or
+                            // "Link this account") moves it to the picked one.
+                            Text {
+                                visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex !== page.selectedAccountIndex
+                                text: "⚠ the account hash is on \"" + page.matchedAccountName + "\": Save moves it to this account"
+                                font.pixelSize: 13
+                                color: "#f9e2af"
+                            }
+                            // The old form of the hash (#50) on a third account.
+                            Text {
+                                visible: page.legacyAccountIndex >= 0 && page.legacyAccountIndex !== page.selectedAccountIndex
+                                         && page.legacyAccountIndex !== page.matchedAccountIndex
+                                text: "⚠ the old account hash (8-character BIC) is on \"" + page.legacyAccountName
+                                      + "\": Save moves it to this account"
+                                font.pixelSize: 13
+                                color: "#f9e2af"
                             }
                             Text {
                                 visible: page.matchedAccountIndex < 0
@@ -415,8 +460,15 @@ Item {
                                 variant: "primary"
                                 Layout.preferredHeight: 24
                                 fontSize: 13
-                                onClicked: AccountController.linkAccountHash(
-                                    page.selectedAccountIndex, controller.statementInfo.accountHashRaw)
+                                onClicked: {
+                                    if (AccountController.linkAccountHash(page.selectedAccountIndex,
+                                                                          controller.statementInfo.accountHashRaw,
+                                                                          controller.statementInfo.legacyHashRaw)) {
+                                        // The hash can move from another account (#47), and
+                                        // its old form goes (#50).
+                                        page.readMatches()
+                                    }
+                                }
                             }
                         }
                     }
@@ -439,14 +491,26 @@ Item {
                         // (SnapshotImportController::predictionInfo()) so the counts and
                         // the badge colors can't tell two different stories. On a fresh
                         // database it explains why everything is blank instead of looking
-                        // broken. See docs/category-prediction.md.
-                        Text {
+                        // broken. See docs/category-prediction.md. While the worker
+                        // thread trains and scores (#52), an indicator says so.
+                        RowLayout {
                             Layout.fillWidth: true
                             Layout.bottomMargin: 8
-                            wrapMode: Text.WordWrap
-                            text: controller.predictionInfo.summary
-                            font.pixelSize: 13
-                            color: "#6c7086"
+                            spacing: 8
+                            BusyIndicator {
+                                running: controller.predicting
+                                visible: running
+                                Layout.preferredWidth: 20
+                                Layout.preferredHeight: 20
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                text: controller.predicting ? "The app calculates the category suggestions…"
+                                                            : controller.predictionInfo.summary
+                                font.pixelSize: 13
+                                color: "#6c7086"
+                            }
                         }
 
                         Rectangle {
@@ -556,6 +620,7 @@ Item {
                                     Text { Layout.preferredWidth: columnWidths.opDate; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
                                     TextField {
                                         id: nameField
+                                        objectName: "rowNameField" // see onPredictionsAboutToBeApplied
                                         Layout.preferredWidth: columnWidths.name
                                         Layout.preferredHeight: 32
                                         text: txRow.modelData.name
@@ -663,7 +728,10 @@ Item {
                                               + txRow.modelData.category
                                               + (txRow.modelData.subcategory !== ""
                                                   ? " / " + txRow.modelData.subcategory : "")
-                                            : "Pick a category for this row first"
+                                            : (txRow.modelData.category === ""
+                                               ? "Pick a category for this row first"
+                                               // A label with only generic words has no key (#40).
+                                               : "This label has no merchant name to build a rule from")
                                         ToolTip.visible: ruleHover.hovered
                                         ToolTip.delay: 300
                                     }
@@ -695,7 +763,8 @@ Item {
                     PillButton {
                         text: page.saveBusy ? "Saving…" : "Save"
                         variant: "primary"
-                        enabled: !page.saveBusy && page.selectedAccount !== null
+                        // The suggestions come from a worker thread (#52): wait for them.
+                        enabled: !page.saveBusy && page.selectedAccount !== null && !controller.predicting
                         onClicked: page.requestSave()
                     }
                 }

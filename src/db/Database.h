@@ -71,11 +71,13 @@ public:
     // ── Schema version (PRAGMA user_version) ─────────────────────────────────
     // The schema version that this app writes. Each version after 0 is one
     // ordered migration step in upgrade().
-    static constexpr int kSchemaVersion = 3;
+    static constexpr int kSchemaVersion = 6;
     [[nodiscard]] int schemaVersion() const;
     // Empty, unless the last open() upgraded an existing database: then one
-    // or two sentences for the user (old and new version, where the backup
-    // copy is, how many duplicate transactions were removed).
+    // or more sentences for the user (old and new version, where the backup
+    // copy is, how many duplicate transactions were removed, how many rows
+    // had an amount rounded to the cent, how many links of an account hash
+    // to another account were removed, what happened to the category rules).
     [[nodiscard]] QString upgradeReport() const { return m_upgradeReport; }
 
     // ── Table accessors (for future direct use by specialised services) ────────
@@ -134,7 +136,7 @@ public:
 
     // Returns the new account's row id, or -1 on failure (DB not open, or a
     // UNIQUE(name) violation — callers check for duplicate names first). No
-    // iban/bic/number params — deliberately not stored (security decision,
+    // iban/bic/number params — deliberately not stored (product decision,
     // see § Account Management).
     int  addAccount(const QString& name, const QString& type, const QString& category,
                      const QString& currency, const QString& notes);
@@ -143,11 +145,27 @@ public:
     // Deletes the account and all of its hashes and transactions (one transaction).
     bool removeAccount(int accountId);
 
-    // Returns the new hash row's id, or -1 on failure (including an
-    // already-linked duplicate hash for this account).
+    // A hash belongs to one account (#47), in lower case
+    // (AccountHashing::storedForm()); these methods take it in any case.
+    // addAccountHash() is a hash that the user typed: it must be a
+    // fingerprint (AccountHashing::isFingerprint()), and another account must
+    // not have it. Returns the new hash row's id, or -1 with a message in
+    // lastError() (also when this account already has the hash).
     int  addAccountHash(int accountId, const QString& hash, const QString& source);
+    // Links a fingerprint of a statement to `accountId`: added, or moved from
+    // the account that had it (the user picked another account at import).
+    // `legacyHash`: the fingerprint of the same statement from before #50
+    // (AccountHashing::legacyCompute()), removed from the account that has it
+    // (#50). One SQL transaction. False with a message in lastError() on
+    // failure.
+    bool linkAccountHash(int accountId, const QString& hash, const QString& source,
+                         const QString& legacyHash = QString());
     bool removeAccountHash(int hashId);
     [[nodiscard]] bool accountHasHash(int accountId, const QString& hash) const;
+    // The id of the account that has `hash`, or -1.
+    [[nodiscard]] int accountOfHash(const QString& hash) const;
+    // The name of an account, for the log (its id when it has none).
+    [[nodiscard]] QString accountName(int accountId) const;
 
     // ── Account categories (usage buckets: Day-to-day, Savings, …) ──────────────
 
@@ -170,14 +188,18 @@ public:
     // existing rows — see TransactionsTable::insertBatch()).
     bool insertTransactions(int accountId, const QVector<Data::Transaction>& txs);
     // Saves an imported statement in one SQL transaction: the rows, the
-    // account fingerprint link (when `accountHash` is not empty and the
-    // account does not have it yet) and the balance checkpoints. If one write
+    // account fingerprint link (when `accountHash` is not empty: added, or
+    // moved from another account, see linkAccountHash()) and the balance
+    // checkpoints. If one write
     // fails, nothing is written and lastError() tells which write failed.
     // A row that the account already has (same fingerprint, see
     // TransactionsTable) is skipped; `inserted`, when not null, receives the
     // number of rows written.
+    // `legacyHash`: the fingerprint of the same statement from before #50
+    // (AccountHashing::legacyCompute()); `accountHash` replaces it (#50).
     bool saveImport(int accountId, const QVector<Data::Transaction>& txs, const QString& accountHash,
-                    const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted = nullptr);
+                    const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted = nullptr,
+                    const QString& legacyHash = QString());
     // The fingerprints of the rows that `accountId` already has, each with
     // the operation date of its row (see TransactionsTable).
     [[nodiscard]] QHash<QString, QDate> transactionFingerprints(int accountId) const;
@@ -296,6 +318,12 @@ private:
         int  removedDuplicates = 0;         // step 2
         int  removedWithOtherValues = 0;    // of those: another category, label, date…
         int  reusedReferences = 0;          // of those: same bank reference, another operation date
+        int  roundedRows = 0;               // step 4: rows with an amount rounded to the cent
+        int  removedHashLinks = 0;          // step 5: links of a hash to another account
+        int  rewrittenRules = 0;            // step 6: a new pattern
+        int  removedGenericRules = 0;       // step 6: the pattern had only generic words
+        int  mergedRules = 0;               // step 6: a newer rule has the same pattern and category
+        int  conflictingRules = 0;          // step 6: one pattern, different categories: removed
     };
     // The iban / bic / number columns that the accounts table still has.
     [[nodiscard]] QStringList accountNumberColumns() const;
@@ -309,6 +337,21 @@ private:
     bool migrateTo1(UpgradeStats& stats); // accounts: drop iban / bic / number
     bool migrateTo2(UpgradeStats& stats); // transactions: fingerprint + UNIQUE index
     bool migrateTo3();                    // settings table, with the defaults already written
+    bool migrateTo4(UpgradeStats& stats); // amounts rounded to the cent (#33)
+    // Step 4 for one table: rounds `columns` (REAL amounts) of each row to the
+    // cent, and counts the rows that changed.
+    bool roundAmountsToCents(const QString& table, const QStringList& columns, int& changedRows);
+    bool migrateTo5(UpgradeStats& stats); // account hashes: lower case, one account each (#47)
+    bool migrateTo6(UpgradeStats& stats); // category rules: the label keys of #40 and #55
+    // Removes the fingerprint from before #50 (logged when it was on
+    // another account than `accountId`). Inside the caller's transaction.
+    bool removeLegacyHash(int accountId, const QString& legacyHash);
+    // linkAccountHash() without its checks of the connection: also used by
+    // saveImport(), inside its SQL transaction.
+    // The two strings are a hash and a literal source, as in
+    // AccountHashesTable::insert().
+    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+    bool linkHashTo(int accountId, const QString& hash, const QString& source);
     // Records in the settings table that the defaults of `set` are written.
     // In the SQL transaction of writeDefaults() or resetAll().
     bool recordDefaults(Defaults set);

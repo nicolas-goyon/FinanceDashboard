@@ -58,11 +58,24 @@
 // the user recategorizes, because purity falls.
 //
 // **Training is just indexing.** train() is a single pass over the examples —
-// no iteration, no convergence, no persisted model file. A few thousand rows
-// is single-digit milliseconds, so callers rebuild rather than maintaining
-// incremental updates; that also means corrections made anywhere (the import
-// review screen, AccountTransactionsPage's edit action) feed straight back in
-// with no extra plumbing, which is what PROJECT.md § Category System asks for.
+// no iteration, no convergence, no persisted model file. Measured on
+// synthetic data (2026-10, #52): about 40 ms for 1 000 examples and 400 ms
+// for 10 000; scoring 200 rows on 10 000 examples takes about 0.8 s (the
+// fuzzy rung compares each row with every known key). So the import runs
+// both in a worker thread (SnapshotImportController), and callers still
+// rebuild rather than maintaining incremental updates; that also means
+// corrections made anywhere (the import review screen,
+// AccountTransactionsPage's edit action) feed straight back in with no extra
+// plumbing, which is what PROJECT.md § Category System asks for. The class
+// has no static state that changes: one instance for each thread.
+//
+// **Ties (#51).** The same data gives the same suggestion in every run: sums
+// of doubles add their terms in a fixed order (a QHash has another order in
+// each run), scores are compared at a resolution of 1e-9, and a tie goes to
+// the label of the most recent example, in every rung (the latest habit of
+// the user, maintainer decision of 2026-10-21). train() puts the examples in
+// date order for that. Two rules of the same priority and pattern length
+// that both match: the rule made last (the higher id) applies.
 //
 // **Nothing here is persisted except the rules.** Prediction and confidence
 // are review-screen-only concepts (see Data::ImportedTransaction::confidence
@@ -81,7 +94,7 @@ struct Example {
     QString     category;
     QString     subcategory; // may be empty
     double      signedAmount = 0.0; // credit positive, debit negative
-    QDate       date;
+    QDate       date;        // train() orders the examples by it: the most recent wins a tie
 };
 
 // What the predictor came back with for one row.
@@ -163,9 +176,11 @@ public:
     CategoryPredictor() = default;
 
     // Rebuild the whole index from scratch. Examples with an empty category
-    // or an empty key are ignored (they carry no signal). Rules are kept in
-    // match order: higher priority first, then longer pattern first, so a
-    // specific rule beats a general one that also matches.
+    // or an empty key are ignored (they carry no signal). The others are put
+    // in date order (an invalid date first, the given order on one date): a
+    // tie goes to the most recent one (#51). Rules are kept in match order:
+    // higher priority first, then longer pattern first, so a specific rule
+    // beats a general one that also matches.
     void train(const QVector<Example>& examples, const QVector<Data::CategoryRule>& rules);
 
     // Drops every example, rule and index. isTrained() is false afterwards.

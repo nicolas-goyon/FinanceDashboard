@@ -1,6 +1,7 @@
 #include "SumeriaCcpCsvExtractionTemplate.h"
 #include "models/ImportLog.h"
 #include "models/ImportedStatement.h"
+#include "utils/Money.h"
 
 #include <QByteArray>
 #include <QChar>
@@ -285,9 +286,14 @@ QString previewRawText(const CsvRecord& rec)
 // other separator groups thousands: one kind only, a first group of 1 to 3
 // digits that does not start with 0, then groups of exactly 3 digits — so
 // "1,234" is 1234, and "1.2.3", "1,,5" or "0,123" are refused. Anything else
-// — letters, "nan", "inf", an exponent — is refused too (#32).
-bool parseAmount(const QString& raw, double& outValue)
+// — letters, "nan", "inf", an exponent — is refused too (#32), and so is an
+// amount larger than Money::kMaxAmount, which the app cannot store (#33):
+// then `tooLarge`, when not null, is set to true.
+bool parseAmount(const QString& raw, double& outValue, bool* tooLarge = nullptr)
 {
+    if (tooLarge != nullptr) {
+        *tooLarge = false;
+    }
     QString compact;
     compact.reserve(raw.size());
     for (const QChar c : raw) {
@@ -337,6 +343,12 @@ bool parseAmount(const QString& raw, double& outValue)
     bool success = false;
     const double parsed = number.toDouble(&success);
     if (!success || !std::isfinite(parsed)) {
+        return false;
+    }
+    if (!Money::isValid(parsed)) {
+        if (tooLarge != nullptr) {
+            *tooLarge = true;
+        }
         return false;
     }
     outValue = parsed;
@@ -580,8 +592,16 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
         double debit       = 0.0;
         double credit      = 0.0;
         double balanceAfter = 0.0;
-        const bool hasDebit  = parseAmount(rec.fields.at(kColDebit), debit);
-        const bool hasCredit = parseAmount(rec.fields.at(kColCredit), credit);
+        bool debitTooLarge = false;
+        bool creditTooLarge = false;
+        const bool hasDebit  = parseAmount(rec.fields.at(kColDebit), debit, &debitTooLarge);
+        const bool hasCredit = parseAmount(rec.fields.at(kColCredit), credit, &creditTooLarge);
+        if (debitTooLarge || creditTooLarge) {
+            outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
+                QStringLiteral("An amount of this row is larger than 10^13: the app cannot store it — row skipped"),
+                previewRawText(rec) });
+            continue;
+        }
         if (!hasDebit && !hasCredit) {
             outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
                 QStringLiteral("Row has neither a debit nor a credit amount — row skipped"), previewRawText(rec) });

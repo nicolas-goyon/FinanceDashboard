@@ -17,6 +17,11 @@
 //   #48   the amounts of a USD account are shown in $
 //   #49   a statement that cannot be prepared logs the SQLite error; a write
 //         that cannot start its own SQL transaction fails and writes nothing
+//   #33   each amount is rounded to the cent before it is written; an amount
+//         that is not a number or is too large is refused before any write
+//   #47   an account hash is stored in lower case and found in any case; it
+//         belongs to one account: a typed hash of another account is
+//         refused (the status names it), a link moves it
 
 #include "AccountController.h"
 #include "CategoryController.h"
@@ -40,6 +45,8 @@
 #include <QVariantMap>
 
 #include <algorithm>
+#include <array>
+#include <limits>
 
 namespace {
 
@@ -128,6 +135,9 @@ private slots:
     void usdAccountShowsItsCurrency();
     void prepareErrorIsLogged();
     void writeWithoutItsTransactionFails();
+    void amountsAreWrittenToTheCent();
+    void invalidAmountsAreRefused();
+    void hashBelongsToOneAccount();
 
 private:
     QTemporaryDir m_dir;
@@ -583,6 +593,150 @@ void DbWriteTest::writeWithoutItsTransactionFails()
     const QVector<Data::Account> accounts = db.loadAccounts();
     QCOMPARE(accounts.size(), qsizetype(1));
     QCOMPARE(accounts.at(0).id, account);
+}
+
+void DbWriteTest::amountsAreWrittenToTheCent()
+{
+    Database& db = Database::instance();
+    const int account = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
+                                      QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(account >= 0);
+    Data::Transaction row = transaction(QStringLiteral("SHOP"), QStringLiteral(""), QStringLiteral(""));
+    row.debit = 12.344;           // a typed amount
+    row.balanceAfter = 0.1 + 0.2; // 0.30000000000000004
+    QVERIFY2(db.insertTransactions(account, {row}), qPrintable(db.lastError()));
+    QVERIFY2(db.addBalanceCheckpoint(account, QDate(2026, 3, 1), 1250.006, QStringLiteral("")) >= 0,
+             qPrintable(db.lastError()));
+
+    // Exact comparisons: the stored doubles are the ones of whole cents.
+    Data::Transaction saved = db.transactionsForAccount(account).first();
+    QVERIFY(saved.debit == 12.34);
+    QVERIFY(saved.balanceAfter == 0.3);
+    QVERIFY(db.loadBalanceCheckpoints(account).first().balance == 1250.01);
+
+    // The edit dialog of the Transactions page.
+    saved.debit = 7.006;
+    saved.credit = 0.004;
+    QVERIFY2(db.updateTransaction(saved), qPrintable(db.lastError()));
+    const Data::Transaction updated = db.transactionsForAccount(account).first();
+    QVERIFY(updated.debit == 7.01);
+    QVERIFY(updated.credit == 0.0);
+}
+
+void DbWriteTest::invalidAmountsAreRefused()
+{
+    Database& db = Database::instance();
+    const int account = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
+                                      QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(account >= 0);
+    const QString refused = QStringLiteral("An amount is not a number, or it is too large.");
+    const std::array<double, 4> invalid = {
+        std::numeric_limits<double>::quiet_NaN(), std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity(), 2e13,
+    };
+    for (const double amount : invalid) {
+        Data::Transaction row = transaction(QStringLiteral("BAD"), QStringLiteral(""), QStringLiteral(""));
+        row.balanceAfter = amount;
+        QVERIFY(!db.insertTransactions(account, {row}));
+        QCOMPARE(db.lastError(), refused);
+        QVERIFY(!db.saveImport(account, {row}, QString(), {}));
+        QCOMPARE(db.lastError(), refused);
+
+        Data::AccountBalanceCheckpoint checkpoint;
+        checkpoint.accountId = account;
+        checkpoint.date = QDate(2026, 3, 31);
+        checkpoint.balance = amount;
+        QVERIFY(!db.saveImport(account, {transaction(QStringLiteral("GOOD"), QStringLiteral(""), QStringLiteral(""))},
+                               QString(), {checkpoint}));
+        QCOMPARE(db.lastError(), refused);
+        QVERIFY(db.addBalanceCheckpoint(account, QDate(2026, 3, 1), amount, QStringLiteral("")) < 0);
+        QCOMPARE(db.lastError(), refused);
+    }
+    QCOMPARE(db.transactionCountForAccount(account), 0);
+    QVERIFY(db.loadBalanceCheckpoints(account).isEmpty());
+
+    // An update with such an amount changes nothing.
+    QVERIFY(db.insertTransactions(account, {transaction(QStringLiteral("GOOD"), QStringLiteral(""), QStringLiteral(""))}));
+    Data::Transaction saved = db.transactionsForAccount(account).first();
+    saved.credit = 2e13;
+    QVERIFY(!db.updateTransaction(saved));
+    QCOMPARE(db.lastError(), refused);
+    QVERIFY(db.transactionsForAccount(account).first().credit == 0.0);
+
+    // The dialogs of the accounts pages say why.
+    AccountController controller;
+    const int index = indexOfName(controller.accounts(), QStringLiteral("Checking"));
+    QVERIFY(index >= 0);
+    QVERIFY(!controller.addBalanceCheckpoint(index, QStringLiteral("2026-03-01"), 2e13, QStringLiteral("")));
+    QVERIFY2(controller.statusText().contains(QStringLiteral("not a number, or it is too large")),
+             qPrintable(controller.statusText()));
+    QVERIFY(!controller.updateTransaction(saved.id, QStringLiteral("2026-03-02"), QStringLiteral("2026-03-02"),
+                                          saved.name, saved.description,
+                                          std::numeric_limits<double>::infinity(), 0.0, QString(), QString()));
+    QVERIFY2(controller.statusText().contains(QStringLiteral("not a number, or it is too large")),
+             qPrintable(controller.statusText()));
+    QVERIFY(db.loadBalanceCheckpoints(account).isEmpty());
+}
+
+void DbWriteTest::hashBelongsToOneAccount()
+{
+    Database& db = Database::instance();
+    const int checking = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
+                                       QStringLiteral("EUR"), QStringLiteral(""));
+    const int savings = db.addAccount(QStringLiteral("Savings"), QStringLiteral("CCP"), QStringLiteral(""),
+                                      QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(checking >= 0 && savings >= 0);
+    const QString upper = QStringLiteral("ABCDEF0123456789").repeated(4); // 64 hexadecimal characters
+    const QString lower = upper.toLower();
+
+    // Typed in upper case: stored in lower case, found in any case.
+    QVERIFY2(db.addAccountHash(checking, QStringLiteral(" ") + upper + QStringLiteral(" "), QStringLiteral("manual")) >= 0,
+             qPrintable(db.lastError()));
+    QCOMPARE(db.loadAccounts().first().hashes.first().hash, lower);
+    QVERIFY(db.accountHasHash(checking, lower));
+    QVERIFY(db.accountHasHash(checking, upper));
+    QCOMPARE(db.accountOfHash(upper), checking);
+
+    // Not a fingerprint, the same hash again, the hash of another account.
+    for (const QString& wrong : {QStringLiteral("ABCDEF0123"), upper + QStringLiteral("0"),
+                                 QStringLiteral("g").repeated(64)}) {
+        QCOMPARE(db.addAccountHash(savings, wrong, QStringLiteral("manual")), -1);
+        QCOMPARE(db.lastError(), QStringLiteral("An account hash has 64 hexadecimal characters (0-9, a-f)."));
+    }
+    QCOMPARE(db.addAccountHash(checking, lower, QStringLiteral("manual")), -1);
+    QCOMPARE(db.lastError(), QStringLiteral("The account already has this hash."));
+    QCOMPARE(db.addAccountHash(savings, lower, QStringLiteral("manual")), -1);
+    QCOMPARE(db.lastError(), QStringLiteral("Another account has this hash."));
+
+    // A link (the import picked Savings) moves the hash: one row, on Savings.
+    QVERIFY2(db.linkAccountHash(savings, upper, QStringLiteral("auto")), qPrintable(db.lastError()));
+    QCOMPARE(db.accountOfHash(lower), savings);
+    QVERIFY(!db.accountHasHash(checking, lower));
+    QVERIFY(db.linkAccountHash(savings, lower, QStringLiteral("auto"))); // already there: nothing changes
+    QSqlQuery query(db.sqlDatabase());
+    QVERIFY(query.exec(QStringLiteral("SELECT COUNT(*), MIN(source) FROM account_hashes;")) && query.next());
+    QCOMPARE(query.value(0).toInt(), 1);
+    QCOMPARE(query.value(1).toString(), QStringLiteral("auto"));
+    query.finish();
+
+    // The controller says which account has the hash, and a link names the
+    // account that loses it.
+    AccountController controller;
+    const int checkingIndex = indexOfName(controller.accounts(), QStringLiteral("Checking"));
+    const int savingsIndex = indexOfName(controller.accounts(), QStringLiteral("Savings"));
+    QVERIFY(checkingIndex >= 0 && savingsIndex >= 0);
+    QVERIFY(!controller.addHash(checkingIndex, upper));
+    QVERIFY2(controller.statusText().contains(QStringLiteral("\"Savings\" has this hash")),
+             qPrintable(controller.statusText()));
+    QVERIFY(!controller.addHash(checkingIndex, QStringLiteral("not a hash")));
+    QVERIFY2(controller.statusText().contains(QStringLiteral("64 hexadecimal characters")),
+             qPrintable(controller.statusText()));
+    QVERIFY(controller.linkAccountHash(checkingIndex, upper));
+    QVERIFY2(controller.statusText().contains(QStringLiteral("no longer on \"Savings\"")),
+             qPrintable(controller.statusText()));
+    QVERIFY(controller.accountHasHash(checkingIndex, lower));
+    QVERIFY(!controller.accountHasHash(savingsIndex, lower));
+    QVERIFY(!controller.linkAccountHash(checkingIndex, lower)); // already linked
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)

@@ -2,6 +2,7 @@
 #include "SqlPrepare.h"
 #include "SqlText.h"
 #include "models/Account.h"
+#include "utils/Money.h"
 
 #include <QDate>
 #include <QSqlDatabase>
@@ -72,7 +73,7 @@ int AccountBalanceCheckpointsTable::insert(int accountId, const QDate& date, dou
     }
     query.addBindValue(accountId);
     query.addBindValue(dateToDb(date));          // required: NULL for an invalid date fails
-    query.addBindValue(balance);
+    query.addBindValue(Money::roundToCents(balance)); // to the cent (#33)
     query.addBindValue(Sql::text(note));         // optional (DEFAULT ''), see SqlText.h
 
     if (!query.exec()) {

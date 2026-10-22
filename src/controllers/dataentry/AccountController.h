@@ -36,9 +36,10 @@
 //     Savings, Investments, Urgent savings, …) are BOTH DB-managed lists now
 //     (account_types / account_categories) — `category` also carries a
 //     `color` (used for badges), `type` doesn't.
-//   - No iban/bic/account-number fields are stored on an account — removed
-//     for security reasons (product decision). Matching a statement import
-//     to an account is purely via the account_hashes table.
+//   - No iban/bic/account-number fields are stored on an account — the app
+//     does not keep them (product decision). Matching a statement import
+//     to an account is purely via the account_hashes table (a fingerprint,
+//     not a security feature: see utils/AccountHashing.h).
 //
 // Hashes: an account can carry multiple stored fingerprints (see
 // AccountHashesTable). Since accounts no longer store their own iban/bic,
@@ -83,7 +84,7 @@ public:
     // Account CRUD (index into the current accounts() list). Each writes
     // through Database::instance() first; the in-memory list (and
     // accountsChanged()) only updates if that write succeeded. No
-    // iban/bic/number params — deliberately not stored (security decision).
+    // iban/bic/number params — deliberately not stored (product decision).
     // NOLINTBEGIN(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
     // positionally from AccountsManagePage.qml in this exact order; wrapping
     // params in a struct would require rewriting the QML call sites too.
@@ -110,14 +111,19 @@ public:
     Q_INVOKABLE void renameAccountType(int index, const QString& newName);
     Q_INVOKABLE void removeAccountType(int index);
 
-    // Hash management (index into accounts()). addHash() is for a
-    // user-typed hash (source "manual"); linkAccountHash() is for a hash
-    // computed from a statement's IBAN/BIC during import review (source
-    // "auto") — see ImportSnapshotPage.qml's "Link this account" action.
-    // Both no-op (return false) if the hash is empty or already stored for
-    // this account.
+    // Hash management (index into accounts()). A hash belongs to one account
+    // (#47). addHash() is for a user-typed hash (source "manual"): it must be
+    // 64 hexadecimal characters, and another account must not have it (the
+    // status tells which one). linkAccountHash() is for a hash computed from
+    // a statement's IBAN/BIC during import review (source "auto") — see
+    // ImportSnapshotPage.qml's "Link this account" action: it moves the hash
+    // when another account has it. Both return false (with a status) when
+    // nothing changed, and false with no status when the account already
+    // has the hash (linkAccountHash()).
     Q_INVOKABLE bool addHash(int accountIndex, const QString& hash);
-    Q_INVOKABLE bool linkAccountHash(int accountIndex, const QString& hash);
+    // `legacyHash`: the fingerprint of the statement from before #50
+    // (statementInfo().legacyHashRaw of the import): replaced too.
+    Q_INVOKABLE bool linkAccountHash(int accountIndex, const QString& hash, const QString& legacyHash = QString());
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
     // positionally from AccountsManagePage.qml as (accountIndex, hashIndex).
     Q_INVOKABLE void removeHash(int accountIndex, int hashIndex);
@@ -246,10 +252,8 @@ private:
     // has no record of its defaults — not after a reset (#37). The
     // constructor then loads them.
     void seedDefaults();
-    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — private helper,
-    // both call sites (addHash/linkAccountHash below) pass a literal source
-    // ("manual"/"auto"), not a variable that could be swapped with hash.
-    bool addHashInternal(int accountIndex, const QString& hash, const QString& source);
+    // The name of the account `accountId`, for a status text.
+    [[nodiscard]] QString nameOfAccount(int accountId) const;
 
     QVector<Data::Account>         m_accounts;
     QVector<Data::AccountCategory> m_accountCategories;

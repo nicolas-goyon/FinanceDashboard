@@ -15,7 +15,7 @@
 // AccountHashesTable, same composition pattern as
 // Database::loadCategories()/loadSnapshot().
 //
-// Deliberately does NOT store iban/bic/account-number (security decision —
+// Deliberately does NOT store iban/bic/account-number (product decision —
 // see ARCHITECTURE.MD § Account Management; these were MOCK fields used only
 // to demo hash derivation, removed once that became a real, sensitive
 // concern). Matching a statement to an account is purely via the

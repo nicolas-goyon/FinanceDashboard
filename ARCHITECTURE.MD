@@ -27,6 +27,15 @@ logic; the `.qml` file only renders what the controller hands it. See `docs/back
 full pattern and `docs/build-and-tooling.md` for the checklist to follow when adding a new
 page.
 
+Long work runs in a worker thread, not on the GUI thread: the category prediction of an import
+(`SnapshotImportController`, `QtConcurrent::run`, #52). The `Database` connection works only in
+the thread that made it (the GUI thread), so the controller reads the database first and gives
+copies to the worker. The result comes back on the GUI thread through a `QFutureWatcher`. A new
+job cancels the older one (`QPromise::isCanceled()`, checked after the training and between two
+rows), so quick clicks do not queue jobs. Before the rows get the result, the controller emits
+`predictionsAboutToBeApplied()`: the page gives the text of a NAME field that has the focus to
+`setRowName()` first, because the new rows replace the field.
+
 ## Data rule
 
 Writes that belong together go in one SQL transaction, in one `Database` method. Example:
@@ -72,6 +81,35 @@ any change. The base tables and every step run in one SQL transaction, so the fi
 upgraded or unchanged. A database that does not open (it cannot be read, a newer version saved
 it, or the upgrade failed) closes the connection and stops the app at start-up, with the cause
 (a fatal step in `StartupChecks`).
+
+An amount is a `double` in the models and a `REAL` in SQLite, in the unit of its account
+(`src/utils/Money.h`, #33). The table classes round each amount to the cent before they write it,
+and `Database` refuses an amount that is not a number or is larger than `Money::kMaxAmount`
+(10^13). A sum or a comparison that must be exact (the reconciliation of an import, a running
+balance, a total) adds whole cents (`Money::toCents()`, a `qint64`), not doubles: in a double,
+0.10 + 0.20 is not 0.30.
+
+An account hash (`account_hashes`, `AccountHashing::compute()`: an HMAC-SHA256 of the IBAN of a
+statement, keyed by its BIC) links the statements of a bank account to an account of the app,
+and the import suggests that account. The app does not keep the IBAN or the BIC. The hash is not
+a security feature: the BIC is public, and a person who has the database can find an IBAN by
+brute force (`src/utils/AccountHashing.h` gives the limit). The BIC is used on 11 characters
+(`PSSTFRPP` is `PSSTFRPPXXX`, #50); the import also tries the hash of an 8-character BIC from
+before #50, and the save (or "Link this account") replaces it, also on another account (the
+review screen tells it). A hash belongs to one account, in lower case (#47): a
+save to another account moves it there (`Database::linkAccountHash()`), and a typed hash must be
+64 hexadecimal characters that no other account has.
+
+The pattern of a category rule (`category_rules`) is a merchant key of
+`Predict::LabelNormalizer::normalize()`, not a raw label. So a change of the keys (a new noise
+word, another rule for the tokens) needs a schema step that normalizes the stored patterns again,
+as step 6 does (#40, #55): a rule with only generic words goes; rules that get one key merge when
+they give one category, and go when they give different categories (one rule cannot give two).
+The upgrade message gives the counts and the log names each rule. Such a step calls the normalizer
+of the build that runs it, and it needs `normalize()` of a key to give the same key
+(`tools/predictor_selftest.cpp` checks it). A key has no direction words ("TRANSFER TO",
+"RECEIVED FROM"), and a rule does not look at the sign of a row: a rule covers the debits and the
+credits of a name (maintainer decision of 2026-10-22, `TODO.md`).
 
 A transaction's `fingerprint` is its identity in the bank's statement
 (`TransactionsTable::fingerprints()`): the bank's reference and the amount when the row has a

@@ -3,6 +3,7 @@
 #include "import/ImportTemplateRegistry.h"
 #include "utils/Formatter.h"
 #include "utils/AccountHashing.h"
+#include "utils/Money.h"
 #include "db/Database.h"
 #include "db/tables/TransactionsTable.h"
 #include "models/Account.h"
@@ -16,28 +17,33 @@
 
 #include <algorithm>
 #include <cmath>
+#include <functional>
 #include <optional>
+#include <utility>
 #include <QDate>
 #include <QFileInfo>
+#include <QFuture>
+#include <QFutureWatcher>
+#include <QPromise>
+#include <QtConcurrentRun>
+#include <QtLogging>
 #include <QHash>
 #include <QLatin1String>
 #include <QMap>
 #include <QObject>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QUrl>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QVector>
 #include <Qt>
+#include <QtTypes>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
 
 namespace {
 constexpr int kStatusClearDelayMs = 4000; // how long a status message stays visible
-// Amounts within this many euros/dollars of each other count as "reconciled"
-// — guards against float rounding noise, not a real tolerance for genuine
-// discrepancies (bank statements are exact to the cent).
-constexpr double kReconciliationEpsilon = 0.01;
 // Percent scale for the predictor's evaluation numbers (evaluatePredictor()).
 constexpr double kPercentScale = 100.0;
 
@@ -74,6 +80,8 @@ SnapshotImportController::SnapshotImportController(QObject* parent)
     : QObject(parent)
     , m_status(this, kStatusClearDelayMs, [this]() { emit statusChanged(); })
 {
+    connect(&m_predictionWatcher, &QFutureWatcher<PredictionJob>::finished, this,
+            &SnapshotImportController::predictionsReady);
     for (const ImportTemplate* tpl : ImportTemplateRegistry::all()) {
         m_templates.append(QVariantMap{
             { "id",          tpl->id() },
@@ -81,6 +89,15 @@ SnapshotImportController::SnapshotImportController(QObject* parent)
             { "fileFilter",  tpl->fileFilter() },
         });
     }
+}
+
+SnapshotImportController::~SnapshotImportController()
+{
+    // The job copies its data, so it can end after this object. Cancelled,
+    // it stops after its training or after its current row: at the exit of
+    // the app, the global thread pool waits for that much, not for all the
+    // rows.
+    m_predictionWatcher.future().cancel();
 }
 
 QVariantMap SnapshotImportController::statementInfo() const
@@ -100,6 +117,9 @@ QVariantMap SnapshotImportController::statementInfo() const
         // ImportSnapshotPage.qml's "Link this account" button actually
         // passes to AccountController.linkAccountHash().
         { "accountHashRaw",     hash },
+        // The fingerprint from before #50 (an 8-character BIC), or empty:
+        // "Link this account" replaces it too.
+        { "legacyHashRaw",      AccountHashing::legacyCompute(m_statement.iban, m_statement.bic) },
         { "periodFromText",     Fmt::dateOrDash(m_statement.periodFrom) },
         { "periodToText",       Fmt::dateOrDash(m_statement.periodTo) },
         // A balance line that could not be read has no date (#44): "—", not 0.
@@ -240,6 +260,8 @@ int SnapshotImportController::warningCount() const
 
 void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& templateId)
 {
+    dropPredictions(); // a job for the earlier statement counts for nothing now
+    m_predictor.clear();
     m_statement = Data::ImportedStatement{};
     m_log.clear();
     m_userEditedRows.clear(); // fresh statement — nobody has decided anything yet
@@ -265,13 +287,11 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
         m_hasParsed = success;
         m_lastParseFailed = !success;
         if (success) {
-            // Pre-fill categories before the user ever sees the table. Rows
-            // the predictor isn't confident enough about are left blank on
+            // Pre-fill categories, in the worker thread (#52): the rows show
+            // now, and their suggestions come when the job is done. Rows the
+            // predictor isn't confident enough about are left blank on
             // purpose — see Predict::kMinConfidenceToSuggest.
-            retrainPredictor();
-            for (int row = 0; row < static_cast<int>(m_statement.transactions.size()); ++row) {
-                applyPrediction(row);
-            }
+            startPredictions();
         }
     }
 
@@ -372,23 +392,31 @@ int SnapshotImportController::matchAccountIndex(const QVariantList& accounts) co
     // Sole match path: compare the statement's fingerprint against each
     // candidate account's *stored* hashes list (account_hashes table, via
     // AccountController — see § Account Management). Never raw IBAN/BIC/
-    // account-number comparisons — accounts don't even store those anymore
-    // (removed for security, see § Account Management), so an account only
+    // account-number comparisons — accounts don't store those (the app
+    // keeps the fingerprint only, see AccountHashing.h), so an account only
     // ever matches if it has actually been linked (see
     // AccountController::linkAccountHash()/addHash()). No hash on the
     // statement, or no account with a matching stored hash → -1, caller
     // shows the manual picker.
-    const QString targetHash = AccountHashing::compute(m_statement.iban, m_statement.bic);
-    if (targetHash.isEmpty()) {
+    // The fingerprint first, then its form from before #50 (an
+    // 8-character BIC, #50): save() replaces that one.
+    QStringList candidates = {AccountHashing::compute(m_statement.iban, m_statement.bic)};
+    const QString legacy = AccountHashing::legacyCompute(m_statement.iban, m_statement.bic);
+    if (!legacy.isEmpty()) {
+        candidates.append(legacy);
+    }
+    if (candidates.first().isEmpty()) {
         return -1;
     }
 
-    for (int i = 0; i < accounts.size(); ++i) {
-        const QVariantMap acc = accounts.at(i).toMap();
-        const QVariantList hashes = acc.value("hashes").toList();
-        for (const QVariant& hashEntry : hashes) {
-            if (hashEntry.toMap().value("hash").toString().compare(targetHash, Qt::CaseInsensitive) == 0) {
-                return i;
+    for (const QString& targetHash : candidates) {
+        for (int i = 0; i < accounts.size(); ++i) {
+            const QVariantMap acc = accounts.at(i).toMap();
+            const QVariantList hashes = acc.value("hashes").toList();
+            for (const QVariant& hashEntry : hashes) {
+                if (hashEntry.toMap().value("hash").toString().compare(targetHash, Qt::CaseInsensitive) == 0) {
+                    return i;
+                }
             }
         }
     }
@@ -396,8 +424,26 @@ int SnapshotImportController::matchAccountIndex(const QVariantList& accounts) co
     return -1;
 }
 
+int SnapshotImportController::legacyHashAccountIndex(const QVariantList& accounts) const
+{
+    const QString legacy = AccountHashing::legacyCompute(m_statement.iban, m_statement.bic);
+    if (legacy.isEmpty()) {
+        return -1;
+    }
+    for (int i = 0; i < accounts.size(); ++i) {
+        const QVariantList hashes = accounts.at(i).toMap().value(QStringLiteral("hashes")).toList();
+        for (const QVariant& hashEntry : hashes) {
+            if (hashEntry.toMap().value(QStringLiteral("hash")).toString().compare(legacy, Qt::CaseInsensitive) == 0) {
+                return i;
+            }
+        }
+    }
+    return -1;
+}
+
 void SnapshotImportController::reset()
 {
+    dropPredictions();
     m_statement = Data::ImportedStatement{};
     m_log.clear();
     m_hasParsed = false;
@@ -431,6 +477,16 @@ void SnapshotImportController::retrainPredictor()
 
 void SnapshotImportController::applyPrediction(int row)
 {
+    if (row < 0 || row >= m_statement.transactions.size() || m_userEditedRows.contains(row)) {
+        return;
+    }
+    const Data::ImportedTransaction& transaction = m_statement.transactions.at(row);
+    setPrediction(row, m_predictor.predict(transaction.name, transaction.description, signedAmountOf(transaction),
+                                           effectiveDateOf(transaction)));
+}
+
+void SnapshotImportController::setPrediction(int row, const Predict::Prediction& prediction)
+{
     if (row < 0 || row >= m_statement.transactions.size()) {
         return;
     }
@@ -441,9 +497,6 @@ void SnapshotImportController::applyPrediction(int row)
     // row bounds-checked above; QList's at() is const-only, so mutating
     // through operator[] is genuinely required here.
     Data::ImportedTransaction& transaction = m_statement.transactions[row]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-
-    const Predict::Prediction prediction = m_predictor.predict(
-        transaction.name, transaction.description, signedAmountOf(transaction), effectiveDateOf(transaction));
 
     // An empty prediction clears the row rather than leaving the previous
     // suggestion in place: after a NAME edit the old suggestion was about a
@@ -456,11 +509,115 @@ void SnapshotImportController::applyPrediction(int row)
 
 void SnapshotImportController::refreshPredictions()
 {
-    retrainPredictor();
-    for (int row = 0; row < static_cast<int>(m_statement.transactions.size()); ++row) {
-        applyPrediction(row);
+    startPredictions();
+}
+
+void SnapshotImportController::startPredictions()
+{
+    // An older job stops at its next check: five quick "+" clicks give one
+    // job of work, not five in a row.
+    m_predictionWatcher.future().cancel();
+
+    // The database is read here, on the GUI thread: a Qt SQL connection works
+    // only in the thread that made it. The worker gets copies (Qt containers
+    // share their data, so a copy costs nothing until one side writes).
+    const QVector<Data::Transaction> categorized = Database::instance().allCategorizedTransactions();
+    const QVector<Data::CategoryRule> rules = Database::instance().loadCategoryRules();
+    QVector<RowInput> inputs;
+    inputs.reserve(m_statement.transactions.size());
+    for (const Data::ImportedTransaction& transaction : m_statement.transactions) {
+        inputs.append(RowInput{transaction.name, transaction.description, signedAmountOf(transaction),
+                               effectiveDateOf(transaction)});
     }
+
+    const int generation = ++m_predictionGeneration;
+    setPredicting(true);
+    // The job reads only its copies: no pointer to this controller, which the
+    // page can destroy while the job runs (its result then goes nowhere). A
+    // cancelled job stops after the training or after a row, with no result.
+    m_predictionWatcher.setFuture(QtConcurrent::run(
+        [generation, categorized, rules, inputs](QPromise<PredictionJob>& promise) {
+            std::optional<PredictionJob> job = runPredictionJob(generation, categorized, rules, inputs,
+                                                                [&promise]() { return promise.isCanceled(); });
+            if (job) {
+                promise.addResult(std::move(*job));
+            }
+        }));
+}
+
+std::optional<SnapshotImportController::PredictionJob> SnapshotImportController::runPredictionJob(
+    int generation, const QVector<Data::Transaction>& categorized, const QVector<Data::CategoryRule>& rules,
+    const QVector<RowInput>& inputs, const std::function<bool()>& isCanceled)
+{
+    PredictionJob job;
+    job.generation = generation;
+    job.predictor.train(Predict::CategoryPredictor::examplesFromTransactions(categorized), rules);
+    if (isCanceled()) {
+        return std::nullopt;
+    }
+    job.predictions.reserve(inputs.size());
+    for (const RowInput& input : inputs) {
+        job.predictions.append(job.predictor.predict(input.name, input.description, input.signedAmount, input.date));
+        if (isCanceled()) {
+            return std::nullopt;
+        }
+    }
+    job.inputs = inputs;
+    return job;
+}
+
+void SnapshotImportController::predictionsReady()
+{
+    const QFuture<PredictionJob> future = m_predictionWatcher.future();
+    if (future.isCanceled() || future.resultCount() == 0) {
+        // Cancelled: the statement changed (`predicting` is already false).
+        // An exception in the job cancels it too: then the rows keep no
+        // suggestion, and Save works again.
+        if (m_predicting) {
+            qWarning() << "[SnapshotImportController] the job of the category suggestions stopped with no result";
+        }
+        setPredicting(false);
+        return;
+    }
+    const PredictionJob job = future.result();
+    if (job.generation != m_predictionGeneration) {
+        return; // a newer job runs, or the statement changed: this result counts for nothing
+    }
+    m_predictor = job.predictor;
+    // The page gives the text of a NAME field that has the focus to
+    // setRowName() now (it is scored with m_predictor): the rows are rebuilt
+    // below.
+    emit predictionsAboutToBeApplied();
+    if (job.generation != m_predictionGeneration) {
+        return; // a handler started another job
+    }
+    for (int row = 0; row < static_cast<int>(m_statement.transactions.size()); ++row) {
+        const Data::ImportedTransaction& transaction = m_statement.transactions.at(row);
+        if (row < job.inputs.size() && transaction.name == job.inputs.at(row).name
+            && transaction.description == job.inputs.at(row).description) {
+            setPrediction(row, job.predictions.at(row));
+        } else {
+            // Renamed (or added) during the job: score its label of now.
+            applyPrediction(row);
+        }
+    }
+    setPredicting(false);
     emit statementChanged();
+}
+
+void SnapshotImportController::dropPredictions()
+{
+    m_predictionWatcher.future().cancel();
+    ++m_predictionGeneration;
+    setPredicting(false);
+}
+
+void SnapshotImportController::setPredicting(bool predicting)
+{
+    if (m_predicting != predicting) {
+        m_predicting = predicting;
+        emit predictingChanged();
+    }
 }
 
 bool SnapshotImportController::rememberRowAsRule(int row)
@@ -551,6 +708,13 @@ bool SnapshotImportController::save(int accountId, const QString& accountLabel)
         setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  Please select an account before saving"));
         return false;
     }
+    // The rows get their suggestions in the worker thread (#52): a save now
+    // would write them without.
+    if (m_predicting) {
+        setStatus(StatusMessage::Level::Warning,
+                  QStringLiteral("⚠  The category suggestions are not ready yet: save again in a moment"));
+        return false;
+    }
 
     // Snapshot the reconciliation result *before* writing anything — the
     // report should show what was actually checked at save time, not a
@@ -630,9 +794,12 @@ bool SnapshotImportController::save(int accountId, const QString& accountLabel)
     }
 
     const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
+    // The fingerprint from before #50 (an 8-character BIC): replaced by
+    // `hash` (#50).
+    const QString legacyHash = AccountHashing::legacyCompute(m_statement.iban, m_statement.bic);
     int inserted = 0;
     if (!Database::instance().saveImport(accountId, newRows, hash, statementCheckpointsToAdd(accountId),
-                                         &inserted)) {
+                                         &inserted, legacyHash)) {
         setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the import. Nothing was saved — see application log"));
         return false;
     }
@@ -719,26 +886,28 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
     result["startSourceDateText"] = Fmt::dateOrDash(startSourceDate);
     result["startDeclaredText"]   = hasDeclaredStart ? Fmt::money(m_statement.balanceStart) : QStringLiteral("—");
     result["startExpectedText"]   = hasStartReference ? Fmt::money(expectedStart) : QStringLiteral("—");
-    const double startDiff = m_statement.balanceStart - expectedStart;
-    result["startOk"]       = !hasStartReference || std::abs(startDiff) < kReconciliationEpsilon;
-    result["startDiffText"] = hasStartReference ? Fmt::money(startDiff, true) : QStringLiteral("—");
+    // Whole cents (#33): a statement is exact to the cent, and a difference of
+    // doubles is not (0.30 - 0.10 - 0.20 is not 0).
+    const qint64 startDiffCents = Money::toCents(m_statement.balanceStart) - Money::toCents(expectedStart);
+    result["startOk"]       = !hasStartReference || startDiffCents == 0;
+    result["startDiffText"] = hasStartReference ? Fmt::money(Money::fromCents(startDiffCents), true) : QStringLiteral("—");
 
     // ── Check 2: declared start + kept (included) rows vs. declared end ────
-    double sumIncluded = 0.0;
+    qint64 sumIncludedCents = 0;
     for (const Data::ImportedTransaction& transaction : m_statement.transactions) {
         if (transaction.included) {
-            sumIncluded += (transaction.credit - transaction.debit);
+            sumIncludedCents += Money::toCents(transaction.credit) - Money::toCents(transaction.debit);
         }
     }
-    const double computedEnd = m_statement.balanceStart + sumIncluded;
-    const double endDiff = endAvailable ? m_statement.balanceEnd - computedEnd : 0.0;
+    const qint64 computedEndCents = Money::toCents(m_statement.balanceStart) + sumIncludedCents;
+    const qint64 endDiffCents = endAvailable ? Money::toCents(m_statement.balanceEnd) - computedEndCents : 0;
 
-    result["endComputedText"] = endAvailable ? Fmt::money(computedEnd) : QStringLiteral("—");
+    result["endComputedText"] = endAvailable ? Fmt::money(Money::fromCents(computedEndCents)) : QStringLiteral("—");
     result["endDeclaredText"] = hasDeclaredEnd ? Fmt::money(m_statement.balanceEnd) : QStringLiteral("—");
-    result["endDiffText"]     = endAvailable ? Fmt::money(endDiff, true) : QStringLiteral("—");
-    result["endDiffRaw"]      = endDiff;
+    result["endDiffText"]     = endAvailable ? Fmt::money(Money::fromCents(endDiffCents), true) : QStringLiteral("—");
+    result["endDiffCents"]    = endDiffCents; // for addReconciliationAdjustment()
     // Not checked is not a mismatch: no adjustment, no warning before the save.
-    result["endOk"]           = !endAvailable || std::abs(endDiff) < kReconciliationEpsilon;
+    result["endOk"]           = !endAvailable || endDiffCents == 0;
 
     // ── Rows of this statement that the account already has (#18) ─────────
     // save() skips them; the review screen can tell the user before saving.
@@ -783,7 +952,8 @@ void SnapshotImportController::addReconciliationAdjustment(int accountId)
         return; // nothing parsed, or already reconciled — nothing to add
     }
 
-    const double diff = check.value(QStringLiteral("endDiffRaw")).toDouble(); // declared end - computed end
+    // Declared end - computed end, in whole cents: the row has the exact gap.
+    const double diff = Money::fromCents(check.value(QStringLiteral("endDiffCents")).toLongLong());
     static const QString kAdjustmentCategory = QStringLiteral("Reconciliation Adjustment");
     ensureCategoryExists(kAdjustmentCategory);
 
@@ -863,19 +1033,20 @@ QVector<Data::AccountBalanceCheckpoint> SnapshotImportController::statementCheck
 void SnapshotImportController::buildImportReport(const QString& accountLabel, const QVector<Data::Transaction>& saved,
                                                    const QVariantMap& reconciliation)
 {
-    double totalIncome = 0.0;
-    double totalExpense = 0.0;
+    // Totals in whole cents (#33), given to QML in the unit of the account.
+    qint64 totalIncomeCents = 0;
+    qint64 totalExpenseCents = 0;
     // Category -> net total (credit - debit); Category -> Subcategory -> net total.
-    QMap<QString, double> categoryTotals;
-    QMap<QString, QMap<QString, double>> subcategoryTotals;
+    QMap<QString, qint64> categoryTotals;
+    QMap<QString, QMap<QString, qint64>> subcategoryTotals;
 
     for (const Data::Transaction& transaction : saved) {
-        totalIncome  += transaction.credit;
-        totalExpense += transaction.debit;
+        totalIncomeCents  += Money::toCents(transaction.credit);
+        totalExpenseCents += Money::toCents(transaction.debit);
 
         const QString category    = transaction.category.isEmpty() ? QStringLiteral("Uncategorized") : transaction.category;
         const QString subcategory = transaction.subcategory.isEmpty() ? QStringLiteral("—") : transaction.subcategory;
-        const double net = transaction.credit - transaction.debit;
+        const qint64 net = Money::toCents(transaction.credit) - Money::toCents(transaction.debit);
 
         categoryTotals[category] += net;
         subcategoryTotals[category][subcategory] += net;
@@ -884,28 +1055,32 @@ void SnapshotImportController::buildImportReport(const QString& accountLabel, co
     QVariantList byCategory;
     for (auto categoryIt = categoryTotals.constBegin(); categoryIt != categoryTotals.constEnd(); ++categoryIt) {
         QVariantList subcategories;
-        const QMap<QString, double> subMap = subcategoryTotals.value(categoryIt.key());
+        const QMap<QString, qint64> subMap = subcategoryTotals.value(categoryIt.key());
         for (auto subIt = subMap.constBegin(); subIt != subMap.constEnd(); ++subIt) {
+            const double total = Money::fromCents(subIt.value());
             subcategories.append(QVariantMap{
                 { "subcategory", subIt.key() },
-                { "totalText",   Fmt::money(subIt.value(), true) },
-                { "totalRaw",    subIt.value() },
+                { "totalText",   Fmt::money(total, true) },
+                { "totalRaw",    total },
             });
         }
+        const double total = Money::fromCents(categoryIt.value());
         byCategory.append(QVariantMap{
             { "category",      categoryIt.key() },
-            { "totalText",     Fmt::money(categoryIt.value(), true) },
-            { "totalRaw",      categoryIt.value() },
+            { "totalText",     Fmt::money(total, true) },
+            { "totalRaw",      total },
             { "subcategories", subcategories },
         });
     }
+    const double totalIncome = Money::fromCents(totalIncomeCents);
+    const double totalExpense = Money::fromCents(totalExpenseCents);
 
     m_lastImportReport = QVariantMap{
         { "accountLabel",      accountLabel },
         { "transactionCount",  saved.size() },
         { "totalIncomeText",   Fmt::money(totalIncome, true) },
         { "totalExpenseText",  Fmt::money(-totalExpense, true) },
-        { "netChangeText",     Fmt::money(totalIncome - totalExpense, true) },
+        { "netChangeText",     Fmt::money(Money::fromCents(totalIncomeCents - totalExpenseCents), true) },
         { "byCategory",        byCategory },
         { "reconciliation",    reconciliation },
     };

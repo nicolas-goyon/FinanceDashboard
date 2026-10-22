@@ -4,23 +4,31 @@
 #include "models/Category.h"
 #include "models/CategoryRule.h"
 #include "models/Transaction.h"
+#include "predict/LabelNormalizer.h"
+#include "utils/AccountHashing.h"
+#include "utils/Money.h"
 
 #include <QDate>
 #include <QDateTime>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QHash>
+#include <QLatin1Char>
 #include <QLatin1String>
+#include <QSet>
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QString>
 #include <QVector>
 #include <QDebug>
 #include <QtLogging>
+#include <QtTypes>
 #include <algorithm>
 #include <array>
 #include <functional>
 #include <optional>
+#include <utility>
 
 namespace {
 
@@ -275,6 +283,42 @@ bool Database::openFile(const QString& path)
                                    .arg(stats.reusedReferences)
                                    .arg(QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
         }
+        if (stats.roundedRows > 0) {
+            m_upgradeReport += QStringLiteral("\n\n%1 row(s) had an amount with more than two decimals. The "
+                                              "amounts are now rounded to the cent; the copy from before the "
+                                              "upgrade keeps the old values.")
+                                   .arg(stats.roundedRows);
+        }
+        if (stats.removedGenericRules > 0) {
+            m_upgradeReport += QStringLiteral("\n\n%1 category rule(s) were removed: their label had only "
+                                              "generic words (such as \"CARD PAYMENT\"), so they also matched "
+                                              "other merchants. Teach them again from an import; the "
+                                              "application log lists them.")
+                                   .arg(stats.removedGenericRules);
+        }
+        if (stats.rewrittenRules > 0 || stats.mergedRules > 0) {
+            m_upgradeReport += QStringLiteral("\n\nThe labels of the category rules follow the new rules for "
+                                              "merchant names: %1 rule(s) were rewritten, and %2 merged with a "
+                                              "newer rule for the same merchant and the same category.")
+                                   .arg(stats.rewrittenRules)
+                                   .arg(stats.mergedRules);
+        }
+        if (stats.conflictingRules > 0) {
+            m_upgradeReport += QStringLiteral("\n\n%1 category rule(s) were removed: with the new rules for "
+                                              "merchant names, two or more rules with different categories "
+                                              "have one label (such as \"TRANSFER TO JOHN DOE\" and \"RECEIVED "
+                                              "FROM JOHN DOE\": both are \"JOHN DOE\" now). One rule cannot "
+                                              "give two categories. Teach the correct rule again from an "
+                                              "import; the application log lists them.")
+                                   .arg(stats.conflictingRules);
+        }
+        if (stats.removedHashLinks > 0) {
+            m_upgradeReport += QStringLiteral("\n\n%1 link(s) of an account hash to another account were "
+                                              "removed. A hash now belongs to one account only: its most "
+                                              "recent link stays. The application log lists the accounts; "
+                                              "check their hashes in Account Management.")
+                                   .arg(stats.removedHashLinks);
+        }
         qInfo().noquote() << "[Database]" << m_upgradeReport;
     }
     return true;
@@ -434,12 +478,18 @@ bool Database::upgrade(int from, UpgradeStats& stats)
     m_lastError.clear();
     for (int step = from + 1; step <= kSchemaVersion; ++step) {
         bool ok = false;
+        // The case labels are schema versions, not magic numbers.
+        // NOLINTBEGIN(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         switch (step) {
         case 1: ok = migrateTo1(stats); break;
         case 2: ok = migrateTo2(stats); break;
         case 3: ok = migrateTo3(); break;
+        case 4: ok = migrateTo4(stats); break;
+        case 5: ok = migrateTo5(stats); break;
+        case 6: ok = migrateTo6(stats); break;
         default: m_lastError = QStringLiteral("there is no migration step %1.").arg(step); break;
         }
+        // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
         if (!ok) {
             m_lastError = QStringLiteral("step %1 failed: %2").arg(step).arg(m_lastError);
             return false;
@@ -634,6 +684,295 @@ bool Database::migrateTo3()
     return true;
 }
 
+// Version 4 — every stored amount is rounded to the cent (#33). Since this
+// version, the app rounds each amount before it writes it (utils/Money.h).
+// Before, an amount typed in a dialog (12.344) or a reconciliation adjustment
+// (a difference of two doubles: 0.00999999999999995) could keep more
+// decimals. The rounding keeps the cents that the fingerprints use, so the
+// fingerprints and their UNIQUE index do not change. A new or reset database
+// has no rows: nothing changes. Not asset_entries: no part of the app writes
+// it.
+bool Database::migrateTo4(UpgradeStats& stats)
+{
+    return roundAmountsToCents(QStringLiteral("transactions"),
+                               {QStringLiteral("debit"), QStringLiteral("credit"), QStringLiteral("balance_after")},
+                               stats.roundedRows)
+           && roundAmountsToCents(QStringLiteral("account_balance_checkpoints"), {QStringLiteral("balance")},
+                                  stats.roundedRows);
+}
+
+bool Database::roundAmountsToCents(const QString& table, const QStringList& columns, int& changedRows)
+{
+    // Read every row first, then write the changed ones: no UPDATE while the
+    // SELECT is still open.
+    struct Change {
+        qint64 id = 0;
+        QVector<double> values;
+    };
+    QVector<Change> changes;
+    QSqlQuery select(m_db);
+    if (!select.exec(QStringLiteral("SELECT id, %1 FROM %2;").arg(columns.join(QStringLiteral(", ")), table))) {
+        m_lastError = sqlText(select.lastError());
+        return false;
+    }
+    while (select.next()) {
+        Change change;
+        change.id = select.value(0).toLongLong();
+        bool changed = false;
+        for (qsizetype column = 0; column < columns.size(); ++column) {
+            const double stored = select.value(static_cast<int>(column) + 1).toDouble();
+            const double rounded = Money::roundToCents(stored);
+            // An exact comparison on purpose: any other value is rewritten.
+            changed = changed || rounded != stored;
+            change.values.append(rounded);
+        }
+        if (changed) {
+            changes.append(change);
+        }
+    }
+    select.finish();
+    if (changes.isEmpty()) {
+        return true;
+    }
+
+    QStringList assignments;
+    for (const QString& column : columns) {
+        assignments.append(column + QStringLiteral(" = ?"));
+    }
+    QSqlQuery update(m_db);
+    if (!update.prepare(QStringLiteral("UPDATE %1 SET %2 WHERE id = ?;")
+                            .arg(table, assignments.join(QStringLiteral(", "))))) {
+        m_lastError = sqlText(update.lastError());
+        return false;
+    }
+    for (const Change& change : changes) {
+        for (const double value : change.values) {
+            update.addBindValue(value);
+        }
+        update.addBindValue(change.id);
+        if (!update.exec()) {
+            m_lastError = sqlText(update.lastError());
+            return false;
+        }
+    }
+    update.finish();
+    changedRows += static_cast<int>(changes.size());
+    return true;
+}
+
+// Version 5 — an account hash belongs to one account, in lower case (#47).
+// SQLite compares text with its case, but the import compared the hashes
+// without it: a hash typed in upper case was not found, and Save added a
+// second link. And several accounts could have one hash: the import always
+// suggested the first one, also after the user picked another one. For each
+// hash (in lower case), this step keeps its most recent link (the highest
+// id: the last link that a save or the user made) and removes the others,
+// then writes the hashes in lower case. The index on `hash` becomes UNIQUE,
+// with the name of createTable(), so that createTable() does not create the
+// old index again. The UNIQUE(account_id, hash) of the table stays: SQLite
+// cannot drop it without a rebuild, and the new index includes it.
+bool Database::migrateTo5(UpgradeStats& stats)
+{
+    // The stored form of AccountHashing::storedForm(): no white space around
+    // it, in lower case. SQLite trim() removes spaces only, unless it gets
+    // the characters to remove.
+    const QString stored = QStringLiteral("lower(trim(hash, ' ' || char(9, 10, 11, 12, 13)))");
+
+    // Count and log the links to other accounts that go: only the
+    // fingerprints (a typed value that is not one never matched), with the
+    // names of the accounts and without the hashes.
+    QHash<int, QString> names;
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("SELECT id, name FROM accounts;"))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    while (query.next()) {
+        names.insert(query.value(0).toInt(), query.value(1).toString());
+    }
+    if (!query.exec(QStringLiteral("SELECT account_id, %1 FROM account_hashes ORDER BY id;").arg(stored))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    QHash<QString, int> keptAccount; // hash -> the account of its most recent link
+    QVector<std::pair<QString, int>> links; // (hash, account), in id order
+    while (query.next()) {
+        const int account = query.value(0).toInt();
+        const QString hash = query.value(1).toString();
+        keptAccount.insert(hash, account); // ORDER BY id: the last one stays
+        links.append({hash, account});
+    }
+    query.finish();
+    QSet<QString> removed; // "hash/account": an account can have a hash in two cases
+    for (const auto& [hash, account] : links) {
+        const int kept = keptAccount.value(hash);
+        const QString link = hash + QLatin1Char('/') + QString::number(account);
+        if (account == kept || !AccountHashing::isFingerprint(hash) || removed.contains(link)) {
+            continue;
+        }
+        removed.insert(link);
+        qInfo().noquote() << "[Database] migration step 5: the account" << names.value(account)
+                          << "loses an account hash that the account" << names.value(kept) << "keeps";
+    }
+    stats.removedHashLinks = static_cast<int>(removed.size());
+
+    const std::array<QString, 4> statements = {
+        QStringLiteral("DELETE FROM account_hashes WHERE id NOT IN"
+                       " (SELECT MAX(id) FROM account_hashes GROUP BY %1);").arg(stored),
+        QStringLiteral("UPDATE account_hashes SET hash = %1 WHERE hash <> %1;").arg(stored),
+        QStringLiteral("DROP INDEX IF EXISTS idx_account_hashes_hash;"),
+        QStringLiteral("CREATE UNIQUE INDEX idx_account_hashes_hash ON account_hashes(hash);"),
+    };
+    for (const QString& statement : statements) {
+        if (!query.exec(statement)) {
+            m_lastError = sqlText(query.lastError());
+            return false;
+        }
+    }
+    return true;
+}
+
+namespace {
+
+// A stored category rule, for step 6.
+struct StoredRule {
+    qint64  id = 0;
+    QString pattern;
+    QString category;
+    QString subcategory;
+    QString normalized; // normalize() of the pattern
+};
+
+// For the log of step 6: "TRANSFER TO JOHN DOE" (Housing / Rent).
+QString describeRule(const StoredRule& rule)
+{
+    const QString target = rule.subcategory.isEmpty()
+                               ? rule.category
+                               : rule.category + QStringLiteral(" / ") + rule.subcategory;
+    return QStringLiteral("\"%1\" (%2)").arg(rule.pattern, target);
+}
+
+// The writes of step 6: the rules in `removed` go, the rules in `rewritten`
+// get their normalized pattern. On a failure, `error` is the SQLite error.
+bool writeRuleChanges(QSqlQuery& query, const QVector<qint64>& removed, const QVector<const StoredRule*>& rewritten,
+                      QString& error)
+{
+    if (!query.prepare(QStringLiteral("DELETE FROM category_rules WHERE id = ?;"))) {
+        error = sqlText(query.lastError());
+        return false;
+    }
+    for (const qint64 ruleId : removed) {
+        query.addBindValue(ruleId);
+        if (!query.exec()) {
+            error = sqlText(query.lastError());
+            return false;
+        }
+    }
+    // Two passes, so that the UNIQUE pattern never sees two rules with one
+    // value: first a value that no key can be (U+001F, the unit separator,
+    // and the id), then the new pattern.
+    constexpr char16_t kUnitSeparator = 0x1F;
+    if (!query.prepare(QStringLiteral("UPDATE category_rules SET pattern = ? WHERE id = ?;"))) {
+        error = sqlText(query.lastError());
+        return false;
+    }
+    for (const bool lastPass : {false, true}) {
+        for (const StoredRule* rule : rewritten) {
+            query.addBindValue(lastPass ? rule->normalized : QChar(kUnitSeparator) + QString::number(rule->id));
+            query.addBindValue(rule->id);
+            if (!query.exec()) {
+                error = sqlText(query.lastError());
+                return false;
+            }
+        }
+    }
+    query.finish();
+    return true;
+}
+
+} // namespace
+
+// Version 6 — the patterns of the category rules are normalized again (#40,
+// #55). A pattern is a key of Predict::LabelNormalizer::normalize(), and the
+// keys of this version are different: short names keep their own key
+// ("H&M", "AS24"), ligatures are folded, month names, masked card numbers and
+// the English boilerplate go, and a label with only boilerplate has no key.
+// normalize() of a key gives the key, so the step normalizes each pattern
+// again:
+//   - an empty result: the pattern had only generic words ("CARD PAYMENT",
+//     which caught every short merchant), and the rule goes;
+//   - two or more patterns with one result and one category: the most
+//     recent rule (the highest id) stays, as for the ties of the predictor
+//     (#51), with its subcategory;
+//   - two or more patterns with one result and different categories
+//     ("TRANSFER TO JOHN DOE" for the rent paid, "RECEIVED FROM JOHN DOE"
+//     for a refund: both are "JOHN DOE" now): the rules go. One rule cannot
+//     give two categories, and the most recent rule would give its category
+//     to the rows of the other one, with full confidence;
+//   - another result: the pattern is rewritten.
+// The application log lists each change. The step calls the normalizer of
+// the build that runs it, so the patterns are the keys of that build: a rule
+// that the user teaches after the upgrade gets the same pattern. A later
+// change of the keys needs a new step that does this again, for the files
+// that are already at version 6 (see LabelNormalizer.h).
+bool Database::migrateTo6(UpgradeStats& stats)
+{
+    QVector<StoredRule> rules;
+    QHash<QString, QVector<int>> groups; // normalized pattern -> indexes in `rules`, in id order
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("SELECT id, pattern, category, subcategory FROM category_rules ORDER BY id;"))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    while (query.next()) {
+        StoredRule rule;
+        rule.id = query.value(0).toLongLong();
+        rule.pattern = query.value(1).toString();
+        rule.category = query.value(2).toString();
+        rule.subcategory = query.value(3).toString();
+        rule.normalized = Predict::LabelNormalizer::normalize(rule.pattern).key;
+        if (!rule.normalized.isEmpty()) {
+            groups[rule.normalized].append(static_cast<int>(rules.size()));
+        }
+        rules.append(rule);
+    }
+    query.finish();
+
+    QVector<qint64> removed;
+    QVector<const StoredRule*> rewritten;
+    for (const StoredRule& rule : rules) {
+        if (rule.normalized.isEmpty()) {
+            removed.append(rule.id);
+            ++stats.removedGenericRules;
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.pattern
+                              << "is removed: it has only generic words";
+            continue;
+        }
+        const QVector<int>& group = *groups.constFind(rule.normalized); // each rule with a key is in its group
+        const bool oneCategory = std::all_of(group.cbegin(), group.cend(), [&rules, &rule](int index) {
+            return rules.at(index).category == rule.category;
+        });
+        const StoredRule& newest = rules.at(group.constLast());
+        if (!oneCategory) {
+            removed.append(rule.id);
+            ++stats.conflictingRules;
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << describeRule(rule)
+                              << "is removed: a rule with another category also becomes" << rule.normalized;
+        } else if (newest.id != rule.id) {
+            removed.append(rule.id);
+            ++stats.mergedRules;
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << describeRule(rule)
+                              << "is merged with the newer rule" << describeRule(newest) << "for" << rule.normalized;
+        } else if (rule.normalized != rule.pattern) {
+            rewritten.append(&rule);
+            ++stats.rewrittenRules;
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.pattern
+                              << "becomes" << rule.normalized;
+        }
+    }
+    return writeRuleChanges(query, removed, rewritten, m_lastError);
+}
+
 bool    Database::isOpen()     const { return m_db.isOpen(); }
 QString Database::lastError()  const { return m_lastError; }
 
@@ -723,6 +1062,23 @@ namespace {
 bool hasText(const QString& value)
 {
     return !value.trimmed().isEmpty();
+}
+
+// A hash that the user typed must be a fingerprint as the app computes it:
+// only such a value can match a statement (#47).
+constexpr const char* kNotAFingerprint = "An account hash has 64 hexadecimal characters (0-9, a-f).";
+
+// An amount must be a number, not larger than Money::kMaxAmount (#33): the
+// app rounds amounts to the cent before it writes them. Refused before any
+// write, as an empty name.
+constexpr const char* kInvalidAmount = "An amount is not a number, or it is too large.";
+
+bool hasValidAmounts(const QVector<Data::Transaction>& txs)
+{
+    return std::all_of(txs.cbegin(), txs.cend(), [](const Data::Transaction& transaction) {
+        return Money::isValid(transaction.debit) && Money::isValid(transaction.credit)
+               && Money::isValid(transaction.balanceAfter);
+    });
 }
 } // namespace
 
@@ -868,7 +1224,77 @@ int Database::addAccountHash(int accountId, const QString& hash, const QString& 
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
     if (!hasText(hash)) { m_lastError = QStringLiteral("The account hash is empty."); return -1; }
     if (!hasText(source)) { m_lastError = QStringLiteral("The source of the account hash is empty."); return -1; }
-    return m_accountHashesTable.insert(accountId, hash, source);
+    const QString stored = AccountHashing::storedForm(hash);
+    if (!AccountHashing::isFingerprint(stored)) { m_lastError = QString::fromLatin1(kNotAFingerprint); return -1; }
+    // One account for each hash (#47): a typed hash does not move a link.
+    const int owner = m_accountHashesTable.accountOf(stored);
+    if (owner == accountId) { m_lastError = QStringLiteral("The account already has this hash."); return -1; }
+    if (owner >= 0) { m_lastError = QStringLiteral("Another account has this hash."); return -1; }
+    const int hashId = m_accountHashesTable.insert(accountId, stored, source);
+    if (hashId < 0) {
+        m_lastError = QStringLiteral("Could not add the account hash.");
+    }
+    return hashId;
+}
+
+bool Database::linkAccountHash(int accountId, const QString& hash, const QString& source, const QString& legacyHash)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    if (!hasText(source)) { m_lastError = QStringLiteral("The source of the account hash is empty."); return false; }
+    if (legacyHash.isEmpty()) {
+        return linkHashTo(accountId, hash, source);
+    }
+    return inTransaction(QStringLiteral("linkAccountHash"), [&]() {
+        return removeLegacyHash(accountId, legacyHash) && linkHashTo(accountId, hash, source);
+    });
+}
+
+bool Database::removeLegacyHash(int accountId, const QString& legacyHash)
+{
+    const int owner = m_accountHashesTable.accountOf(legacyHash);
+    if (owner < 0) {
+        return true; // no account has it
+    }
+    if (!m_accountHashesTable.removeHash(legacyHash)) {
+        m_lastError = QStringLiteral("Could not replace the old account fingerprint.");
+        return false;
+    }
+    if (owner != accountId) {
+        qInfo().noquote() << "[Database] the old account fingerprint (from before #50) moves from the account"
+                          << accountName(owner) << "to the account" << accountName(accountId);
+    }
+    return true;
+}
+
+// The two strings are a hash and a literal source ("auto"/"manual"), as in
+// AccountHashesTable::insert(): not easily swapped.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+bool Database::linkHashTo(int accountId, const QString& hash, const QString& source)
+{
+    const QString stored = AccountHashing::storedForm(hash);
+    if (!AccountHashing::isFingerprint(stored)) {
+        m_lastError = QString::fromLatin1(kNotAFingerprint);
+        return false;
+    }
+    const int owner = m_accountHashesTable.accountOf(stored);
+    if (owner == accountId) {
+        return true; // already linked
+    }
+    if (owner >= 0) {
+        // The user picked another account for this statement: the hash moves.
+        if (!m_accountHashesTable.moveToAccount(stored, accountId, source)) {
+            m_lastError = QStringLiteral("Could not move the account fingerprint to this account.");
+            return false;
+        }
+        qInfo().noquote() << "[Database] the account fingerprint moves from the account" << accountName(owner)
+                          << "to the account" << accountName(accountId);
+        return true;
+    }
+    if (m_accountHashesTable.insert(accountId, stored, source) < 0) {
+        m_lastError = QStringLiteral("Could not link the account fingerprint.");
+        return false;
+    }
+    return true;
 }
 
 bool Database::removeAccountHash(int hashId)
@@ -881,6 +1307,22 @@ bool Database::accountHasHash(int accountId, const QString& hash) const
 {
     if (!isOpen()) { return false; }
     return m_accountHashesTable.existsForAccount(accountId, hash);
+}
+
+QString Database::accountName(int accountId) const
+{
+    QSqlQuery query(m_db);
+    if (!query.prepare(QStringLiteral("SELECT name FROM accounts WHERE id = ?;"))) {
+        return QString::number(accountId);
+    }
+    query.addBindValue(accountId);
+    return query.exec() && query.next() ? query.value(0).toString() : QString::number(accountId);
+}
+
+int Database::accountOfHash(const QString& hash) const
+{
+    if (!isOpen()) { return -1; }
+    return m_accountHashesTable.accountOf(hash);
 }
 
 // ── Account categories ────────────────────────────────────────────────────────
@@ -997,13 +1439,23 @@ bool Database::removeAccountType(int typeId)
 bool Database::insertTransactions(int accountId, const QVector<Data::Transaction>& txs)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    if (!hasValidAmounts(txs)) { m_lastError = QString::fromLatin1(kInvalidAmount); return false; }
     return m_transactionsTable.insertBatch(accountId, txs);
 }
 
 bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, const QString& accountHash,
-                          const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted)
+                          const QVector<Data::AccountBalanceCheckpoint>& checkpoints, int* inserted,
+                          const QString& legacyHash)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    const bool validCheckpoints =
+        std::all_of(checkpoints.cbegin(), checkpoints.cend(),
+                    [](const Data::AccountBalanceCheckpoint& checkpoint) { return Money::isValid(checkpoint.balance); });
+    if (!hasValidAmounts(txs) || !validCheckpoints) {
+        m_lastError = QString::fromLatin1(kInvalidAmount);
+        qWarning() << "[Database] saveImport:" << m_lastError << "— nothing saved";
+        return false;
+    }
 
     if (!m_db.transaction()) {
         m_lastError = QStringLiteral("Cannot start a transaction: %1").arg(m_db.lastError().text());
@@ -1020,9 +1472,15 @@ bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, 
     if (!m_transactionsTable.insertBatch(accountId, txs, inserted)) {
         return fail(QStringLiteral("Could not save the transactions."));
     }
-    if (!accountHash.isEmpty() && !m_accountHashesTable.existsForAccount(accountId, accountHash) &&
-        m_accountHashesTable.insert(accountId, accountHash, QStringLiteral("auto")) < 0) {
-        return fail(QStringLiteral("Could not link the account fingerprint."));
+    // The fingerprint from before #50 goes, whichever account had it
+    // (#50); the fingerprint is added, or moved from another account (#47).
+    if (!accountHash.isEmpty() && !legacyHash.isEmpty() && !removeLegacyHash(accountId, legacyHash)) {
+        const QString detail = m_lastError;
+        return fail(detail);
+    }
+    if (!accountHash.isEmpty() && !linkHashTo(accountId, accountHash, QStringLiteral("auto"))) {
+        const QString detail = m_lastError;
+        return fail(detail);
     }
     for (const Data::AccountBalanceCheckpoint& checkpoint : checkpoints) {
         if (m_balanceCheckpointsTable.insert(accountId, checkpoint.date, checkpoint.balance, checkpoint.note) < 0) {
@@ -1056,6 +1514,10 @@ int Database::transactionCountForAccount(int accountId) const
 bool Database::updateTransaction(const Data::Transaction& tx)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    if (!Money::isValid(tx.debit) || !Money::isValid(tx.credit)) {
+        m_lastError = QString::fromLatin1(kInvalidAmount);
+        return false;
+    }
     return m_transactionsTable.updateById(tx);
 }
 
@@ -1135,6 +1597,7 @@ int Database::addBalanceCheckpoint(int accountId, const QDate& date, double bala
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
     if (!date.isValid()) { m_lastError = QStringLiteral("The date of the checkpoint is not valid."); return -1; }
+    if (!Money::isValid(balance)) { m_lastError = QString::fromLatin1(kInvalidAmount); return -1; }
     return m_balanceCheckpointsTable.insert(accountId, date, balance, note);
 }
 

@@ -2,6 +2,7 @@
 #include "SqlPrepare.h"
 #include "SqlText.h"
 #include "models/Transaction.h"
+#include "utils/Money.h"
 
 #include <QCryptographicHash>
 #include <QHash>
@@ -241,9 +242,10 @@ bool TransactionsTable::insertBatch(int accountId, const QVector<Data::Transacti
         query.addBindValue(dateToDb(transaction.operationDate));
         query.addBindValue(Sql::text(transaction.name));
         query.addBindValue(Sql::text(transaction.description));
-        query.addBindValue(transaction.debit);
-        query.addBindValue(transaction.credit);
-        query.addBindValue(transaction.balanceAfter);
+        // Rounded to the cent (#33): the fingerprint uses the same cents.
+        query.addBindValue(Money::roundToCents(transaction.debit));
+        query.addBindValue(Money::roundToCents(transaction.credit));
+        query.addBindValue(Money::roundToCents(transaction.balanceAfter));
         query.addBindValue(Sql::text(transaction.category));
         query.addBindValue(Sql::text(transaction.subcategory));
         query.addBindValue(Sql::text(transaction.sourceTemplate));
@@ -378,8 +380,8 @@ bool TransactionsTable::updateById(const Data::Transaction& tx)
     query.addBindValue(dateToDb(tx.operationDate));
     query.addBindValue(Sql::text(tx.name));
     query.addBindValue(Sql::text(tx.description));
-    query.addBindValue(tx.debit);
-    query.addBindValue(tx.credit);
+    query.addBindValue(Money::roundToCents(tx.debit)); // #33
+    query.addBindValue(Money::roundToCents(tx.credit));
     query.addBindValue(Sql::text(tx.category));
     query.addBindValue(Sql::text(tx.subcategory));
     query.addBindValue(tx.id);
