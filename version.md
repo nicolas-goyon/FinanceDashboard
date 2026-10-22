@@ -208,6 +208,12 @@ builds, source archives). Then CI opens a pull request that merges the release b
   statements of one account, and the suggestion) and its limit: it is not a security feature.
   The comments and the Accounts page no longer call the decision not to keep account numbers a
   "security decision" (#50).
+- Category prediction: the same data gives the same suggestion in every run. Before, a tie (as
+  many "Transport" as "Leisure" rows for "SNCF CONNECT", two known labels equally close, equal
+  neighbours) went to the label that the hash order of the run gave first, so the suggestion
+  could change at each start. Now a tie goes to the label of the most recent row, in every rung
+  of the predictor, and two rules of the same rank that both match give the category of the
+  rule made last (#51).
 
 ---
 

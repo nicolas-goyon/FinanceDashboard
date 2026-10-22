@@ -15,6 +15,7 @@
 #include <QString>
 #include <QStringList>
 #include <QVector>
+#include <QtTypes>
 
 namespace {
 
@@ -66,20 +67,65 @@ QString labelText(const QString& category, const QString& subcategory)
     return category + QStringLiteral(" / ") + subcategory;
 }
 
-// Highest-count entry, ties broken lexicographically so the same input always
-// produces the same suggestion (a predictor that flip-flops between two
-// equally-supported answers is worse than one that is consistently wrong).
-template <typename ValueType>
-QString bestEntry(const QHash<QString, ValueType>& counts, ValueType& bestValue)
+// ── Ties (#51) ────────────────────────────────────────────────────────────────
+// The same data must give the same suggestion in every run. A QHash has
+// another iteration order in each run (its seed is random), so:
+//   - a sum of doubles adds its terms in a fixed order (sortedKeys()): the
+//     order of the terms changes the last bits of the result;
+//   - scores are compared at a resolution of 1e-9 (rankOf()), so two scores
+//     that differ only in their last bits are a tie;
+//   - a tie goes to the label of the most recent example (maintainer
+//     decision of 2026-10-21: the latest habit of the user). train() puts
+//     the examples in date order, so a higher index is a more recent example.
+
+constexpr double kTieResolution = 1e9;
+
+qint64 rankOf(double score)
+{
+    return std::llround(score * kTieResolution);
+}
+
+// The keys of `features`, sorted: a sum over them is the same in every run.
+QStringList sortedKeys(const QHash<QString, double>& features)
+{
+    QStringList keys = features.keys();
+    keys.sort();
+    return keys;
+}
+
+// The votes for one label: their weight (a count, or a sum of similarities),
+// and the index of the most recent example among them.
+struct Tally {
+    double weight = 0.0;
+    int    latest = -1;
+};
+
+// The weight and the example index: each call names them (`similarity`,
+// `index`), so a swap is not a realistic mistake.
+// NOLINTNEXTLINE(bugprone-easily-swappable-parameters)
+void addVote(QHash<QString, Tally>& tallies, const QString& label, double weight, int index)
+{
+    Tally& tally = tallies[label];
+    tally.weight += weight;
+    tally.latest = std::max(tally.latest, index);
+}
+
+// The label with the highest weight; at equal weights (rankOf()), the label
+// of the most recent example. Two labels never share an example, so the
+// choice does not depend on the order of the QHash.
+QString bestLabel(const QHash<QString, Tally>& tallies, double& bestWeight)
 {
     QString bestKey;
-    bestValue = ValueType{};
-    for (auto it = counts.constBegin(); it != counts.constEnd(); ++it) {
-        if (it.value() > bestValue || (it.value() == bestValue && !bestKey.isEmpty() && it.key() < bestKey)) {
+    Tally best;
+    for (auto it = tallies.constBegin(); it != tallies.constEnd(); ++it) {
+        const qint64 rank = rankOf(it.value().weight);
+        const qint64 bestRank = rankOf(best.weight);
+        if (bestKey.isEmpty() || rank > bestRank || (rank == bestRank && it.value().latest > best.latest)) {
             bestKey = it.key();
-            bestValue = it.value();
+            best = it.value();
         }
     }
+    bestWeight = best.weight;
     return bestKey;
 }
 
@@ -141,12 +187,18 @@ void CategoryPredictor::train(const QVector<Example>& examples, const QVector<Da
     }
     // Match order: explicit priority first, then the more specific (longer)
     // pattern, so "CARREFOUR MARKET" is tried before a broader "CARREFOUR".
+    // Two rules equal on both: the rule made last (the higher id) is tried
+    // first, the same "most recent wins" as the ties of the examples (#51).
+    // The pattern order is the last step, for rules without an id.
     std::sort(m_rules.begin(), m_rules.end(), [](const Data::CategoryRule& lhs, const Data::CategoryRule& rhs) {
         if (lhs.priority != rhs.priority) {
             return lhs.priority > rhs.priority;
         }
         if (lhs.pattern.size() != rhs.pattern.size()) {
             return lhs.pattern.size() > rhs.pattern.size();
+        }
+        if (lhs.id != rhs.id) {
+            return lhs.id > rhs.id;
         }
         return lhs.pattern < rhs.pattern;
     });
@@ -160,6 +212,10 @@ void CategoryPredictor::train(const QVector<Example>& examples, const QVector<Da
         }
         m_examples.append(example);
     }
+    // Date order (an invalid date first), and the given order on one date:
+    // the index of an example tells how recent it is, for the ties (#51).
+    std::stable_sort(m_examples.begin(), m_examples.end(),
+                     [](const Example& lhs, const Example& rhs) { return lhs.date < rhs.date; });
 
     const int count = static_cast<int>(m_examples.size());
     m_vectors.resize(count);
@@ -190,11 +246,12 @@ void CategoryPredictor::train(const QVector<Example>& examples, const QVector<Da
     }
 
     // Norms need the finished document frequencies, so this is a second pass.
+    // The terms are added in a fixed order (#51).
     for (int i = 0; i < count; ++i) {
         double sumOfSquares = 0.0;
         const QHash<QString, double>& vector = m_vectors.at(i);
-        for (auto it = vector.constBegin(); it != vector.constEnd(); ++it) {
-            const double weight = it.value() * inverseDocumentFrequency(it.key());
+        for (const QString& feature : sortedKeys(vector)) {
+            const double weight = vector.value(feature) * inverseDocumentFrequency(feature);
             sumOfSquares += weight * weight;
         }
         m_norms[i] = std::sqrt(sumOfSquares);
@@ -305,25 +362,27 @@ CategoryPredictor::LabelChoice CategoryPredictor::chooseLabel(const QVector<int>
 {
     LabelChoice choice;
 
-    QHash<QString, int> pairCounts;
-    QHash<QString, int> categoryCounts;
+    QHash<QString, Tally> pairCounts;
+    QHash<QString, Tally> categoryCounts;
     for (const int index : indices) {
         if (index == excludeIndex) {
             continue;
         }
         const Example& example = m_examples.at(index);
-        ++pairCounts[joinPair(example.category, example.subcategory)];
-        ++categoryCounts[example.category];
+        addVote(pairCounts, joinPair(example.category, example.subcategory), 1.0, index);
+        addVote(categoryCounts, example.category, 1.0, index);
         ++choice.total;
     }
     if (choice.total == 0) {
         return choice;
     }
 
-    int bestPairCount = 0;
-    const QString bestPair = bestEntry(pairCounts, bestPairCount);
-    int bestCategoryCount = 0;
-    const QString bestCategory = bestEntry(categoryCounts, bestCategoryCount);
+    double pairWeight = 0.0;
+    const QString bestPair = bestLabel(pairCounts, pairWeight);
+    double categoryWeight = 0.0;
+    const QString bestCategory = bestLabel(categoryCounts, categoryWeight);
+    const auto bestPairCount = static_cast<int>(pairWeight);
+    const auto bestCategoryCount = static_cast<int>(categoryWeight);
 
     const auto total = static_cast<double>(choice.total);
     const double pairPurity = static_cast<double>(bestPairCount) / total;
@@ -381,18 +440,33 @@ Prediction CategoryPredictor::matchFuzzyKey(const NormalizedLabel& label, int ex
 {
     QString bestKey;
     double bestSimilarity = 0.0;
+    int bestLatest = -1;
 
     for (auto known = m_keyIndex.constBegin(); known != m_keyIndex.constEnd(); ++known) {
         if (known.key() == label.key) {
             continue; // the exact rung already had its chance at this one
         }
+        // The most recent example of the key (the indices are in increasing
+        // order); a key with only the hidden example has nothing to give.
+        const QVector<int>& indices = known.value();
+        int latest = indices.last();
+        if (latest == excludeIndex) {
+            latest = indices.size() > 1 ? indices.at(indices.size() - 2) : -1;
+        }
+        if (latest < 0) {
+            continue;
+        }
         // The stored key IS its tokens joined by single spaces, so splitting
         // recovers them exactly — no second index needed.
         const double similarity =
             LabelNormalizer::tokenJaccard(label.tokens, known.key().split(QLatin1Char(' '), Qt::SkipEmptyParts));
-        if (similarity > bestSimilarity) {
+        // At equal similarity, the key of the most recent example (#51).
+        const qint64 rank = rankOf(similarity);
+        const qint64 bestRank = rankOf(bestSimilarity);
+        if (rank > bestRank || (rank == bestRank && rank > 0 && latest > bestLatest)) {
             bestSimilarity = similarity;
             bestKey = known.key();
+            bestLatest = latest;
         }
     }
 
@@ -426,12 +500,15 @@ Prediction CategoryPredictor::matchNeighbours(const NormalizedLabel& label, int 
     }
 
     // ── Query vector ──────────────────────────────────────────────────────
+    // The features in a fixed order, so that each sum below is the same in
+    // every run (#51).
     const QHash<QString, double> features = featuresFor(label);
+    const QStringList featureOrder = sortedKeys(features);
     QHash<QString, double> queryWeights;
     double querySumOfSquares = 0.0;
-    for (auto it = features.constBegin(); it != features.constEnd(); ++it) {
-        const double weight = it.value() * inverseDocumentFrequency(it.key());
-        queryWeights.insert(it.key(), weight);
+    for (const QString& feature : featureOrder) {
+        const double weight = features.value(feature) * inverseDocumentFrequency(feature);
+        queryWeights.insert(feature, weight);
         querySumOfSquares += weight * weight;
     }
     const double queryNorm = std::sqrt(querySumOfSquares);
@@ -441,17 +518,18 @@ Prediction CategoryPredictor::matchNeighbours(const NormalizedLabel& label, int 
 
     // ── Accumulate dot products, visiting only examples that share a feature ──
     QHash<int, double> dotProducts;
-    for (auto it = queryWeights.constBegin(); it != queryWeights.constEnd(); ++it) {
-        const auto postings = m_postings.constFind(it.key());
+    for (const QString& feature : featureOrder) {
+        const auto postings = m_postings.constFind(feature);
         if (postings == m_postings.constEnd()) {
             continue;
         }
-        const double idf = inverseDocumentFrequency(it.key());
+        const double idf = inverseDocumentFrequency(feature);
+        const double queryWeight = queryWeights.value(feature);
         for (const int index : postings.value()) {
             if (index == excludeIndex) {
                 continue;
             }
-            dotProducts[index] += it.value() * m_vectors.at(index).value(it.key()) * idf;
+            dotProducts[index] += queryWeight * m_vectors.at(index).value(feature) * idf;
         }
     }
 
@@ -471,21 +549,25 @@ Prediction CategoryPredictor::matchNeighbours(const NormalizedLabel& label, int 
         return {};
     }
 
+    // The closest first; at equal similarity (rankOf()), the most recent
+    // example first (#51). A total order: the k kept are the same in every run.
     const auto keep = std::min(static_cast<std::size_t>(kNeighbourCount), neighbours.size());
     std::partial_sort(neighbours.begin(), neighbours.begin() + static_cast<std::ptrdiff_t>(keep), neighbours.end(),
                        [](const std::pair<double, int>& lhs, const std::pair<double, int>& rhs) {
-                           return lhs.first > rhs.first;
+                           const qint64 lhsRank = rankOf(lhs.first);
+                           const qint64 rhsRank = rankOf(rhs.first);
+                           return lhsRank != rhsRank ? lhsRank > rhsRank : lhs.second > rhs.second;
                        });
     neighbours.resize(keep);
 
     // ── Vote, weighted by similarity ──────────────────────────────────────
-    QHash<QString, double> pairScores;
-    QHash<QString, double> categoryScores;
+    QHash<QString, Tally> pairScores;
+    QHash<QString, Tally> categoryScores;
     double totalScore = 0.0;
     for (const auto& [similarity, index] : neighbours) {
         const Example& example = m_examples.at(index);
-        pairScores[joinPair(example.category, example.subcategory)] += similarity;
-        categoryScores[example.category] += similarity;
+        addVote(pairScores, joinPair(example.category, example.subcategory), similarity, index);
+        addVote(categoryScores, example.category, similarity, index);
         totalScore += similarity;
     }
     if (totalScore <= 0.0) {
@@ -493,9 +575,9 @@ Prediction CategoryPredictor::matchNeighbours(const NormalizedLabel& label, int 
     }
 
     double bestPairScore = 0.0;
-    const QString bestPair = bestEntry(pairScores, bestPairScore);
+    const QString bestPair = bestLabel(pairScores, bestPairScore);
     double bestCategoryScore = 0.0;
-    const QString bestCategory = bestEntry(categoryScores, bestCategoryScore);
+    const QString bestCategory = bestLabel(categoryScores, bestCategoryScore);
 
     const double pairShare = bestPairScore / totalScore;
     const double categoryShare = bestCategoryScore / totalScore;

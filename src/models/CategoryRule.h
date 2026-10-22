@@ -29,7 +29,7 @@ struct CategoryRule {
     QString pattern;      // normalized merchant key, e.g. "CARREFOUR MARKET"
     QString category;
     QString subcategory;  // may be empty — "category only" is a valid rule
-    int     priority = 0; // higher wins; ties broken by longer pattern first
+    int     priority = 0; // higher wins; ties: the longer pattern, then the higher id (#51)
 };
 
 } // namespace Data

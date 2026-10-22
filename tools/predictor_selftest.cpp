@@ -1,25 +1,16 @@
 // Standalone sanity harness for Predict::LabelNormalizer / CategoryPredictor.
-// Not part of the app build (see CMakeLists.txt — src/predict/ is compiled
-// into FinanceDashboard, this file is not). Build and run it by hand when
-// touching the predictor:
-//
-//   g++ -std=c++17 -fPIC -I src -I <qt6-include-dirs>
-//       tools/predictor_selftest.cpp src/predict/LabelNormalizer.cpp
-//       src/predict/CategoryPredictor.cpp -lQt6Core -o /tmp/selftest
-//   /tmp/selftest
-//
-// (one command — split across lines here without a trailing backslash, which
-// would open a multi-line comment and trip -Wcomment)
+// Not part of the app build (src/predict/ is compiled into FinanceDashboard,
+// this file is not). CTest runs it as the test `predictor_selftest`
+// (tests/CMakeLists.txt, with -DFD_BUILD_TESTS=ON), and so does the CI.
 //
 // Prints one line per check and exits non-zero if any failed. Deliberately
-// dependency-free (no Qt Test) so it runs anywhere Qt6Core is available —
-// see TODO.md's "no tests" item for the proper Qt Test suite this stands in
-// for.
+// dependency-free (no Qt Test) so it runs anywhere Qt6Core is available.
 
 #include "predict/CategoryPredictor.h"
 #include "predict/LabelNormalizer.h"
 
 #include <QDate>
+#include <QHashFunctions>
 #include <QString>
 #include <QVector>
 
@@ -220,6 +211,115 @@ void testAdjustments()
            QStringLiteral("inconsistent subcategory is left blank rather than guessed"));
 }
 
+// True when `runs` predictors, each trained with a new random seed for its
+// QHash members, all suggest `expected` from `rung` for `name` (#51). `seen`
+// gets the first other answer.
+bool alwaysSuggests(const QVector<Predict::Example>& examples, const QString& name, const QString& expected,
+                    const QString& rung, QString& seen)
+{
+    constexpr int kRuns = 25;
+    for (int run = 0; run < kRuns; ++run) {
+        QHashSeed::resetRandomGlobalSeed();
+        Predict::CategoryPredictor predictor;
+        predictor.train(examples, {});
+        const Predict::Prediction prediction = predictor.predict(name, {}, -20.0, QDate(2026, 9, 1));
+        if (prediction.category != expected || prediction.rung != rung) {
+            seen = prediction.category + QStringLiteral(" (") + prediction.rung + QStringLiteral(")");
+            return false;
+        }
+    }
+    seen = expected + QStringLiteral(" (") + rung + QStringLiteral(")");
+    return true;
+}
+
+void testTies()
+{
+    std::printf("\n── Ties: the most recent example wins, in every run (#51) ──\n");
+    QString seen;
+    bool ok = false;
+
+    // ── exact rung: as many Transport as Leisure for one key ──────────────
+    // The input order is not the date order: train() sorts by date.
+    QVector<Predict::Example> exact;
+    for (int month = 1; month <= 3; ++month) {
+        exact << makeExample(QStringLiteral("CARTE SNCF CONNECT"), QStringLiteral("Leisure"), QStringLiteral("Trips"),
+                             -20.0, QDate(2026, month, 10));
+        exact << makeExample(QStringLiteral("CARTE SNCF CONNECT"), QStringLiteral("Transport"), QStringLiteral("Train"),
+                             -20.0, QDate(2026, month, 5));
+    }
+    ok = alwaysSuggests(exact, QStringLiteral("CARTE SNCF CONNECT"), QStringLiteral("Leisure"), QStringLiteral("exact"), seen);
+    check(ok, QStringLiteral("exact rung, 3 against 3: the label of the most recent row (%1)").arg(seen));
+    exact.prepend(makeExample(QStringLiteral("CARTE SNCF CONNECT"), QStringLiteral("Transport"), QStringLiteral("Train"),
+                              -20.0, QDate(2026, 4, 5)));
+    exact.append(makeExample(QStringLiteral("CARTE SNCF CONNECT"), QStringLiteral("Leisure"), QStringLiteral("Trips"),
+                             -20.0, QDate(2026, 3, 20)));
+    ok = alwaysSuggests(exact, QStringLiteral("CARTE SNCF CONNECT"), QStringLiteral("Transport"), QStringLiteral("exact"), seen);
+    check(ok, QStringLiteral("exact rung, 4 against 4: the most recent row is now Transport (%1)").arg(seen));
+
+    // ── fuzzy rung: two known keys equally close to the label ─────────────
+    QVector<Predict::Example> fuzzy;
+    fuzzy << makeExample(QStringLiteral("CARTE CARREFOUR CITY"), QStringLiteral("Household"), QString(), -20.0,
+                         QDate(2026, 2, 3));
+    fuzzy << makeExample(QStringLiteral("CARTE CARREFOUR MARKET"), QStringLiteral("Groceries"), QString(), -20.0,
+                         QDate(2026, 1, 3));
+    ok = alwaysSuggests(fuzzy, QStringLiteral("CARTE CARREFOUR MARKET CITY"), QStringLiteral("Household"),
+                         QStringLiteral("fuzzy"), seen);
+    check(ok, QStringLiteral("fuzzy rung, equal similarity: the key of the most recent row (%1)").arg(seen));
+    fuzzy << makeExample(QStringLiteral("CARTE CARREFOUR MARKET"), QStringLiteral("Groceries"), QString(), -20.0,
+                         QDate(2026, 3, 3));
+    ok = alwaysSuggests(fuzzy, QStringLiteral("CARTE CARREFOUR MARKET CITY"), QStringLiteral("Groceries"),
+                         QStringLiteral("fuzzy"), seen);
+    check(ok, QStringLiteral("fuzzy rung: a newer row moves the tie to the other key (%1)").arg(seen));
+
+    // ── similar rung: six equally close neighbours, five are kept ─────────
+    // Each label shares only "SNCF" with the query, so the six are equally
+    // similar; the five most recent vote.
+    const QStringList words = {QStringLiteral("ALPHA"), QStringLiteral("BRAVO"), QStringLiteral("DELTA"),
+                               QStringLiteral("TANGO"), QStringLiteral("OSCAR"), QStringLiteral("HOTEL")};
+    const auto neighbours = [&words](const QString& oldest, const QString& other) {
+        QVector<Predict::Example> examples;
+        for (int month = 1; month <= 6; ++month) {
+            examples << makeExample(QStringLiteral("CARTE SNCF ") + words.at(month - 1),
+                                    (month % 2 == 1) ? oldest : other, QString(), -20.0, QDate(2026, month, 1));
+        }
+        return examples;
+    };
+    // January Transport, then Leisure, Transport, ...: the kept five are
+    // three Leisure and two Transport.
+    ok = alwaysSuggests(neighbours(QStringLiteral("Transport"), QStringLiteral("Leisure")), QStringLiteral("CARTE SNCF"),
+                         QStringLiteral("Leisure"), QStringLiteral("similar"), seen);
+    check(ok, QStringLiteral("similar rung, six equal neighbours: the five most recent vote (%1)").arg(seen));
+    ok = alwaysSuggests(neighbours(QStringLiteral("Leisure"), QStringLiteral("Transport")), QStringLiteral("CARTE SNCF"),
+                         QStringLiteral("Transport"), QStringLiteral("similar"), seen);
+    check(ok, QStringLiteral("similar rung, the other way round (%1)").arg(seen));
+
+    // ── rules: two rules match, same priority and same pattern length ────
+    // The rule made last (the higher id) applies, not the first pattern in
+    // alphabetical order.
+    const auto ruleFor = [](int id, const QString& pattern, const QString& category) {
+        Data::CategoryRule rule;
+        rule.id = id;
+        rule.pattern = pattern;
+        rule.category = category;
+        return rule;
+    };
+    const auto ruleCategory = [](const QVector<Data::CategoryRule>& rules) {
+        Predict::CategoryPredictor predictor;
+        predictor.train({}, rules);
+        return predictor.predict(QStringLiteral("AUCHAN CASINO"), {}, -20.0, QDate(2026, 9, 1)).category;
+    };
+    const Data::CategoryRule auchanFirst = ruleFor(1, QStringLiteral("AUCHAN"), QStringLiteral("Groceries"));
+    const Data::CategoryRule casinoLast = ruleFor(2, QStringLiteral("CASINO"), QStringLiteral("Household"));
+    checkEqual(ruleCategory({auchanFirst, casinoLast}), QStringLiteral("Household"),
+               QStringLiteral("two rules of equal rank match: the rule made last applies"));
+    checkEqual(ruleCategory({casinoLast, auchanFirst}), QStringLiteral("Household"),
+               QStringLiteral("...in every input order"));
+    const Data::CategoryRule casinoFirst = ruleFor(1, QStringLiteral("CASINO"), QStringLiteral("Household"));
+    const Data::CategoryRule auchanLast = ruleFor(2, QStringLiteral("AUCHAN"), QStringLiteral("Groceries"));
+    checkEqual(ruleCategory({casinoFirst, auchanLast}), QStringLiteral("Groceries"),
+               QStringLiteral("...and the other way round"));
+}
+
 void testEvaluation()
 {
     std::printf("\n── Leave-one-out evaluation ────────────────────────────────\n");
@@ -255,6 +355,7 @@ int main()
     testNormalizer();
     testCascade();
     testAdjustments();
+    testTies();
     testEvaluation();
 
     std::printf("\n%s — %d failure(s)\n", gFailures == 0 ? "ALL CHECKS PASSED" : "FAILURES", gFailures);

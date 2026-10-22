@@ -64,6 +64,14 @@
 // review screen, AccountTransactionsPage's edit action) feed straight back in
 // with no extra plumbing, which is what PROJECT.md § Category System asks for.
 //
+// **Ties (#51).** The same data gives the same suggestion in every run: sums
+// of doubles add their terms in a fixed order (a QHash has another order in
+// each run), scores are compared at a resolution of 1e-9, and a tie goes to
+// the label of the most recent example, in every rung (the latest habit of
+// the user, maintainer decision of 2026-10-21). train() puts the examples in
+// date order for that. Two rules of the same priority and pattern length
+// that both match: the rule made last (the higher id) applies.
+//
 // **Nothing here is persisted except the rules.** Prediction and confidence
 // are review-screen-only concepts (see Data::ImportedTransaction::confidence
 // and docs/statement-import.md) — this class never writes to the database.
@@ -81,7 +89,7 @@ struct Example {
     QString     category;
     QString     subcategory; // may be empty
     double      signedAmount = 0.0; // credit positive, debit negative
-    QDate       date;
+    QDate       date;        // train() orders the examples by it: the most recent wins a tie
 };
 
 // What the predictor came back with for one row.
@@ -163,9 +171,11 @@ public:
     CategoryPredictor() = default;
 
     // Rebuild the whole index from scratch. Examples with an empty category
-    // or an empty key are ignored (they carry no signal). Rules are kept in
-    // match order: higher priority first, then longer pattern first, so a
-    // specific rule beats a general one that also matches.
+    // or an empty key are ignored (they carry no signal). The others are put
+    // in date order (an invalid date first, the given order on one date): a
+    // tie goes to the most recent one (#51). Rules are kept in match order:
+    // higher priority first, then longer pattern first, so a specific rule
+    // beats a general one that also matches.
     void train(const QVector<Example>& examples, const QVector<Data::CategoryRule>& rules);
 
     // Drops every example, rule and index. isTrained() is false afterwards.
