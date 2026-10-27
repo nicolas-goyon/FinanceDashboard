@@ -29,7 +29,15 @@ builds, source archives). Then CI opens a pull request that merges the release b
 
 ---
 
-## v0.2.2 (current)
+## v0.2.2 — 2026-10-27 — Import and calculations
+
+Import and calculations release. Amounts are rounded to the cent, and the reconciliation adds
+whole cents. An account hash belongs to one account, and an 8- or 11-character BIC gives one
+hash. The category suggestions are the same in every run, short merchant names keep their own
+key, the stored rules follow the new keys, and the app computes the suggestions in a worker
+thread. Also includes fixes of the statement import, renames that reach every row, a Reset
+Database that stays empty, status colors, and the Test app with its pre-release channels and
+the update from inside the app.
 
 ### Added
 - A Test app, "Finance Dashboard Test" (`cmake -DFD_APP_IDENTITY=test`), for the experimental
