@@ -3,6 +3,8 @@
 
 #include "models/Account.h"
 #include "models/Transaction.h"
+#include "utils/Formatter.h"
+#include "utils/StatusMessage.h"
 
 #include <QObject>
 #include <QString>
@@ -34,9 +36,10 @@
 //     Savings, Investments, Urgent savings, …) are BOTH DB-managed lists now
 //     (account_types / account_categories) — `category` also carries a
 //     `color` (used for badges), `type` doesn't.
-//   - No iban/bic/account-number fields are stored on an account — removed
-//     for security reasons (product decision). Matching a statement import
-//     to an account is purely via the account_hashes table.
+//   - No iban/bic/account-number fields are stored on an account — the app
+//     does not keep them (product decision). Matching a statement import
+//     to an account is purely via the account_hashes table (a fingerprint,
+//     not a security feature: see utils/AccountHashing.h).
 //
 // Hashes: an account can carry multiple stored fingerprints (see
 // AccountHashesTable). Since accounts no longer store their own iban/bic,
@@ -66,6 +69,8 @@ class AccountController : public QObject
     Q_PROPERTY(QVariantList accountCategories READ accountCategories NOTIFY accountCategoriesChanged)
     Q_PROPERTY(QVariantList accountTypes READ accountTypes NOTIFY accountTypesChanged)
     Q_PROPERTY(QString      statusText READ statusText NOTIFY statusChanged)
+    // "success", "warning" or "danger": the StatusBadge variant of statusText (#54).
+    Q_PROPERTY(QString      statusLevel READ statusLevel NOTIFY statusChanged)
 
 public:
     explicit AccountController(QObject* parent = nullptr);
@@ -73,12 +78,13 @@ public:
     [[nodiscard]] QVariantList accounts() const;
     [[nodiscard]] QVariantList accountCategories() const;
     [[nodiscard]] QVariantList accountTypes() const;
-    [[nodiscard]] QString      statusText() const   { return m_statusText; }
+    [[nodiscard]] QString      statusText() const   { return m_status.text(); }
+    [[nodiscard]] QString      statusLevel() const  { return m_status.variant(); }
 
     // Account CRUD (index into the current accounts() list). Each writes
     // through Database::instance() first; the in-memory list (and
     // accountsChanged()) only updates if that write succeeded. No
-    // iban/bic/number params — deliberately not stored (security decision).
+    // iban/bic/number params — deliberately not stored (product decision).
     // NOLINTBEGIN(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
     // positionally from AccountsManagePage.qml in this exact order; wrapping
     // params in a struct would require rewriting the QML call sites too.
@@ -105,14 +111,19 @@ public:
     Q_INVOKABLE void renameAccountType(int index, const QString& newName);
     Q_INVOKABLE void removeAccountType(int index);
 
-    // Hash management (index into accounts()). addHash() is for a
-    // user-typed hash (source "manual"); linkAccountHash() is for a hash
-    // computed from a statement's IBAN/BIC during import review (source
-    // "auto") — see ImportSnapshotPage.qml's "Link this account" action.
-    // Both no-op (return false) if the hash is empty or already stored for
-    // this account.
+    // Hash management (index into accounts()). A hash belongs to one account
+    // (#47). addHash() is for a user-typed hash (source "manual"): it must be
+    // 64 hexadecimal characters, and another account must not have it (the
+    // status tells which one). linkAccountHash() is for a hash computed from
+    // a statement's IBAN/BIC during import review (source "auto") — see
+    // ImportSnapshotPage.qml's "Link this account" action: it moves the hash
+    // when another account has it. Both return false (with a status) when
+    // nothing changed, and false with no status when the account already
+    // has the hash (linkAccountHash()).
     Q_INVOKABLE bool addHash(int accountIndex, const QString& hash);
-    Q_INVOKABLE bool linkAccountHash(int accountIndex, const QString& hash);
+    // `legacyHash`: the fingerprint of the statement from before #50
+    // (statementInfo().legacyHashRaw of the import): replaced too.
+    Q_INVOKABLE bool linkAccountHash(int accountIndex, const QString& hash, const QString& legacyHash = QString());
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
     // positionally from AccountsManagePage.qml as (accountIndex, hashIndex).
     Q_INVOKABLE void removeHash(int accountIndex, int hashIndex);
@@ -161,12 +172,14 @@ public:
     // ── Account History (AccountHistoryPage.qml — read-only, see
     //    ARCHITECTURE.MD § Account History) ─────────────────────────────────
     // Day-by-day running balance, computed by replaying every persisted
-    // transaction with a valid operation date in chronological order (one
-    // point per calendar day that has at least one transaction, cumulative
-    // through that day's last transaction) — the "using each transaction to
-    // compute the balance each day" line chart from the product request.
+    // transaction with a valid booking date (the confirmation date, else the
+    // operation date) in booking order, the order of the bank's own running
+    // balance (#36) — one point per booking day that has at least one
+    // transaction, cumulative through that day's last transaction — the
+    // "using each transaction to compute the balance each day" line chart
+    // from the product request.
     // Seeded from the latest AccountBalanceCheckpoint on or before the
-    // first transaction's date if one exists; otherwise inferred by
+    // first transaction's booking date if one exists; otherwise inferred by
     // subtracting the first transaction's own (credit - debit) from its own
     // declared balanceAfter, so the line starts somewhere plausible instead
     // of at a misleading 0 (product decision — see ARCHITECTURE.MD).
@@ -176,7 +189,10 @@ public:
     // Current balance = the last point of accountBalanceHistory(), or (if
     // there are no dated transactions at all) the latest balance checkpoint
     // on or before today, or empty/zero if neither exists.
-    // { currentBalanceText, currentBalanceRaw, asOfDateText, transactionCount, hasHistory }
+    // { currentBalanceText, currentBalanceRaw, currencySymbol, asOfDateText,
+    //   transactionCount, hasHistory }. The texts of the amounts of an account
+    //   use its currency, and currencySymbol is "€" or "$" for the labels of
+    //   the page (#48).
     Q_INVOKABLE [[nodiscard]] QVariantMap accountBalanceSummary(int accountIndex) const;
 
     // Category/subcategory breakdown for the account's two new "Income by
@@ -223,23 +239,26 @@ signals:
     void statusChanged();
 
 private:
-    void setStatus(const QString& msg);
+    void setStatus(StatusMessage::Level level, const QString& msg);
     void loadFromDb();
-    // Seeds the default account types (CCP, Livret A, LDDS, PEL, Assurance
+    // The currency of the account at `accountIndex` (its `currency` column),
+    // or the app's currency for an index out of the list (#48).
+    [[nodiscard]] Fmt::Currency currencyOf(int accountIndex) const;
+    // Writes the default account types (CCP, Livret A, LDDS, PEL, Assurance
     // Vie, PEA, CTO, Other), the 4 default account categories (Day-to-day,
-    // Savings, Investments, Urgent savings), and 6 demo accounts, the first
-    // time the app runs against an empty DB (or after a reset — see
-    // reload()).
+    // Savings, Investments, Urgent savings) and 6 demo accounts to the DB, all
+    // or nothing, with their record (Database::writeDefaults()). Called from
+    // the constructor only: when the three tables are empty and the database
+    // has no record of its defaults — not after a reset (#37). The
+    // constructor then loads them.
     void seedDefaults();
-    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — private helper,
-    // both call sites (addHash/linkAccountHash below) pass a literal source
-    // ("manual"/"auto"), not a variable that could be swapped with hash.
-    bool addHashInternal(int accountIndex, const QString& hash, const QString& source);
+    // The name of the account `accountId`, for a status text.
+    [[nodiscard]] QString nameOfAccount(int accountId) const;
 
     QVector<Data::Account>         m_accounts;
     QVector<Data::AccountCategory> m_accountCategories;
     QVector<Data::AccountType>     m_accountTypes;
-    QString                        m_statusText;
+    StatusMessage                  m_status;
 };
 
 #endif // FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_ACCOUNTCONTROLLER_H

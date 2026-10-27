@@ -10,7 +10,9 @@
 #   1. apt installs the package and the packages of its Depends line.
 #   2. Each ELF file that the app loads at start-up must find its libraries.
 #      A library that is not bundled and that no Depends package provides
-#      shows as "not found" here: add its package to make-deb.sh.
+#      shows as "not found" here: add its package to make-deb.sh. The TLS
+#      backend of the update check (#117) loads libssl.so.3 at run time: the
+#      Depends must bring it.
 #   3. With Xvfb added, the app must still run after 20 s on the real xcb
 #      platform plugin. Then the package is removed.
 set -euo pipefail
@@ -35,9 +37,19 @@ while IFS= read -r -d '' elf; do
     done < <(ldd "$elf" 2>/dev/null | awk '/not found/ {print $1}')
 done < <(find "$APP/bin" "$APP/lib" "$APP/plugins/platforms" \
               "$APP/plugins/xcbglintegrations" "$APP/plugins/sqldrivers/libqsqlite.so" \
-              "$APP/qml" -type f \( -name '*.so*' -o -name FinanceDashboard \) -print0)
+              "$APP/plugins/tls" "$APP/qml" -type f \( -name '*.so*' -o -name FinanceDashboard \) -print0)
 if [ "$missing" -ne 0 ]; then
     echo "error: add the packages that provide these libraries to Depends in packaging/linux/make-deb.sh" >&2
+    exit 1
+fi
+[ -f "$APP/plugins/tls/libqopensslbackend.so" ] || {
+    echo "error: the package has no TLS backend (plugins/tls/libqopensslbackend.so)" >&2
+    exit 1
+}
+# Read ldconfig first: under pipefail, grep -q in a pipe can stop ldconfig
+# with SIGPIPE and fail the test.
+if ! grep -q 'libssl\.so\.3 ' <<<"$(ldconfig -p)"; then
+    echo "error: libssl.so.3 is not installed: the TLS backend of the update check cannot load it" >&2
     exit 1
 fi
 

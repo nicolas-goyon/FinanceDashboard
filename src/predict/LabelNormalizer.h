@@ -28,8 +28,31 @@
 // (src/utils/AccountHashing.h).
 //
 // Lives under src/predict/ rather than src/utils/ because it is only
-// meaningful as the predictor's front end, and its stop-word list is tuned
-// for French bank statement labels specifically.
+// meaningful as the predictor's front end. Its stop-word list is tuned for
+// bank statement labels: French ones, and the English ones of the Sumeria
+// export (#55).
+//
+// A label with only boilerplate (transport words, references) gets an empty
+// key (#40): no suggestion and no rule, rather than a key that every such
+// label shares. Short names keep their own key: "H&M", "C&A". A short name
+// with a digit ("AS24", "O2") is the name when the label has no other name;
+// next to another name it is taken for a reference, as "T3" and "4972B" are:
+// "AS24 LYON" gives "LYON". A month name is not part of the key ("RENT
+// MARCH" gives "RENT"), except when the label has no other name ("MARS",
+// "APRIL"); next to a day or a year ("05 MARS", "MARS 2026") it is a date.
+// Limit: a label with only boilerplate and a month ("FACTURE MARS") gets
+// the month as its key. Ligatures are folded ("CŒUR" is "COEUR"), and masked
+// card numbers ("XXXXXXXXXXXX4972") and UUIDs are references (#55). A key
+// has no direction words ("TRANSFER TO", "RECEIVED FROM"): a rule covers
+// the debits and the credits of a name (TODO.md).
+//
+// **Rule patterns are keys.** The patterns of the stored category rules
+// (Data::CategoryRule) are keys of normalize(). So a change of the keys (a
+// new noise word, another rule for the tokens) needs a new schema step that
+// normalizes the stored patterns again, as step 6 does
+// (Database::migrateTo6()). Such a step calls normalize() of the build that
+// runs it, and it needs normalize() of a key to give the same key: keep that
+// true.
 
 namespace Predict {
 
@@ -52,8 +75,9 @@ namespace LabelNormalizer {
 // The main entry point. `name` is Data::Transaction::name /
 // Data::ImportedTransaction::name (already reduced by the import template's
 // extractTransactionName()); `description` is only used as a fallback when
-// `name` normalizes to nothing at all, so a row with an unusual label shape
-// still gets *some* key instead of dropping out of the predictor entirely.
+// `name` normalizes to nothing at all, and only its text before the first
+// reference ("Internal ref.: …", with the word before "ref"). A label with no
+// merchant content in either gets an empty key (#40).
 [[nodiscard]] NormalizedLabel normalize(const QString& name, const QString& description = QString());
 
 // Character n-grams of `key` (n = kTrigramSize), with spaces kept so word
@@ -68,8 +92,10 @@ namespace LabelNormalizer {
 [[nodiscard]] double tokenJaccard(const QStringList& lhs, const QStringList& rhs);
 
 // True if `token` is bank-transport boilerplate ("CARTE", "VIR", "SEPA",
-// "PRLV", …) rather than merchant content. Exposed for tests and for the
-// docs' worked examples; normalize() applies it already.
+// "PRLV", "TRANSFER", …) or a month name, rather than merchant content (a
+// month name is a name only when the label has no other one: see
+// normalize()). Exposed for tests and for the docs' worked examples;
+// normalize() applies it already.
 [[nodiscard]] bool isNoiseToken(const QString& token);
 
 // Length of the character n-grams produced by charNgrams().

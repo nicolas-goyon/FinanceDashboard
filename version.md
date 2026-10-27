@@ -20,10 +20,237 @@ fact. Small fixes to a feature that's still unreleased/in-progress in the *same*
 need their own extra line; fold them into the feature's own entry instead of listing "fixed a
 bug in the thing I just added two lines above."
 
-**Releases** follow gitflow. A `release/<x.y.z>` branch stamps the date here
-(`version.py release`). Its merge into `main` publishes the GitHub release (setup, portable
-builds, source archives). Then CI opens a pull request into `develop` that opens the next patch
-version as the new in-progress one. See `CI-CD.md`.
+**Releases** follow gitflow. When a `release/<x.y.z>` branch is cut, CI opens a pull request
+that opens the next patch version on `develop`. There, vX.Y.Z stays undated ("release in
+progress") until it is released. The release branch stamps the date here (`version.py release`)
+just before its merge into `main`, and that merge publishes the GitHub release (setup, portable
+builds, source archives). Then CI opens a pull request that merges the release back into
+`develop`. See `CI-CD.md`.
+
+---
+
+## v0.2.2 — 2026-10-27 — Import and calculations
+
+Import and calculations release. Amounts are rounded to the cent, and the reconciliation adds
+whole cents. An account hash belongs to one account, and an 8- or 11-character BIC gives one
+hash. The category suggestions are the same in every run, short merchant names keep their own
+key, the stored rules follow the new keys, and the app computes the suggestions in a worker
+thread. Also includes fixes of the statement import, renames that reach every row, a Reset
+Database that stays empty, status colors, and the Test app with its pre-release channels and
+the update from inside the app.
+
+### Added
+- A Test app, "Finance Dashboard Test" (`cmake -DFD_APP_IDENTITY=test`), for the experimental
+  and preprod builds. It installs and runs next to the prod app, with its own data folder and
+  settings, its own Windows setup identity (AppId, install folder, Start menu folder, uninstall
+  entry) and Linux desktop entry, an icon with an orange "TEST" band, and "(Test)" in the
+  window title. The title of the start-up error window ends with the name of the app: "Can't
+  start — Finance Dashboard" (before, "Finance Dashboard — can't start"). Its packages are the
+  Windows setup and ZIP, and the AppImage. CI builds them, tests that the two Windows setups
+  install side by side and uninstall one at a time, and checks that the Test AppImage keeps its
+  data in its own folder (#130).
+- The Test app: "Copy my prod database" on the Database Management page replaces the Test data
+  with a copy of the prod database, after a confirmation, so that a new version and its
+  database upgrade can be tried on the real data. The prod database is only read (SQLite can
+  leave its -wal and -shm files next to it). The Test data from before is kept in a file next
+  to the Test database. An older copy is upgraded, with its backup copy and the upgrade report.
+  A copy with a newer schema is refused, and a copy that does not open is kept while the Test
+  data comes back. The Test database is not replaced while another window of the Test app uses
+  it. The page scrolls when it is higher than the window (#130).
+- Release channels: CI publishes the Test app as GitHub pre-releases. Each push to develop, and
+  each run of a pull request with the label "experimental", publishes an experimental build
+  (v0.2.2-exp.<run>, v0.2.2-exp.<run>.pr<number>); each push to a release branch publishes a
+  release candidate (v0.2.2-rc.<run>). <run> is the run number of the CI workflow, so the
+  versions of a channel sort in build order. The version suffix goes into the version of the
+  app, the setup and the file names. CI keeps the 10 newest experimental pre-releases, and the
+  release of a version deletes its release candidates (#129).
+- Updates: at each start, the app asks GitHub for the list of releases and tells in a banner
+  when a newer version of its channel exists. The new Updates page (ADMIN) shows the version of
+  the app, the versions of the channel with their notes and release pages, a "Check now" button
+  and the setting that turns the check off. The prod app follows the releases; the Test app
+  follows Experimental (-exp and -rc) or Preprod (-rc). "Install" (in the banner or on the
+  page) installs the newest version: the app downloads it from GitHub, with SHA256SUMS.txt, and
+  checks its SHA-256. With the setup, "Install and restart" then runs the setup with a progress
+  window: the setup closes the app, installs the new version and opens it (a copy "for all
+  users" asks for administrator rights first). With the AppImage, the app replaces its file,
+  and "Restart now" opens the new version. Nothing is downloaded or restarted without a click.
+  The portable ZIP, the .deb and the .tar.gz update by hand: the page gives the steps. GitHub
+  sees the internet address of the computer and the version of the app: the app sends no token,
+  no cookie and no data, and English as the language. Without a network, when GitHub does not
+  answer in time, or when GitHub refuses the call, the page tells why. The QML engine loads
+  nothing from the network, the notes of a version are shown without their images, and the page
+  opens the pages of the project on GitHub only. The check and the download use HTTPS: CI
+  checks that the packages have the TLS backend of Qt, and on Linux they use the OpenSSL 3 of
+  the system (the .deb depends on libssl3t64 | libssl3 and ca-certificates). CI also checks
+  that the setup closes the running app, updates it and starts it again, in both install modes.
+  The Docker build ships the TLS plugins and builds its static Linux Qt with OpenSSL (#117).
+
+### Changed
+- The Git history on GitHub was rewritten on 2026-10-20 at 06:39 UTC to remove personal data. A
+  clone made before that time still has the old history: delete it and clone the repository
+  again.
+- Release flow: when a `release/x.y.z` branch is pushed, CI opens a pull request that opens the
+  next version on `develop` (`version.py cut`), so `develop` takes changes again while the
+  release branch is tested; `version.py uncut` undoes it when a release branch is dropped. On
+  `develop`, the version of the release branch stays undated ("release in progress"); the
+  release branch dates it just before its merge into `main`. The back-merge is now a merge of
+  `main` into a branch from `develop`, made by `tools/release_flow.py`, which renders
+  `version.md` again when it conflicts. The Changelog job runs the new tests of the tools
+  (`tools/test_version.py`). It refuses a pull request into `main` with an undated version, and
+  a pull request into `develop` that changes the version of a release branch, or that comes
+  before the pull request that opens the next version or before the back-merge.
+  `CONTRIBUTING.md` tells when a whole stack can be merged at once (#131).
+
+### Fixed
+- Statement import: the "Prénom Nom" line gives the account holder name again. The accent in
+  the code was read as two Latin-1 characters, so the name was always "—" (#43).
+- Statement import: when the amount of the start balance line cannot be read, the end balance
+  line no longer becomes the start balance, and the reconciliation no longer counts the unread
+  balance as 0: no false gap and no adjustment row (#44).
+- Statement import: a CSV file saved as Windows-1252 (for example by a spreadsheet) is read.
+  Before, "€" and the accented letters broke the balances and the holder name. A UTF-8 file
+  with a few bad bytes stays UTF-8 (the bad bytes show as "�"), and a UTF-16 file with a byte
+  order mark is read. The import log warns in each case. If you imported a Windows-1252 file
+  before, a new import of the same file can add its rows that have no bank reference again:
+  their description changed (#45).
+- Statement import: the reference block of a description is the run of reference lines at its
+  end ("Internal ref.: …", "End-to-end ref.: …"). So a "ref" in the free text ("Rent for March,
+  ref: APT12") stays in the transaction name, and a description with only reference lines gets
+  its first line as the name instead of an empty name. Rows saved before keep their name (#46).
+- Status messages: a failure shows in red and a warning in amber, no longer in green, and a
+  failure stays until the next message. A new message stays for the whole delay: one timer for
+  each page controller, instead of one timer for each message (#54).
+- Import: when the save fails, the page stays on the review step with a red message. "Import
+  another file" no longer shows the report of the earlier import (#39).
+- Import: "Auto-filled N of M" counts only the rows whose category the predictor filled, not
+  the categories picked by hand. A subcategory picked by hand keeps the row in the count (#53).
+- A rename of a category, a subcategory, an account type or an account category now reaches the
+  transactions, the category rules and the accounts that use the name, in one SQL transaction.
+  Before, they kept the old name and lost their colour, and the predictor kept the old name. A
+  rename to a name that exists (in any case) is refused with a message, and the Account Types &
+  Categories page now shows the status messages (#34).
+- A null text from C++ in an optional column (the type, the category and the notes of an
+  account, the note of a balance checkpoint) is now written as an empty string. Before, it
+  failed the write with "NOT NULL constraint failed". The database now refuses an empty name,
+  currency, account hash or hash source, and an invalid checkpoint date, before any write, with
+  a message (#125).
+- "Reset Database" now stays empty: the default categories, account types, account categories
+  and demo accounts no longer come back at the next start, or when a page opens after the
+  reset. A new settings table of the database records that its defaults were written. The
+  defaults and this record are written in one SQL transaction: if a write fails, nothing is
+  written, and the next start tries again. The upgrade to schema version 3 records the defaults
+  of a database that has data: the category defaults when it has categories, the account
+  defaults when it has accounts, account types or account categories. A database that a reset
+  emptied before this version gets the defaults one more time, at the first start after the
+  upgrade: reset it again to empty it. After the upgrade, v0.2.1 cannot open the database ("a
+  newer version of the app saved the file"); it can open the copy that the upgrade saves next
+  to the file (#37).
+- "Reset to Mock Data" now writes the sample transactions: the code looked for the demo account
+  by a name with an em dash in QLatin1String, which never matched. A write that fails now shows
+  an error instead of a success (#38).
+- Accounts: after "Reset Database", "Add" in the account dialog saves the account without a
+  type, and the dialog tells that there is no account type. Before, nothing happened: the empty
+  list of types gave a TypeError. An edit of an account whose type or category is not in the
+  list keeps it, instead of giving it the first type (#62).
+- Account History: the balance replays the transactions in booking order (the confirmation
+  date), the order of the bank's own balance. A card payment made before the statement start
+  and booked after it no longer moves the start of the line: the current balance is right
+  (#36).
+- Projects page: with no monthly contribution, "Projected Completion" says "Never" instead of
+  the current month, and the save-vs-borrow text no longer says "~0 more months". With no gap,
+  the text says that there is no gap, instead of the gap of a 10 000 € sample loan (the loan
+  scenarios still borrow that sample amount). "Still Needed" is 0, not a negative amount, when
+  the earmarked amount is above the target. A contribution below half a cent counts as none, a
+  completion after 100 years shows "Never", and a new project with an amount that is not a
+  number or a target date after 100 years is refused (#41).
+- Cash Flow page (mock data): in a month where the spending is more than the income, the money
+  flow gets an "Overspend" input (taken from the savings), so its two sides have the same
+  total. Before, the savings output went to 0, and the outputs were more than the inputs (#42).
+- Cash Flow page (mock data): the 3-month average line starts at the third month. Before, its
+  first two points were the averages of one and two months (#56).
+- Investments page (mock data): the monthly performance leaves out the deposit of the month.
+  Before, the 250 € deposit counted as a gain: the second month showed 4.95 % instead of 2.48 %
+  (#56).
+- Money: an amount is rounded to cents before its sign is set, so a very small negative value
+  shows "0,00 €", not "-0,00 €". NaN and an infinity show "—" (before, they reached a
+  conversion with undefined behaviour). The pages of one account (transactions, balance
+  checkpoints, balance history and its chart, category totals) show the amounts of a USD
+  account in $, not in €; the other pages keep the currency of the app (#48).
+- Database: a failed BEGIN or COMMIT is no longer ignored. "Reset Database", the save of a
+  snapshot and the removal of a category or an account fail with a message when their SQL
+  transaction cannot start or commit. Before, a failed commit counted as a success, and a reset
+  without its transaction committed each table drop on its own. The table classes check that
+  each statement is prepared and log the error of SQLite, instead of a misleading "Parameter
+  count mismatch". The results of the WAL, secure_delete and checkpoint PRAGMAs are logged
+  (#49).
+- Windows: `FinanceDashboard.exe` has its icon (Explorer, the shortcuts, the taskbar), and the
+  window shows the app icon on Windows and Linux. Before, only the setup had the icon (#111).
+- Import: the start check of the reconciliation takes the last saved row in booking order (the
+  confirmation date, else the operation date), as the balance history does. Before, it took the
+  row with the latest operation date: a card payment made before the start of a statement but
+  booked after it gave a false gap (#133).
+- Amounts: the reconciliation of an import compares whole cents, so a gap of one cent is a gap.
+  Before, it compared doubles with a tolerance of 0.01: start 0.00, 0.10 and 0.20 in, 0.31
+  declared at the end gave "End balance OK". The adjustment row is the exact gap, and the
+  import report, the balance history and the category totals add whole cents too. The app
+  rounds each amount to the cent before it writes it, and the upgrade to schema version 4
+  rounds the stored amounts (the upgrade message tells how many rows changed; the copy from
+  before the upgrade keeps the old values). An amount that is not a number or is larger than
+  10^13 is refused: in a statement, in the transaction and checkpoint dialogs, and in the
+  database (#33).
+- Account hashes: a hash belongs to one account, and it is stored in lower case. The import
+  suggests the account that has the hash of the statement. When you save the statement to
+  another account (or click "Link this account"), the hash moves to that account, and the next
+  import suggests it; the review screen tells it before the save. Before, a hash typed in upper
+  case was not found (the save added a second link), and after one wrong link the import kept
+  suggesting the first account. A typed hash must be 64 hexadecimal characters that no other
+  account has: the message names that account. The upgrade to schema version 5 keeps the most
+  recent link of each hash and tells how many links it removed (#47).
+- Account hashes: the BIC is used on 11 characters, so an 8-character BIC (`PSSTFRPP`) and the
+  same BIC on 11 characters (`PSSTFRPPXXX`) give one hash. Before, a change of the export
+  format unlinked the account, and the import no longer suggested it. The app keeps no IBAN or
+  BIC, so it cannot compute the stored hashes again: the import also tries the hash of an
+  8-character BIC from before this change, and the save (or "Link this account") replaces it
+  with the new one. When another account has that old hash, the review screen tells it before
+  the save. The header of `AccountHashing.h` tells what the hash is for (the grouping of the
+  statements of one account, and the suggestion) and its limit: it is not a security feature.
+  The comments and the Accounts page no longer call the decision not to keep account numbers a
+  "security decision" (#50).
+- Category prediction: the same data gives the same suggestion in every run. Before, a tie (as
+  many "Transport" as "Leisure" rows for "SNCF CONNECT", two known labels equally close, equal
+  neighbours) went to the label that the hash order of the run gave first, so the suggestion
+  could change at each start. Now a tie goes to the label of the most recent row, in every rung
+  of the predictor, and two rules of the same rank that both match give the category of the
+  rule made last (#51).
+- Category prediction: short merchant names keep their own key. "Card payment 1234: H&M",
+  "C&A", "AS24" and "O2" all gave the key "CARD PAYMENT", so they shared their suggestions and
+  their rules: after two H&M rows in "Shopping / Clothes", AS24 (fuel) and O2 (telecom) got
+  "Shopping / Clothes" in green. A label with only generic words ("VIREMENT EN VOTRE FAVEUR")
+  now gets no key: no suggestion, and no rule. A reference ("Internal ref.: …", a UUID) is not
+  a name either. The upgrade to schema version 6 normalizes the patterns of the stored category
+  rules again: a rule whose label had only generic words (such as "CARD PAYMENT") is removed;
+  rules that get one label merge into the newer one when they give one category, and are
+  removed when they give different categories ("TRANSFER TO JOHN DOE" for the rent and
+  "RECEIVED FROM JOHN DOE" for a refund are both "JOHN DOE" now, and one rule cannot give two
+  categories). The upgrade message tells how many. Note: a key has no direction words now, so a
+  rule covers both directions of a transfer (a rule for "Transfer to JOHN DOE" also applies to
+  "Payment received from JOHN DOE"): check the suggestions for the transfers from a person who
+  has a rule (#40).
+- Category prediction: ligatures are folded ("CŒUR BŒUF" is "COEUR BOEUF"), and month names
+  ("MARS CARREFOUR", "RENT MARCH"), masked card numbers ("XXXXXXXXXXXX4972") and the English
+  boilerplate of the Sumeria export ("Payment received from", "Transfer to", "Direct debit")
+  are no longer part of the merchant key. A month name stays the name of a label that has no
+  other one ("MARS", "APRIL"), and a month next to a day or a year ("05 MARS", "MARS 2026") is
+  a date. Before, "RECEIVED FROM JOHN DOE" was close enough to "…JOHN SMITH" to get its
+  category (#55).
+- Import: the category suggestions are computed in a worker thread. With a large history, the
+  training and the scoring of a statement took seconds on the interface thread (about 0.4 s to
+  train and 0.8 s to score 200 rows with 10 000 categorized rows, on test data), at each import
+  and at each "＋" rule: the window froze. Now the rows show at once, "The app calculates the
+  category suggestions…" tells that the suggestions come, and Save waits for them. A category
+  picked or a name changed during the computation stays the choice of the user, also when the
+  suggestions come while you type a name. A new computation (another file, a new rule) stops
+  the older one: five quick "＋" clicks cost one computation, not five (#52).
 
 ---
 

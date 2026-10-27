@@ -9,8 +9,16 @@
 #   <install-tree>  a prefix produced by `cmake --install build --prefix <dir>`,
 #                   i.e. containing bin/FinanceDashboard, lib/, plugins/, qml/
 #                   and share/ — see the install() rules in CMakeLists.txt.
-#   <version>       X.Y.Z, used in the output file name (comes from version.json)
+#   <version>       X.Y.Z (from version.json), or X.Y.Z-exp.<run> / -rc.<run> for a
+#                   pre-release of the Test app (#129). Used in the output file
+#                   name and in the AppStream release.
 #   [output-dir]    where to write the .AppImage (default: dist/)
+#
+# The install tree has the desktop entry of its identity (#130):
+# finance-dashboard.desktop for the prod app, finance-dashboard-test.desktop
+# for the Test app (cmake -DFD_APP_IDENTITY=test). The AppImage takes its
+# desktop entry, icon, AppStream data and file name from that identity:
+# FinanceDashboard-<version>-... or FinanceDashboardTest-<version>-...
 #
 # Why not linuxdeploy-plugin-qt: Qt's own CMake deployment API already bundled
 # every library, plugin and QML module and rewrote the RPATHs when the install
@@ -35,13 +43,26 @@ OUT_DIR="${3:-dist}"
     exit 1
 }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# The identity of the install tree (#130).
+if [[ -f "$INSTALL_TREE/share/applications/finance-dashboard-test.desktop" ]]; then
+    APP_NAME=FinanceDashboardTest
+    FILE_ID=finance-dashboard-test
+    METAINFO_ID=io.github.nicolas_goyon.FinanceDashboardTest
+else
+    APP_NAME=FinanceDashboard
+    FILE_ID=finance-dashboard
+    METAINFO_ID=io.github.nicolas_goyon.FinanceDashboard
+fi
+for f in "share/applications/$FILE_ID.desktop" "share/icons/hicolor/256x256/apps/$FILE_ID.png"; do
+    [[ -f "$INSTALL_TREE/$f" ]] || { echo "error: $INSTALL_TREE/$f not found" >&2; exit 1; }
+done
+echo "==> Identity: $APP_NAME"
+
 ARCH="${ARCH:-$(uname -m)}"
 WORK="$(mktemp -d)"
 trap 'rm -rf "$WORK"' EXIT
 
-APPDIR="$WORK/FinanceDashboard.AppDir"
+APPDIR="$WORK/$APP_NAME.AppDir"
 mkdir -p "$APPDIR"
 
 echo "==> Copying install tree into AppDir/usr"
@@ -52,15 +73,13 @@ cp -a "$INSTALL_TREE/." "$APPDIR/usr/"
 # appimagetool wants the .desktop file and the icon at the AppDir root, on top
 # of the FHS copies under usr/share that the .deb and desktop environments use.
 echo "==> Writing AppDir metadata"
-install -m 644 "$REPO_ROOT/packaging/linux/finance-dashboard.desktop" \
-               "$APPDIR/finance-dashboard.desktop"
-install -m 644 "$REPO_ROOT/packaging/icons/finance-dashboard-256.png" \
-               "$APPDIR/finance-dashboard.png"
-cp "$APPDIR/finance-dashboard.png" "$APPDIR/.DirIcon"
+install -m 644 "$INSTALL_TREE/share/applications/$FILE_ID.desktop" "$APPDIR/$FILE_ID.desktop"
+install -m 644 "$INSTALL_TREE/share/icons/hicolor/256x256/apps/$FILE_ID.png" "$APPDIR/$FILE_ID.png"
+cp "$APPDIR/$FILE_ID.png" "$APPDIR/.DirIcon"
 
 # Stamp the release into the AppStream metadata so software centres show a
 # version and a date for this build instead of "unknown".
-METAINFO="$APPDIR/usr/share/metainfo/io.github.nicolas_goyon.FinanceDashboard.metainfo.xml"
+METAINFO="$APPDIR/usr/share/metainfo/$METAINFO_ID.metainfo.xml"
 if [[ -f "$METAINFO" ]]; then
     python3 - "$METAINFO" "$VERSION" <<'PY'
 import sys, datetime, pathlib
@@ -128,7 +147,7 @@ if [[ -z "$APPIMAGETOOL" ]]; then
 fi
 
 mkdir -p "$OUT_DIR"
-OUTPUT="$OUT_DIR/FinanceDashboard-${VERSION}-linux-${ARCH}.AppImage"
+OUTPUT="$OUT_DIR/$APP_NAME-${VERSION}-linux-${ARCH}.AppImage"
 
 echo "==> Building $OUTPUT"
 # --appimage-extract-and-run: CI runners have no FUSE, so appimagetool (itself

@@ -2,12 +2,18 @@
 #define FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_SNAPSHOTIMPORTCONTROLLER_H
 
 #include "models/Account.h"
+#include "models/CategoryRule.h"
 #include "models/ImportedStatement.h"
 #include "models/ImportLog.h"
 #include "models/Transaction.h"
 #include "predict/CategoryPredictor.h"
+#include "utils/StatusMessage.h"
+
+#include <functional>
+#include <optional>
 
 #include <QDate>
+#include <QFutureWatcher>
 #include <QObject>
 #include <QSet>
 #include <QString>
@@ -33,6 +39,18 @@
 // SQL transaction (Database::saveImport()). See save()'s doc comment below for
 // the exact contract with the QML side (accounts now come from
 // AccountController, not this class).
+//
+// The category prediction runs in a worker thread (#52): with a large
+// history, the training and the scoring of a statement took seconds on the
+// GUI thread. The controller reads the database on the GUI thread (a Qt SQL
+// connection works only in the thread that made it), and the worker trains
+// a predictor of its own on copies and scores copies of the rows
+// (QtConcurrent::run). The result comes back through a QFutureWatcher, on
+// the GUI thread: the rows that the user changed meanwhile keep the change
+// of the user. A newer job (another file, a new rule, reset()) cancels the
+// older one: it stops at its next check, and its result counts for nothing.
+// `predicting` is true in between: the page shows an indicator, and save()
+// waits for the end.
 
 class SnapshotImportController : public QObject
 {
@@ -69,6 +87,9 @@ class SnapshotImportController : public QObject
     // ready-to-display sentence so QML doesn't assemble one. See
     // docs/category-prediction.md.
     Q_PROPERTY(QVariantMap predictionInfo READ predictionInfo NOTIFY statementChanged)
+    // True while the worker thread trains the predictor and scores the rows
+    // (#52). save() refuses to run then.
+    Q_PROPERTY(bool predicting READ predicting NOTIFY predictingChanged)
 
     // [{ level, line, message, rawLine }]
     Q_PROPERTY(QVariantList logEntries READ logEntries NOTIFY logChanged)
@@ -76,6 +97,8 @@ class SnapshotImportController : public QObject
     Q_PROPERTY(int warningCount READ warningCount NOTIFY logChanged)
 
     Q_PROPERTY(QString statusText READ statusText NOTIFY statusChanged)
+    // "success", "warning" or "danger": the StatusBadge variant of statusText (#54).
+    Q_PROPERTY(QString statusLevel READ statusLevel NOTIFY statusChanged)
 
     // Filled in by save() right after a successful write — see
     // lastImportReport()'s doc comment and buildImportReport() for the exact
@@ -85,6 +108,12 @@ class SnapshotImportController : public QObject
 
 public:
     explicit SnapshotImportController(QObject* parent = nullptr);
+    // Cancels the job of the worker thread: it stops at its next check.
+    ~SnapshotImportController() override;
+    SnapshotImportController(const SnapshotImportController&) = delete;
+    SnapshotImportController& operator=(const SnapshotImportController&) = delete;
+    SnapshotImportController(SnapshotImportController&&) = delete;
+    SnapshotImportController& operator=(SnapshotImportController&&) = delete;
 
     [[nodiscard]] QVariantList templates() const { return m_templates; }
 
@@ -95,12 +124,14 @@ public:
     [[nodiscard]] QVariantMap  statementInfo() const;
     [[nodiscard]] QVariantList transactionRows() const;
     [[nodiscard]] QVariantMap  predictionInfo() const;
+    [[nodiscard]] bool predicting() const { return m_predicting; }
 
     [[nodiscard]] QVariantList logEntries() const;
     [[nodiscard]] int errorCount() const;
     [[nodiscard]] int warningCount() const;
 
-    [[nodiscard]] QString statusText() const { return m_statusText; }
+    [[nodiscard]] QString statusText() const { return m_status.text(); }
+    [[nodiscard]] QString statusLevel() const { return m_status.variant(); }
 
     [[nodiscard]] QVariantMap lastImportReport() const { return m_lastImportReport; }
 
@@ -120,7 +151,7 @@ public:
     // hashes: [{hash, ...}], ...}, ...]), returns the index of the account
     // matching this statement, or -1 if none matched (caller should ask the
     // user). Doesn't compare IBAN/BIC fields directly — accounts don't even
-    // store those (removed for security, see § Account Management): the
+    // store those (the app keeps the fingerprint only, see AccountHashing.h): the
     // statement's IBAN/BIC is folded into a fingerprint (AccountHashing::
     // compute(), § Statement Import in ARCHITECTURE.MD) and compared against
     // each candidate account's *stored* hashes list (account_hashes table,
@@ -129,6 +160,11 @@ public:
     // unmatched until linked (see the "not linked" badge / "Link this
     // account" action on ImportSnapshotPage.qml).
     Q_INVOKABLE [[nodiscard]] int matchAccountIndex(const QVariantList& accounts) const;
+    // The index of the account that has the fingerprint of this statement
+    // from before #50 (an 8-character BIC, AccountHashing::legacyCompute()),
+    // or -1. save() replaces it: the review screen tells it when another
+    // account has it.
+    Q_INVOKABLE [[nodiscard]] int legacyHashAccountIndex(const QVariantList& accounts) const;
 
     // ── Category prediction (see docs/category-prediction.md) ────────────────
 
@@ -137,15 +173,18 @@ public:
     // overwritten, no matter what the predictor now thinks. parseFile() calls
     // this automatically; QML should call it again after anything that
     // changes the training data mid-review (adding a rule, editing
-    // categories) so the remaining rows benefit immediately.
+    // categories) so the remaining rows benefit immediately. It starts the
+    // job of the worker thread and returns at once (#52): `predicting` tells
+    // when the rows have their suggestions.
     Q_INVOKABLE void refreshPredictions();
 
     // "Always categorize labels like this one as <its current category>."
     // Creates (or repoints) a Data::CategoryRule from `row`'s normalized
     // merchant key and its currently-set category/subcategory, then re-runs
     // refreshPredictions() so every other row in this statement picks the
-    // rule up straight away. Returns false — and writes nothing — if the row
-    // has no category set yet or its label normalizes to nothing.
+    // rule up (in the worker thread, #52). Returns false — and writes
+    // nothing — if the row has no category set yet or its label normalizes
+    // to nothing.
     //
     // This is the fastest-learning path in the whole system: one click makes
     // a merchant permanently and unambiguously categorized, instead of
@@ -156,7 +195,8 @@ public:
     // already-categorized transactions — see
     // Predict::CategoryPredictor::evaluate(). Retrains first, so it describes
     // the database as it is right now and is callable with nothing parsed;
-    // writes nothing. Shape:
+    // writes nothing. It runs on the calling thread and is slow on a large
+    // history (O(n²)): no page calls it yet. Shape:
     //   { available, total, attempted, coveragePercent, categoryAccuracyPercent,
     //     pairAccuracyPercent, meanConfidencePercent,
     //     byRung: [{ rung, attempts, correct, accuracyPercent }, ...] }
@@ -164,7 +204,8 @@ public:
     // constants in CategoryPredictor.h should be argued about against.
     Q_INVOKABLE [[nodiscard]] QVariantMap evaluatePredictor();
 
-    // Clears the parsed statement and returns to the file/template picker.
+    // Clears the parsed statement and the last import report, and returns to
+    // the file/template picker.
     Q_INVOKABLE void reset();
 
     // Persists every included transaction row to the `transactions` table
@@ -177,10 +218,16 @@ public:
     // is saved and a retry stores each row once. accountId < 0 (nothing
     // selected) fails without writing anything. accountLabel is only used
     // for the status message.
+    // Returns false when the save failed (no account selected, the
+    // suggestions are not ready yet (`predicting`), or a database error, so
+    // nothing was written): the status message (level "danger" or
+    // "warning") tells why, and the import report is not changed. The page
+    // then stays on the review step (#39). A statement whose rows are all
+    // saved already is a success ("Nothing new"): true.
     // The QML side must call AccountController.reload() afterward so the
     // singleton's cached accounts/hashes pick up this write (see
     // AccountController::reload() doc comment).
-    Q_INVOKABLE void save(int accountId, const QString& accountLabel);
+    Q_INVOKABLE bool save(int accountId, const QString& accountLabel);
 
     // ── Reconciliation (see ARCHITECTURE.MD § Statement Import — Import
     //    Report / § Balance Checkpoints) ─────────────────────────────────────
@@ -201,6 +248,11 @@ public:
     //     declared balanceEnd. This is the one the Save flow blocks on:
     //     excluding ("un-keeping") a row the bank itself counted breaks this
     //     equation. See addReconciliationAdjustment() for the fix path.
+    // Both checks compare whole cents (Money::toCents(), #33): a gap of one
+    // cent is a gap ("endDiffCents" is the gap of check 2).
+    // A balance line that the parser could not read leaves its date invalid
+    // (#44): "hasDeclaredStart": false skips check 1, and "endAvailable":
+    // false skips check 2 ("endOk": true, so no adjustment and no warning).
     // Returns "available": false (nothing else meaningful) if nothing has
     // been parsed yet or accountId is invalid.
     Q_INVOKABLE [[nodiscard]] QVariantMap checkReconciliation(int accountId) const;
@@ -221,11 +273,18 @@ signals:
     void statementChanged();
     void logChanged();
     void statusChanged();
-    // Emitted after save() successfully builds a new lastImportReport().
+    // Emitted after save() successfully builds a new lastImportReport(), and
+    // after reset() clears it.
     void reportChanged();
+    void predictingChanged();
+    // The job of the worker thread is done, and its suggestions go into the
+    // rows just after this signal (#52). The rows are rebuilt then, so the
+    // page gives the text of a NAME field that has the focus to
+    // setRowName() in its handler: that row is scored with its new name.
+    void predictionsAboutToBeApplied();
 
 private:
-    void setStatus(const QString& msg);
+    void setStatus(StatusMessage::Level level, const QString& msg);
     // Adds `name` as a new category (neutral color) if no existing category
     // matches it case-insensitively — used by addReconciliationAdjustment()
     // to make sure "Reconciliation Adjustment" exists before a row is
@@ -248,14 +307,48 @@ private:
                             const QVariantMap& reconciliation);
 
     // Rebuilds m_predictor from every categorized transaction in the database
-    // plus every stored rule. Cheap enough to just redo (a few thousand rows
-    // is single-digit milliseconds — see CategoryPredictor's class comment),
-    // so there is deliberately no incremental-update path to keep in sync.
+    // plus every stored rule, on the calling thread: for evaluatePredictor()
+    // only. The import trains in the worker thread (startPredictions()).
     void retrainPredictor();
-    // Scores one row and writes category/subcategory/confidence/
-    // predictionReason into it. Never touches a row the user has already
-    // categorized — see m_userEditedRows.
+    // Scores one row with m_predictor and writes it (setPrediction()): after
+    // a change of its name.
     void applyPrediction(int row);
+    // Writes category/subcategory/confidence/predictionReason into one row.
+    // Never touches a row the user has already categorized — see
+    // m_userEditedRows.
+    void setPrediction(int row, const Predict::Prediction& prediction);
+
+    // ── The worker thread of the prediction (#52) ───────────────────────────
+    // What the worker needs of one row: copies, not the row.
+    struct RowInput {
+        QString name;
+        QString description;
+        double  signedAmount = 0.0;
+        QDate   date;
+    };
+    // One job of the worker: its number, the predictor that it trained, the
+    // rows as it saw them, and their predictions.
+    struct PredictionJob {
+        int                          generation = 0;
+        Predict::CategoryPredictor   predictor;
+        QVector<RowInput>            inputs;
+        QVector<Predict::Prediction> predictions;
+    };
+    // The work of one job, in the worker thread: trains a predictor on the
+    // copies and scores `inputs`. `isCanceled` is called after the training
+    // and after each row: when it returns true, the job stops with no result.
+    [[nodiscard]] static std::optional<PredictionJob> runPredictionJob(
+        int generation, const QVector<Data::Transaction>& categorized, const QVector<Data::CategoryRule>& rules,
+        const QVector<RowInput>& inputs, const std::function<bool()>& isCanceled);
+    // Cancels the running job (it stops at its next check), reads the
+    // training data from the database and starts a new job.
+    void startPredictions();
+    // The job is done (on the GUI thread): writes its predictions, unless it
+    // was cancelled or a newer job started.
+    void predictionsReady();
+    // Cancels the running job: its result counts for nothing.
+    void dropPredictions();
+    void setPredicting(bool predicting);
 
     QVariantList m_templates;
 
@@ -266,7 +359,7 @@ private:
     QString m_sourceFileName;
     QString m_templateId; // last parseFile()'s templateId — stored on saved transactions as source_template
 
-    QString m_statusText;
+    StatusMessage m_status;
     QVariantMap m_lastImportReport;
 
     // ── Category prediction state ───────────────────────────────────────────
@@ -280,6 +373,22 @@ private:
     // appended afterwards (addReconciliationAdjustment()) only ever get
     // *higher* indices, so no remapping is needed.
     QSet<int> m_userEditedRows;
+    // The rows of m_userEditedRows whose *category* the user (or the
+    // reconciliation adjustment) set, not the predictor. A row where the user
+    // only picked a subcategory keeps the predicted category: it stays in the
+    // "Auto-filled" count of predictionInfo() (#53).
+    QSet<int> m_userCategoryRows;
+
+    // The job of the worker thread (#52). m_predictionGeneration grows with
+    // each job and each cancel: a result with an older number counts for
+    // nothing.
+    QFutureWatcher<PredictionJob> m_predictionWatcher;
+    int  m_predictionGeneration = 0;
+    bool m_predicting = false;
+
+    // tests/import_save_test.cpp reads m_predictionWatcher (a newer job
+    // cancels the older one) and calls runPredictionJob().
+    friend class ImportSaveTest;
 };
 
 #endif // FINANCEDASHBOARD_CONTROLLERS_DATAENTRY_SNAPSHOTIMPORTCONTROLLER_H

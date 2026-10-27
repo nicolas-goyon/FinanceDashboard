@@ -1,4 +1,5 @@
 #include "SubcategoriesTable.h"
+#include "SqlPrepare.h"
 #include "models/Category.h"
 
 #include <QSqlDatabase>
@@ -53,9 +54,12 @@ bool SubcategoriesTable::createTable()
 int SubcategoriesTable::insert(int categoryId, const QString& name, const QString& color)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "INSERT INTO subcategories (category_id, name, color) VALUES (?, ?, ?);"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[SubcategoriesTable] insert");
+        return -1;
+    }
     query.addBindValue(categoryId);
     query.addBindValue(name);
     query.addBindValue(color);
@@ -70,7 +74,10 @@ int SubcategoriesTable::insert(int categoryId, const QString& name, const QStrin
 bool SubcategoriesTable::rename(int subcategoryId, const QString& newName)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE subcategories SET name = ? WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE subcategories SET name = ? WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[SubcategoriesTable] rename");
+        return false;
+    }
     query.addBindValue(newName);
     query.addBindValue(subcategoryId);
 
@@ -84,7 +91,10 @@ bool SubcategoriesTable::rename(int subcategoryId, const QString& newName)
 bool SubcategoriesTable::setColor(int subcategoryId, const QString& color)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("UPDATE subcategories SET color = ? WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("UPDATE subcategories SET color = ? WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[SubcategoriesTable] setColor");
+        return false;
+    }
     query.addBindValue(color);
     query.addBindValue(subcategoryId);
 
@@ -98,7 +108,10 @@ bool SubcategoriesTable::setColor(int subcategoryId, const QString& color)
 bool SubcategoriesTable::remove(int subcategoryId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM subcategories WHERE id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM subcategories WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[SubcategoriesTable] remove");
+        return false;
+    }
     query.addBindValue(subcategoryId);
 
     const bool success = query.exec();
@@ -111,7 +124,10 @@ bool SubcategoriesTable::remove(int subcategoryId)
 bool SubcategoriesTable::removeForCategory(int categoryId)
 {
     QSqlQuery query(db());
-    query.prepare(QStringLiteral("DELETE FROM subcategories WHERE category_id = ?;"));
+    if (!query.prepare(QStringLiteral("DELETE FROM subcategories WHERE category_id = ?;"))) {
+        Sql::logPrepareError(query, "[SubcategoriesTable] removeForCategory");
+        return false;
+    }
     query.addBindValue(categoryId);
 
     const bool success = query.exec();
@@ -127,10 +143,13 @@ QVector<Data::Subcategory> SubcategoriesTable::allForCategory(int categoryId) co
 {
     QVector<Data::Subcategory> result;
     QSqlQuery query(db());
-    query.prepare(QStringLiteral(
+    if (!query.prepare(QStringLiteral(
         "SELECT id, name, color FROM subcategories"
         " WHERE category_id = ? ORDER BY id ASC;"
-    ));
+    ))) {
+        Sql::logPrepareError(query, "[SubcategoriesTable] allForCategory");
+        return {};
+    }
     query.addBindValue(categoryId);
 
     if (!query.exec()) {

@@ -50,7 +50,7 @@ Item {
                 StatusBadge {
                     visible: CategoryController.statusText.length > 0
                     text: CategoryController.statusText
-                    variant: "success"
+                    variant: CategoryController.statusLevel
                 }
                 PillButton {
                     text: "＋  Add category"

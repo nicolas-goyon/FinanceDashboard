@@ -60,7 +60,8 @@ target_include_directories(import_save_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src/controllers/dataentry
 )
 # Qt6::Qml for the QML_ELEMENT macros in the controller header only.
-target_link_libraries(import_save_test PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Test)
+# Qt6::Concurrent: the controller predicts in a worker thread (#52).
+target_link_libraries(import_save_test PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Concurrent Qt6::Test)
 set_target_properties(import_save_test PROPERTIES WIN32_EXECUTABLE OFF)
 
 add_test(NAME import_save_test COMMAND import_save_test)
@@ -87,6 +88,144 @@ set_tests_properties(db_migration_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# db_write_test
+#   The writes of the table classes: a null optional text, and the empty required
+#   values that the Database refuses (#125); renames that reach every row that
+#   uses the name, with the duplicate checks of the controllers (#34); the
+#   default data written once per database (#37), the mock data (#38), the
+#   order of the balance history (#36), the currency of an account (#48), and
+#   the checked results of prepare(), BEGIN and COMMIT (#49). It compiles the
+#   core sources plus three controllers.
+
+qt_add_executable(db_write_test
+    db_write_test.cpp
+    ${FD_CORE_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/AccountController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/AccountController.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/CategoryController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/CategoryController.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/database/DatabaseManagementController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/database/DatabaseManagementController.cpp
+)
+target_include_directories(db_write_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry
+    ${CMAKE_SOURCE_DIR}/src/controllers/database
+)
+# Qt6::Qml for the QML_ELEMENT macros in the controller headers; Qt6::Gui for
+# QColor in CategoryController.
+target_link_libraries(db_write_test PRIVATE Qt6::Core Qt6::Gui Qt6::Sql Qt6::Qml Qt6::Test)
+set_target_properties(db_write_test PROPERTIES WIN32_EXECUTABLE OFF)
+
+add_test(NAME db_write_test COMMAND db_write_test)
+set_tests_properties(db_write_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# db_copy_test
+#   "Copy my prod database" of the Test app (#130): Database::replaceWithCopyOf()
+#   and DatabaseManagementController::copyProdDatabase(), with a prod and a Test
+#   database in a temporary folder. The prod file does not change; an older one
+#   is upgraded in the copy; a newer one, a file that is not a database and a
+#   missing file are refused; a copy that does not open is kept and the Test
+#   data comes back; a Test database that another connection uses is not
+#   replaced. It compiles the core sources plus the controller.
+qt_add_executable(db_copy_test
+    db_copy_test.cpp
+    ${FD_CORE_SOURCES}
+    ${CMAKE_SOURCE_DIR}/src/controllers/database/DatabaseManagementController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/database/DatabaseManagementController.cpp
+)
+target_include_directories(db_copy_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/controllers/database
+)
+# Qt6::Qml for the QML_ELEMENT macro in the controller header.
+target_link_libraries(db_copy_test PRIVATE Qt6::Core Qt6::Sql Qt6::Qml Qt6::Test)
+set_target_properties(db_copy_test PROPERTIES WIN32_EXECUTABLE OFF)
+add_test(NAME db_copy_test COMMAND db_copy_test)
+set_tests_properties(db_copy_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# update_test
+#   The update check (#117): SemVer (the order of semver.org and of the tags of
+#   the release channels), the list of releases of GitHub and its channels,
+#   UpdateController with a file:// list and with a local test server on
+#   127.0.0.1 in place of GitHub (the request and its headers, no cookie, the
+#   refused checks, a check with no answer, the check at start), the pages
+#   that openPage() opens, the release notes without images (safeNotes()),
+#   the installation (UpdateInstaller: the AppImage replaced, the setup and
+#   its command line, the refused downloads), and the network access of the
+#   QML engine (local files only). No internet. It compiles the update
+#   sources, the controller, the installer and
+#   src/startup/LocalOnlyNetwork.cpp.
+qt_add_executable(update_test
+    update_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/update/SemVer.h
+    ${CMAKE_SOURCE_DIR}/src/update/SemVer.cpp
+    ${CMAKE_SOURCE_DIR}/src/update/ReleaseFeed.h
+    ${CMAKE_SOURCE_DIR}/src/update/ReleaseFeed.cpp
+    ${CMAKE_SOURCE_DIR}/src/update/UpdatePackage.h
+    ${CMAKE_SOURCE_DIR}/src/update/UpdatePackage.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/updates/UpdateController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/updates/UpdateController.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/updates/UpdateInstaller.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/updates/UpdateInstaller.cpp
+    ${CMAKE_SOURCE_DIR}/src/startup/LocalOnlyNetwork.h
+    ${CMAKE_SOURCE_DIR}/src/startup/LocalOnlyNetwork.cpp
+)
+target_include_directories(update_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/controllers/updates
+)
+# Qt6::Network for the download and the test server, Qt6::Gui for
+# QDesktopServices and the QGuiApplication of a QML Text, Qt6::Qml for the
+# QML_ELEMENT macro in the controller header and the QML engine.
+target_link_libraries(update_test PRIVATE Qt6::Core Qt6::Gui Qt6::Network Qt6::Qml Qt6::Test)
+set_target_properties(update_test PROPERTIES WIN32_EXECUTABLE OFF)
+add_test(NAME update_test COMMAND update_test)
+set_tests_properties(update_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
+# calc_test
+#   The calculations behind the texts and charts of the pages: the Projects page
+#   (#41), the money flow and the rolling average of the Cash Flow page (#42,
+#   #56), the performance of the Investments page (#56), the money format
+#   (#48) and the whole cents of Money (#33). No database. It compiles the page
+#   controllers that it tests.
+
+qt_add_executable(calc_test
+    calc_test.cpp
+    ${CMAKE_SOURCE_DIR}/src/utils/Formatter.h
+    ${CMAKE_SOURCE_DIR}/src/utils/Money.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow/CashFlowController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow/CashFlowController.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/investments/InvestmentsController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/investments/InvestmentsController.cpp
+)
+target_include_directories(calc_test PRIVATE
+    ${CMAKE_SOURCE_DIR}/src
+    ${CMAKE_SOURCE_DIR}/src/controllers/projects
+    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow
+    ${CMAKE_SOURCE_DIR}/src/controllers/investments
+)
+# Qt6::Qml for the QML_ELEMENT macros in the controller headers.
+target_link_libraries(calc_test PRIVATE Qt6::Core Qt6::Qml Qt6::Test)
+set_target_properties(calc_test PROPERTIES WIN32_EXECUTABLE OFF)
+
+add_test(NAME calc_test COMMAND calc_test)
+set_tests_properties(calc_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Every test target, so that CI and a local build need one target name:
 #   cmake --build build --target fd_tests
-add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test)
+add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test db_copy_test update_test calc_test)

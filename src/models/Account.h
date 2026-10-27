@@ -26,8 +26,9 @@
 //                  `color`, used for badges; `type` doesn't).
 //
 // No iban/bic/account-number fields — deliberately removed (see Account
-// struct below) for security reasons; accounts are matched to a statement
-// import purely via the account_hashes table now.
+// struct below): the app does not keep them. Accounts are matched to a
+// statement import purely via the account_hashes table now (a fingerprint,
+// not a security feature: see utils/AccountHashing.h).
 
 namespace Data {
 
@@ -45,8 +46,8 @@ struct Account {
     QString currency;   // "EUR" or "USD" — see AccountsManagePage.qml's currency selector
     QString notes;
     QVector<AccountHash> hashes;
-    // No iban/bic/number: deliberately NOT stored, for security reasons (see
-    // ARCHITECTURE.MD § Account Management) — removed after having been MOCK
+    // No iban/bic/number: deliberately NOT stored, the app does not keep them
+    // (see ARCHITECTURE.MD § Account Management) — removed after having been MOCK
     // fields used only to demo hash derivation. Statement import still
     // computes a hash from the *parsed file's* iban/bic (transient, never
     // written to the accounts table) — see AccountHashing.h /

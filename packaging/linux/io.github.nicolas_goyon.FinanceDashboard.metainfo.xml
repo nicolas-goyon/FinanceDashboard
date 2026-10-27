@@ -20,8 +20,11 @@
     </p>
     <p>
       Everything stays on the machine it runs on: the data lives in a local
-      SQLite file, there is no bank connectivity, no account linking and no
-      external data fetching of any kind.
+      SQLite file, and there is no bank connectivity and no account linking.
+      The app connects to GitHub only: at each start, it asks for the list of
+      releases (this check can be turned off). The Windows setup and the
+      AppImage can also download a new version when you ask for it. GitHub
+      sees the internet address of the computer and the version of the app.
     </p>
   </description>
 

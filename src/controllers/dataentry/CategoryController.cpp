@@ -4,13 +4,14 @@
 #include "models/Category.h"
 
 #include <QColor>
+#include <QDebug>
 #include <QObject>
 #include <QSet>
 #include <QString>
-#include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
 #include <Qt>
+#include <QtLogging>
 #include <QtMinMax>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
 
@@ -21,12 +22,16 @@ constexpr int kMaxShadeSteps = 10;        // how many lightness steps to try bef
 
 CategoryController::CategoryController(QObject* parent)
     : QObject(parent)
+    , m_status(this, kStatusClearDelayMs, [this]() { emit statusChanged(); })
 {
     // DB-backed (see ARCHITECTURE.MD § Category Management): load whatever is
     // already persisted, or seed the original mock defaults on a fresh DB.
+    // Only once per database: an empty table after "Reset Database" is not a
+    // fresh DB, and stays empty (#37).
     m_categories = Database::instance().loadCategories();
-    if (m_categories.isEmpty()) {
+    if (m_categories.isEmpty() && !Database::instance().defaultsWritten(Database::Defaults::Categories)) {
         seedDefaults();
+        m_categories = Database::instance().loadCategories(); // all of them, or none
     }
 }
 
@@ -37,14 +42,9 @@ void CategoryController::reload()
     emit categoriesChanged();
 }
 
-void CategoryController::setStatus(const QString& msg)
+void CategoryController::setStatus(StatusMessage::Level level, const QString& msg)
 {
-    m_statusText = msg;
-    emit statusChanged();
-    QTimer::singleShot(kStatusClearDelayMs, this, [this]() {
-        m_statusText.clear();
-        emit statusChanged();
-    });
+    m_status.show(level, msg);
 }
 
 void CategoryController::seedDefaults()
@@ -85,27 +85,25 @@ void CategoryController::seedDefaults()
         { "Other", "#6c7086", {} },
     };
 
+    // All the defaults and their record in one SQL transaction: when a write
+    // fails, nothing is written, and the next start tries again (#37).
     Database& database = Database::instance();
-    for (const SeedCat& seedCat : kSeed) {
-        const int catId = database.addCategory(seedCat.name, seedCat.color);
-        if (catId < 0) {
-            continue; // DB not open / insert failed — skip, retried next launch
-        }
-
-        Data::Category cat;
-        cat.id    = catId;
-        cat.name  = seedCat.name;
-        cat.color = seedCat.color;
-
-        for (const SeedSub& seedSub : seedCat.subs) {
-            const int subId = database.addSubcategory(catId, seedSub.name, seedSub.color);
-            if (subId < 0) {
-                continue;
+    const bool written = database.writeDefaults(Database::Defaults::Categories, [&database]() {
+        for (const SeedCat& seedCat : kSeed) {
+            const int catId = database.addCategory(seedCat.name, seedCat.color);
+            if (catId < 0) {
+                return false;
             }
-            cat.subcategories.append(Data::Subcategory{ subId, seedSub.name, seedSub.color });
+            for (const SeedSub& seedSub : seedCat.subs) {
+                if (database.addSubcategory(catId, seedSub.name, seedSub.color) < 0) {
+                    return false;
+                }
+            }
         }
-
-        m_categories.append(cat);
+        return true;
+    });
+    if (!written) {
+        qWarning() << "[CategoryController] could not write the default categories:" << database.lastError();
     }
 }
 
@@ -216,14 +214,14 @@ void CategoryController::addCategory(const QString& name, const QString& color)
     }
     for (const Data::Category& cat : m_categories) {
         if (cat.name.compare(trimmed, Qt::CaseInsensitive) == 0) {
-            setStatus(QStringLiteral("⚠  A category with this name already exists"));
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  A category with this name already exists"));
             return; // no duplicate names
         }
     }
 
     const int categoryId = Database::instance().addCategory(trimmed, color);
     if (categoryId < 0) {
-        setStatus(QStringLiteral("⚠  Could not save the category"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the category"));
         return; // DB write failed — nothing to show, avoid a phantom entry
     }
 
@@ -233,7 +231,7 @@ void CategoryController::addCategory(const QString& name, const QString& color)
     cat.color = color;
     m_categories.append(cat);
     emit categoriesChanged();
-    setStatus(QStringLiteral("✓  Category added"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Category added"));
 }
 
 void CategoryController::renameCategory(int index, const QString& newName)
@@ -245,15 +243,23 @@ void CategoryController::renameCategory(int index, const QString& newName)
     if (trimmed.isEmpty() || trimmed == m_categories.at(index).name) {
         return;
     }
+    // Same check as addCategory() (#34). A change of case only is a rename.
+    for (qsizetype i = 0; i < m_categories.size(); ++i) {
+        if (i != index && m_categories.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  A category with this name already exists"));
+            return;
+        }
+    }
+    // The rename also reaches the transactions and the rules that use the name.
     if (!Database::instance().renameCategory(m_categories.at(index).id, trimmed)) {
-        setStatus(QStringLiteral("⚠  Could not rename the category"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the category"));
         return;
     }
     // index bounds-checked above; QList's at() is const-only, so mutating
     // through operator[] is genuinely required here.
     m_categories[index].name = trimmed; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     emit categoriesChanged();
-    setStatus(QStringLiteral("✓  Category renamed"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Category renamed"));
 }
 
 void CategoryController::setCategoryColor(int index, const QString& color)
@@ -279,12 +285,12 @@ void CategoryController::removeCategory(int index)
         return;
     }
     if (!Database::instance().removeCategory(m_categories.at(index).id)) {
-        setStatus(QStringLiteral("⚠  Could not remove the category"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not remove the category"));
         return;
     }
     m_categories.removeAt(index);
     emit categoriesChanged();
-    setStatus(QStringLiteral("✓  Category removed"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Category removed"));
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
@@ -303,20 +309,20 @@ void CategoryController::addSubcategory(int categoryIndex, const QString& name, 
     Data::Category& cat = m_categories[categoryIndex]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     for (const Data::Subcategory& sub : cat.subcategories) {
         if (sub.name.compare(trimmed, Qt::CaseInsensitive) == 0) {
-            setStatus(QStringLiteral("⚠  A subcategory with this name already exists"));
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  A subcategory with this name already exists"));
             return; // no duplicate names within the same category
         }
     }
 
     const int subcategoryId = Database::instance().addSubcategory(cat.id, trimmed, color);
     if (subcategoryId < 0) {
-        setStatus(QStringLiteral("⚠  Could not save the subcategory"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the subcategory"));
         return;
     }
 
     cat.subcategories.append(Data::Subcategory{ subcategoryId, trimmed, color });
     emit categoriesChanged();
-    setStatus(QStringLiteral("✓  Subcategory added"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Subcategory added"));
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
@@ -336,14 +342,22 @@ void CategoryController::renameSubcategory(int categoryIndex, int subIndex, cons
     if (trimmed.isEmpty() || trimmed == cat.subcategories.at(subIndex).name) {
         return;
     }
+    // Same check as addSubcategory(), in this category (#34).
+    for (qsizetype i = 0; i < cat.subcategories.size(); ++i) {
+        if (i != subIndex && cat.subcategories.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
+            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  A subcategory with this name already exists"));
+            return;
+        }
+    }
+    // The rename also reaches the transactions and the rules of this category.
     if (!Database::instance().renameSubcategory(cat.subcategories.at(subIndex).id, trimmed)) {
-        setStatus(QStringLiteral("⚠  Could not rename the subcategory"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the subcategory"));
         return;
     }
     // subIndex bounds-checked above; same const-only at() limitation.
     cat.subcategories[subIndex].name = trimmed; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     emit categoriesChanged();
-    setStatus(QStringLiteral("✓  Subcategory renamed"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Subcategory renamed"));
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
@@ -384,10 +398,10 @@ void CategoryController::removeSubcategory(int categoryIndex, int subIndex)
         return;
     }
     if (!Database::instance().removeSubcategory(cat.subcategories.at(subIndex).id)) {
-        setStatus(QStringLiteral("⚠  Could not remove the subcategory"));
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not remove the subcategory"));
         return;
     }
     cat.subcategories.removeAt(subIndex);
     emit categoriesChanged();
-    setStatus(QStringLiteral("✓  Subcategory removed"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Subcategory removed"));
 }

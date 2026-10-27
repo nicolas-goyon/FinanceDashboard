@@ -9,11 +9,14 @@
 Every pull request, and every push to `main`, `develop`, `release/**` and
 `hotfix/**`, builds the app on Windows and Linux, packages it into files an end
 user can double-click, runs the tests and the linters, and uploads everything as
-run artifacts. The project follows gitflow: a push to **`main`** is the merge of
-a `release/*` or `hotfix/*` branch, and it publishes a GitHub release from those
-same files, with its tag. Then CI opens a pull request that merges `main` back
-into `develop` and opens the next version. Nothing needs to be installed by hand
-— including Qt, which the pipeline downloads for itself.
+run artifacts. The project follows gitflow. A push to a `release/*` branch makes
+CI open a pull request that opens the next version on `develop`. A push to
+**`main`** is the merge of a `release/*` or `hotfix/*` branch, and it publishes a
+GitHub release from those same files, with its tag. Then CI opens a pull request
+that merges `main` back into `develop`. A push to `develop` or a `release/*`
+branch, and a pull request with the label `experimental`, publishes a
+pre-release of the Test app (§ Release channels). Nothing needs to be installed
+by hand — including Qt, which the pipeline downloads for itself.
 
 ---
 
@@ -22,8 +25,10 @@ into `develop` and opens the next version. Nothing needs to be installed by hand
 ### 1. Jobs are independent
 
 Every job checks out the repo, installs its own Qt, and reads the version itself.
-No job `needs:` another, with one unavoidable exception — `release` cannot run
-before the packages it publishes exist.
+No job `needs:` another, with three exceptions: `release` and `prerelease`
+cannot run before the packages they publish exist, and **Open the next version
+on develop** waits for the Changelog job, so that it never opens a pull request
+from a broken `version.json`.
 
 That costs a few minutes of duplicated setup per run and buys the thing that
 matters when something breaks: **any single job can be re-run on its own** from
@@ -56,14 +61,16 @@ A version number is never typed twice, so it can never disagree with itself.
 
 | Job | Runner | Blocking | What it does |
 |---|---|---|---|
-| **Changelog & version** | ubuntu-24.04 | yes | `version.py check --base <main>` — version.md matches version.json, no duplicates, at most one version in progress (the current one), and no change to a version that is released on `main`. Prints the release notes it *would* publish into the run summary. ~20 s. |
-| **Tests (ctest)** | ubuntu-24.04 | yes | Configures with `-DFD_BUILD_TESTS=ON`, builds the `fd_tests` target (`predictor_selftest`, `import_save_test`, `db_migration_test`), runs `ctest`. |
+| **Changelog & version** | ubuntu-24.04 | yes | Runs the tests of `tools/version.py` and `tools/release_flow.py`, then `version.py check --base <main>` — version.md matches version.json, no duplicates, one version in progress (the current one) plus at most the version of a release branch, and no change to a version that is released on `main`. On a pull request, its base branch is a second base (no change to the version of a release branch on `develop`); into `main`, the version must be dated; into `develop`, the version must not be in a release branch. Prints the release notes it *would* publish into the run summary. ~30 s. |
+| **Tests (ctest)** | ubuntu-24.04 | yes | Configures with `-DFD_BUILD_TESTS=ON`, builds the `fd_tests` target (`predictor_selftest`, `import_save_test`, `db_migration_test`, `db_write_test`, `db_copy_test`, `update_test`, `calc_test`), runs `ctest`. |
 | **qmllint** | ubuntu-24.04 | no | Builds the `FinanceDashboard_qmllint` target that `qt_add_qml_module()` generates — the same check `tools/run-static-analysis.ps1` runs locally. |
 | **clang-tidy** | ubuntu-24.04 | no | Full build (so AUTOMOC and the QML type-registration sources exist), then `run-clang-tidy` over `src/*.cpp` only, using the repo's `.clang-tidy`. Counts land in the run summary; the log is an artifact. |
-| **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → setup `.exe` + portable `.zip` → setup test (install, update in place, uninstall, in both install modes). |
-| **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` test in a clean `ubuntu:24.04` container. |
+| **Package — Windows** | windows-2025 | yes | MSVC build → install tree → smoke test → setup `.exe` + portable `.zip` → setup test (install, update in place, uninstall, in both install modes) → update from the app (the setup closes the running app, updates it and starts it again, #117). Then the Test app (same build directory, `-DFD_APP_IDENTITY=test`): its setup and ZIP, and a test that installs the prod and Test apps side by side and uninstalls the Test app without the prod app. |
+| **Package — Linux** | ubuntu-24.04 | yes | GCC/Ninja build → install tree → `.tar.gz` + `.AppImage` + `.deb` → smoke test + `.deb` test in a clean `ubuntu:24.04` container. Then the Test app's AppImage, and its smoke test, which checks that it keeps its data in its own folder. |
 | **Package — source** | ubuntu-24.04 | yes | `git archive` → source `.tar.gz` and `.zip`. |
-| **Release** | ubuntu-24.04 | — | `main` pushes only, after every blocking job above. Collects every artifact, writes `SHA256SUMS.txt`, publishes the release and its tag, then opens the back-merge pull request into `develop` and starts CI on its branch. Releases wait in a queue, one at a time. A re-run finishes what an earlier run started. |
+| **Open the next version on develop** | ubuntu-24.04 | — | `release/**` pushes only, after the Changelog job. Opens a pull request into `develop` that opens the next version (`release_flow.py open-next`), and starts CI on its branch. Does nothing when `develop` already opened it. |
+| **Release** | ubuntu-24.04 | — | `main` pushes only, after every blocking job above. Collects every `packages-*` artifact (the prod app; the Test app's artifacts are `test-packages-*`), writes `SHA256SUMS.txt`, publishes the release and its tag, deletes the release candidates of that version (`-rc` pre-releases and their tags), then opens the back-merge pull request into `develop` (`release_flow.py back-merge`) and starts CI on its branch. Releases wait in a queue, one at a time. A re-run finishes what an earlier run started. |
+| **Pre-release** | ubuntu-24.04 | — | Pushes to `develop` and `release/**`, and pull requests with the label `experimental`, after the Changelog, Tests and packaging jobs. Publishes the Test packages of the run (`test-packages-*`) as a GitHub pre-release, with its tag, and keeps the 10 newest experimental ones. See § Release channels. |
 
 ---
 
@@ -110,6 +117,26 @@ Both shell scripts take `<install-tree> <version> [output-dir]` and run fine by
 hand on any Linux machine — that is the point of them being scripts rather than
 workflow steps.
 
+#### The Test app
+
+`-DFD_APP_IDENTITY=test` (#130) builds "Finance Dashboard Test", which installs
+and runs next to the prod app. `CMakeLists.txt` § App identity sets everything
+that is different: the application name (so the data folder and the settings),
+the window title, the icon, the Windows setup identity (`AppId`, install
+folder, Start menu folder, shortcuts, uninstall entry) and the Linux desktop
+entry and AppStream id. The executable is `FinanceDashboard` for both. CI
+reconfigures the build directory of the prod app with the Test identity after
+the prod packages are done, so only `main.cpp`, the icon resources and the QML
+caches build again. The Test app has a setup, a ZIP and an AppImage
+(`make-appimage.sh` reads the identity from the install tree); `make-deb.sh`
+refuses a Test install tree. Its artifacts are `test-packages-windows` and
+`test-packages-linux`, which the Release job does not collect: the pre-releases
+use them (#129).
+
+In the Test app, `main.cpp` also finds the prod database (the data folder of
+the application name `FinanceDashboard`) for **Copy my prod database**
+(`Database::replaceWithCopyOf()`, tested by `db_copy_test`).
+
 #### Why not linuxdeploy / linuxdeployqt for the AppImage
 
 Qt's CMake deployment already bundled the libraries, the plugins and the QML
@@ -153,6 +180,11 @@ Both packaging jobs run the app before uploading anything:
   `offscreen` plugin is not in the tree. After `cpack`, the job runs the setup
   silently twice (the second run is an update in place), then the uninstaller,
   for "for me only" (`/CURRENTUSER`) and for "for all users" (`/ALLUSERS`).
+  Then the update from the app (#117): with the app running, the setup runs
+  with the arguments of `UpdateInstaller::setupArguments()`. It must close the
+  app (Restart Manager), install, and start it again
+  (`packaging/windows/update-restart.iss`); a silent setup without
+  `/RESTARTAPP=1` must not start it.
 * **Linux** — runs the finished `.AppImage` under `Xvfb` with the real `xcb`
   platform plugin, same 20 s rule. Then `packaging/linux/test-deb.sh` installs
   the `.deb` in a clean `ubuntu:24.04` container, where only the package and its
@@ -160,6 +192,13 @@ Both packaging jobs run the app before uploading anything:
   the app must stay up 20 s under `Xvfb`, and the package must remove cleanly.
   The runner itself cannot show a missing `Depends` entry, because the
   `setup-qt` action installed every X11 and GL library on it.
+
+Before that, both jobs check that the install tree has the TLS backend of the
+update check (#117, HTTPS): `tls/qschannelbackend.dll` on Windows (the TLS of
+the system), `plugins/tls/libqopensslbackend.so` on Linux. The Linux backend
+loads the `libssl.so.3` of the system at run time, with no `NEEDED` entry, so
+`make-deb.sh` adds `libssl3t64 | libssl3` and `ca-certificates` to `Depends`
+by name, and `test-deb.sh` checks that `libssl.so.3` is installed.
 
 Both steps blank out `QT_PLUGIN_PATH`, `QML2_IMPORT_PATH` and the Qt entries in
 `PATH`/`LD_LIBRARY_PATH` first. Without that the app would happily borrow a DLL
@@ -174,35 +213,74 @@ The project follows gitflow. `develop` holds the in-progress version; `main`
 holds released code only, and every merge into it publishes a release.
 
 ```
- develop: current = 0.2.1, no date
+ develop: current = 0.2.2, no date
     │
-    ├─ 1. cut          git switch -c release/0.2.1 develop
-    │                  (fixes for the release go into this branch)
-    ├─ 2. stamp        python tools/version.py release   → 0.2.1 dated today
-    │                  commit "chore(release): v0.2.1", PR release/0.2.1 → main
-    ├─ 3. merge        merge commit into main → CI runs on main
+    ├─ 1. cut          git switch -c release/0.2.2 develop, then push it
+    │
+ release/0.2.2 (CI, Open the next version on develop):
+    ├─ 2. open next    branch chore/open-v0.2.3 from develop, version.py cut
+    │                  → 0.2.3 in progress, 0.2.2 kept with no date
+    │                  ("release in progress"); PR into develop, CI started
+    │                  → merge it: develop takes changes for 0.2.3 again
+    ├─ 3. fix          fixes for the release go into this branch, logged with
+    │                  version.py add (under 0.2.2)
+    ├─ 4. stamp        python tools/version.py release   → 0.2.2 dated today
+    │                  commit "chore(release): v0.2.2", PR release/0.2.2 → main
+    ├─ 5. merge        merge commit into main → CI runs on main
     │
  main (CI, release job, after every blocking job is green):
-    ├─ 4. check        v0.2.1 has a date; is v0.2.1 already published?
-    │                  (yes: skip 5–8; a draft is deleted and made again)
-    ├─ 5. collect      download packages-windows / -linux / -source
-    ├─ 6. checksums    sha256sum * > SHA256SUMS.txt
-    ├─ 7. notes        version.py notes  +  .github/release-notes-footer.md
-    ├─ 8. publish      gh release create v0.2.1 --target <sha> dist/*  (makes the tag)
-    └─ 9. back-merge   branch chore/back-merge-v0.2.1 from main,
-                       version.py bump patch → 0.2.2 opened,
+    ├─ 6. check        v0.2.2 has a date; is v0.2.2 already published?
+    │                  (yes: skip 7–10; a draft is deleted and made again)
+    ├─ 7. collect      download packages-windows / -linux / -source
+    ├─ 8. checksums    sha256sum * > SHA256SUMS.txt
+    ├─ 9. notes        version.py notes  +  .github/release-notes-footer.md
+    ├─ 10. publish     gh release create v0.2.2 --target <sha> dist/*  (makes the tag)
+    └─ 11. back-merge  branch chore/back-merge-v0.2.2 from develop, with main
+                       merged into it (release_flow.py back-merge);
                        PR into develop, CI started on the branch
                        (each part skipped when it is already done)
 ```
 
-Nothing is committed to `main` by CI. After you merge the back-merge pull
-request, `develop` has the dated v0.2.1 and the new in-progress v0.2.2.
+CI commits nothing to `main` or `develop`. After you merge the back-merge pull
+request, `develop` has the dated v0.2.2 and keeps the in-progress v0.2.3.
 
-**While a release branch is open, do not merge into `develop`.** A change logged
-on `develop` in that time would land under v0.2.1, which is published without
-it. The Changelog job catches it after the back-merge (`check --base main`
-refuses any change to a version that is released on `main`): move the entry to
-the new version.
+**Merge the pull request that opens the next version first.** From the cut to
+that merge, v0.2.2 takes no new change on `develop`: a change merged in that
+time would land under v0.2.2, and the release branch releases v0.2.2 without
+it. So, while `release/<the version of develop>` exists, the Changelog job of a
+pull request into `develop` fails. The version comes from `develop`, not from
+the pull request: a pull request that renames the version does not pass. After
+the merge, the job also refuses a pull request that changes v0.2.2
+(`check --base origin/develop`). This occurs when the branch is older than the
+cut: its entry is under v0.2.2. Update the branch from `develop` and move the
+entry to v0.2.3.
+
+**After the cut, update each open pull request into `develop`.** GitHub does
+not run CI again when `develop` changes, and a re-run uses the merge commit of
+the first run: a pull request that was green before the cut stays green. Update
+its branch (the "Update branch" button) so that its CI runs again. If such a
+pull request is merged anyway, the next push to the release branch fails in
+**Open the next version on develop**: `develop` changed v0.2.2 after the cut.
+Move the entry to the next version on `develop`, in a pull request.
+
+**A release before that merge.** If v0.2.2 is released while the pull request
+that opens v0.2.3 is still open, the back-merge opens v0.2.3 and the release
+job closes that pull request. Merge the back-merge pull request first: until
+then, the version of `develop` is released on `main`, and the Changelog job of
+a pull request into `develop` fails.
+
+**One release branch at a time.** `version.py cut` refuses a second one.
+Release the first one and merge its back-merge pull request first.
+
+**Dropping a release branch.** If a release branch is deleted with no release,
+run `python tools/version.py uncut` on `develop` (in a pull request): v0.2.2 is
+in progress again, with the entries of v0.2.3, and v0.2.3 is removed. Merge
+into `develop` first the fixes of the release branch that you keep.
+
+**The date** is stamped at the end of the release branch, just before the merge
+into `main`: the date of a version is the day of its release. On a pull request
+into `main`, the Changelog job refuses a version with no date
+(`check --dated`).
 
 **The back-merge pull request.** The release job opens it with `GITHUB_TOKEN`,
 so GitHub must allow GitHub Actions to create pull requests (Settings →
@@ -213,7 +291,20 @@ a CI run of its own, so the job starts one on the branch (`workflow_dispatch`,
 the one event that `GITHUB_TOKEN` can start): its checks show on the pull
 request, and a branch rule that asks for green CI can pass. Merge it with a
 **merge commit**, not a squash: `develop` must contain the release commit of
-`main`.
+`main`. The pull request into `develop` that opens the next version works the
+same way.
+
+**Why CI makes the merge.** At each release, `version.md` conflicts: both
+branches change the heading of the released version. `version.md` is a
+generated file, so `tools/release_flow.py` merges `main` into a branch from
+`develop` and renders `version.md` again from the merged `version.json`, which
+merges with no conflict. The pull request then has no conflict. If `develop`
+did not open the next version (its pull request was not merged before the
+release), the script opens the next patch, and the job closes that pull
+request. A conflict in any other file stops the job after the release: merge by
+hand (see the hotfix commands below), then re-run the job. The job also stops
+when the merge changes a version that is released on `main`: `develop` changed
+it after the cut. Fix `develop` first, then re-run the job.
 
 **Re-running the release job.** A re-run (Actions → the run → Re-run failed
 jobs) finishes what the earlier run started, and does each part only once. A
@@ -222,33 +313,95 @@ is deleted and published again. The back-merge is skipped when `develop`
 already contains the release commit, and the branch and the pull request are
 not made twice. If the tag `vX.Y.Z` exists on another commit, the job stops.
 
-**One release at a time.** Each run on `main` has a concurrency group of its
-own, so no run on `main` cancels another one. The release jobs share the
+**One release job at a time.** Each run on `main` has a concurrency group of
+its own, so no run on `main` cancels another one. The release jobs share the
 `release` group with `queue: max`: they publish one at a time, in the order
 they arrive. With the default queue, a release job that waits would be
 cancelled when a third one arrives.
 
-**Minor and major releases.** The back-merge always opens a patch. To make the
-in-progress version a minor or a major one, run on `develop`:
+**Minor and major releases.** The cut opens a patch. To make the in-progress
+version a minor or a major one, run on `develop`:
 
 ```sh
-python tools/version.py bump minor   # in-progress 0.2.2 → 0.3.0, its entries kept
+python tools/version.py bump minor   # in-progress 0.2.3 → 0.3.0, its entries kept
 git commit -am "chore: make the in-progress version v0.3.0"
 ```
 
 `bump` renames an in-progress version instead of adding a second one: only the
-current version can be undated.
+current version and the version of a release branch can be undated. It counts
+from the highest other version: the latest release, or the version of the
+release branch.
 
 **Hotfixes.** `hotfix/<x.y.z>` starts from `main`: run `version.py bump patch`
 (the patch after the released version), commit the fix, run
-`version.py release`, then merge into `main`. The release job publishes it and
-opens the back-merge pull request. That pull request conflicts in
-`version.json` when `develop` uses the same number for its in-progress version:
-renumber `develop` first (`version.py bump minor`), then keep `develop`'s
-current version when you resolve the conflict.
+`version.py release`, then merge into `main`. The release job publishes it.
+Its back-merge stops on a conflict in `version.json`: both branches add a
+version at the top. If `develop` uses the same number for its in-progress
+version, renumber `develop` first (`version.py bump minor`). Then merge by hand.
+Do not start a hotfix while a release branch is open: it would take the number
+of the release branch. Put the fix into the release branch, and release it.
+
+```sh
+git switch -c chore/back-merge-v0.2.2 origin/develop
+git merge --no-ff origin/main     # version.json: keep develop's current version, add the released one below it
+python tools/version.py render    # version.md
+python tools/version.py check --base origin/main
+git add version.json version.md && git commit --no-edit --cleanup=strip
+git push -u origin HEAD           # pull request into develop, merged with a merge commit
+```
 
 **Branch protection.** CI never pushes to `main` or `develop`, so a branch rule
 needs no bypass for `github-actions[bot]`.
+
+---
+
+## Release channels
+
+Three channels, each published by CI as GitHub releases (#129). The prod app
+gets the releases; the Test app (`-DFD_APP_IDENTITY=test`, see § The Test app)
+gets the pre-releases.
+
+| Channel | Built from | Tag | GitHub release | App |
+|---|---|---|---|---|
+| Experimental | each push to `develop`; each run of a pull request with the label `experimental` | `v0.2.2-exp.<run>`, `v0.2.2-exp.<run>.pr<number>` | pre-release | Test |
+| Preprod | each push to `release/*` | `v0.2.2-rc.<run>` | pre-release | Test |
+| Prod | each merge into `main` | `v0.2.2` | latest release | Prod |
+
+`0.2.2` is the version of `version.json`, and `<run>` is the run number of the
+workflow (`github.run_number`): the same in every job and every re-run of a
+run, and higher for each new run. The suffixes follow SemVer, so the versions
+sort in build order, and every experimental build comes before every release
+candidate of the same version: `0.2.2-exp.57 < 0.2.2-exp.61.pr12 <
+0.2.2-rc.70 < 0.2.2`. The updater (#117) can compare them.
+
+`tools/release_flow.py channel` computes the channel, the suffix and the tag of
+a run. The packaging jobs pass the suffix to the Test build
+(`-DFD_VERSION_SUFFIX=-exp.57`): it goes into the version of the app, the
+`AppVersion` of the setup and the file names. A pull request without the label
+gets the suffix too (`-exp.<run>.pr<number>`), so that its Test packages are
+the ones the label would publish, but nothing is published. The prod packages
+never have a suffix.
+
+The **Pre-release** job downloads the Test packages, checks that their file
+names have the version, writes `SHA256SUMS.txt` and publishes a pre-release
+with its tag: on the commit of the run, or for a pull request on its head
+commit (CI built the merge of that commit into the base branch, and the notes
+say so). The notes: for `-rc`, the changelog of the version in progress; for
+`-exp`, the branch, the commit and the pull request; then, for both,
+`.github/prerelease-notes-footer.md`. Then the job deletes the published
+experimental pre-releases after the 10 newest, with their tags. The Release
+job deletes the `-rc` pre-releases of a version when it publishes that
+version. A re-run does not publish twice. If the tag exists on another
+commit, the job stops: delete the tag, then re-run the job.
+
+**A burst of pushes.** A new push cancels the run in progress on the same
+branch, so only the last push of a burst publishes.
+
+**Publish a pull request.** Add the label `experimental`: the run that the
+label starts publishes the pre-release, and each later push publishes a new
+one. Another label also starts a run (GitHub runs CI on `labeled`), which
+publishes nothing. A pull request from a fork never publishes: its token
+cannot write.
 
 ---
 
@@ -261,14 +414,18 @@ python tools/version.py add Added "`Foo.qml` — what it does."
 python tools/version.py add Fixed "Bar no longer does the wrong thing."
 python tools/version.py add Added --group "Navigation & shell" "..."
 python tools/version.py summary "One line describing this version."
-python tools/version.py render          # refresh version.md (add/summary/bump/release do it too)
+python tools/version.py render          # refresh version.md (add/summary/bump/cut/release do it too)
 python tools/version.py check --base origin/main   # what CI runs
+python -m unittest discover -s tools -p "test_*.py" # the tests of the tools, also run by CI
 ```
 
 The maintenance rule is unchanged — log the change when you make it, under the
 current in-progress version. Only the command is new. If you do edit
 `version.json` by hand, run `render` afterwards or the Changelog job fails.
-`add` and `summary` refuse to change a released (dated) version.
+`add` and `summary` refuse to change a released (dated) version. `cut` and
+`uncut` are for the release flow: CI runs `cut` (through
+`tools/release_flow.py`) when a release branch is cut, and `uncut` undoes it
+when a release branch is dropped.
 
 ---
 
@@ -379,16 +536,22 @@ Qt, build, package", and the local commands above reproduce them exactly.
 ├── workflows/ci.yml                the whole pipeline
 ├── actions/setup-qt/action.yml     Linux packages + Qt, shared by every job
 ├── release-notes-footer.md         the "how do I install this" half of a release
+├── prerelease-notes-footer.md      the same for a pre-release of the Test app
 └── dependabot.yml                  monthly PRs bumping the actions
 packaging/
-├── icons/make-icons.py             generates the .ico and .png from code
+├── icons/make-icons.py             generates the .ico and .png from code (prod and Test)
 ├── linux/finance-dashboard.desktop
-├── linux/*.metainfo.xml            AppStream metadata
-├── linux/make-appimage.sh
-├── linux/make-deb.sh
-└── linux/test-deb.sh             installs and starts the .deb in a clean container
+├── linux/finance-dashboard-test.desktop   the Test app
+├── linux/*.metainfo.xml            AppStream metadata (prod and Test)
+├── linux/make-appimage.sh          either identity
+├── linux/make-deb.sh               the prod app only
+├── linux/test-deb.sh               installs and starts the .deb in a clean container
+└── windows/app.rc.in               the icon of the .exe
 tests/CMakeLists.txt                the ctest registration
 tools/version.py                    version.json ⇄ version.md, release notes
+tools/release_flow.py               the branches that CI makes: next version, back-merge;
+                                    the channel of a run (pre-releases)
+tools/test_version.py               the tests of the two files above (unittest)
 version.json                        the version and the changelog
 LICENSE                             MIT — also becomes the setup's licence page
 ```

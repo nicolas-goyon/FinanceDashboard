@@ -150,8 +150,16 @@ public:
     // class comment above for what's deliberately NOT editable.
     bool updateById(const Data::Transaction& tx);
 
-    // Most recent transaction for this account with operation_date <=
-    // `date` (rows with no operation date are never returned), or nullopt —
+    // Renames (#34). The rows store the category and subcategory names as
+    // text, not as ids: Database::renameCategory()/renameSubcategory() call
+    // these in the same SQL transaction as the rename itself. A subcategory
+    // rename changes only the rows of its own category.
+    bool renameCategory(const QString& oldName, const QString& newName);
+    bool renameSubcategory(const QString& category, const QString& oldName, const QString& newName);
+
+    // Last transaction of this account booked on or before `date`, in booking
+    // order: the confirmation date, else the operation date (#133). Rows with
+    // neither date are never returned. Or nullopt —
     // used by SnapshotImportController::checkReconciliation() as a fallback
     // "what did we last record for this account" reference when there's no
     // closer AccountBalanceCheckpoint (see ARCHITECTURE.MD § Statement

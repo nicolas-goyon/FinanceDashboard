@@ -117,11 +117,27 @@ RUN sed -i 's/\r$//' /opt/fdbuild/build-qt-static.sh \
 FROM base AS toolchain-linux-static
 ARG QT_VERSION
 ARG QT_BUILD_JOBS=
+ARG DEBIAN_FRONTEND=noninteractive
+# The OpenSSL headers: without them, the static Qt has no TLS backend and the
+# update check (#117, HTTPS) fails. With them, Qt's configure builds its
+# OpenSSL backend (-openssl-runtime is the default: the app loads the
+# libssl.so.3 of the system at run time, with the security updates of the
+# distribution). In this stage only: a change in base, or in
+# build-qt-static.sh, also rebuilds the static Windows Qt, which uses Schannel
+# (the TLS of Windows) and does not need OpenSSL.
+RUN apt-get update && apt-get install -y --no-install-recommends libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 COPY scripts/build-qt-static.sh /opt/fdbuild/
 RUN sed -i 's/\r$//' /opt/fdbuild/build-qt-static.sh \
     && QT_VERSION="${QT_VERSION}" QT_BUILD_JOBS="${QT_BUILD_JOBS}" \
         bash /opt/fdbuild/build-qt-static.sh linux /opt/qt-static \
     && ln -s /opt/qt-static /opt/qt-target
+# Stop here when the static Qt has no OpenSSL backend (libqopensslbackend.a,
+# a plugin that Qt builds only with the OpenSSL headers), not with a "TLS
+# initialization failed" when the app runs. A layer of its own, after the
+# long Qt build.
+RUN test -n "$(find /opt/qt-static -name 'libqopensslbackend*' -print -quit)" \
+    || { echo "error: the static Qt has no OpenSSL TLS backend (libssl-dev missing?)" >&2; exit 1; }
 
 # ── final: the variant selected in .env ──────────────────────────────────────
 FROM toolchain-${TARGET}-${LINK_MODE} AS final

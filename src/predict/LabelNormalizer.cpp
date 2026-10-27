@@ -1,9 +1,17 @@
 #include "LabelNormalizer.h"
 
 #include <QChar>
+#include <QLatin1Char>
+#include <QLatin1String>
+#include <QRegularExpression>
+#include <QRegularExpressionMatch>
 #include <QSet>
 #include <QString>
 #include <QStringList>
+#include <QtTypes>
+
+#include <array>
+#include <cstdint>
 
 namespace {
 
@@ -19,9 +27,13 @@ namespace {
 //   - "COTISATION" / "FRAIS" — these ARE the merchant content for bank-fee
 //     rows ("cotisation carte bancaire"), which is a category of its own.
 //
-// Over-stripping is guarded against rather than avoided: normalize() re-runs
-// without this filter when applying it leaves nothing behind (see below), so
-// a label made entirely of these words still produces a usable key.
+// A label made only of these words gets no key (#40): before, normalize()
+// ran again without this filter, and every such label ("Card payment 1234:
+// H&M", "VIREMENT EN VOTRE FAVEUR") shared the key of its boilerplate.
+//
+// The words of the only template so far (the Sumeria export) are English:
+// "Card payment 1234: …", "Payment received from …", "Transfer to …",
+// "Direct debit: …" (#55).
 const QSet<QString>& noiseTokens()
 {
     static const QSet<QString> kNoise = {
@@ -66,8 +78,73 @@ const QSet<QString>& noiseTokens()
         QStringLiteral("EMIS"),         QStringLiteral("RECU"),
         QStringLiteral("MR"),           QStringLiteral("MME"),
         QStringLiteral("MLLE"),
+        // English transport words of the Sumeria export (#55). "DIRECT
+        // DEBIT" goes as a pair only (normalizeOnce()): alone, DEBIT can be
+        // a name, as CREDIT is.
+        QStringLiteral("TRANSFER"),     QStringLiteral("TRANSFERS"),
+        QStringLiteral("RECEIVED"),     QStringLiteral("SENT"),
+        QStringLiteral("FROM"),         QStringLiteral("TO"),
+        QStringLiteral("WITHDRAWAL"),   QStringLiteral("ATM"),
+        QStringLiteral("INTERNAL"),     QStringLiteral("EXTERNAL"),
     };
     return kNoise;
+}
+
+// Month names, French and English (#55): "RENT MARCH" and "RENT APRIL" are
+// one merchant. A month name is a name only when the label has no other one
+// ("MARS", "APRIL": Pass::MonthNames), and a month next to a day or a year
+// ("05 MARS", "MARS 26", "MARS 2026") is a date in every pass.
+const QSet<QString>& monthNames()
+{
+    static const QSet<QString> kMonths = {
+        QStringLiteral("JANVIER"),      QStringLiteral("FEVRIER"),
+        QStringLiteral("MARS"),         QStringLiteral("AVRIL"),
+        QStringLiteral("MAI"),          QStringLiteral("JUIN"),
+        QStringLiteral("JUILLET"),      QStringLiteral("AOUT"),
+        QStringLiteral("SEPTEMBRE"),    QStringLiteral("OCTOBRE"),
+        QStringLiteral("NOVEMBRE"),     QStringLiteral("DECEMBRE"),
+        QStringLiteral("JANUARY"),      QStringLiteral("FEBRUARY"),
+        QStringLiteral("MARCH"),        QStringLiteral("APRIL"),
+        QStringLiteral("MAY"),          QStringLiteral("JUNE"),
+        QStringLiteral("JULY"),         QStringLiteral("AUGUST"),
+        QStringLiteral("SEPTEMBER"),    QStringLiteral("OCTOBER"),
+        QStringLiteral("NOVEMBER"),     QStringLiteral("DECEMBER"),
+    };
+    return kMonths;
+}
+
+// Letters that NFD does not split (#55): "CŒUR" must be "COEUR". Applied
+// after stripAccents(), before the split into tokens.
+QString foldLigatures(const QString& value)
+{
+    struct Ligature {
+        char16_t    letter;
+        const char* replacement;
+    };
+    static constexpr std::array<Ligature, 12> kLigatures = {{
+        {u'\u0152', "OE"}, {u'\u0153', "oe"}, {u'\u00C6', "AE"}, {u'\u00E6', "ae"},
+        {u'\u00DF', "ss"}, {u'\u1E9E', "SS"}, {u'\uFB00', "ff"}, {u'\uFB01', "fi"},
+        {u'\uFB02', "fl"}, {u'\uFB03', "ffi"}, {u'\uFB04', "ffl"}, {u'\uFB06', "st"},
+    }};
+    QString result;
+    result.reserve(value.size());
+    for (const QChar character : value) {
+        // A loop, not std::find_if: the iterator of a std::array is a pointer
+        // with libstdc++ but a class with MSVC.
+        const char* replacement = nullptr;
+        for (const Ligature& entry : kLigatures) {
+            if (character == QChar(entry.letter)) {
+                replacement = entry.replacement;
+                break;
+            }
+        }
+        if (replacement != nullptr) {
+            result.append(QLatin1String(replacement));
+        } else {
+            result.append(character);
+        }
+    }
+    return result;
 }
 
 // Shortest token worth keeping. One-character tokens ("M", "D", "X") are
@@ -75,24 +152,94 @@ const QSet<QString>& noiseTokens()
 constexpr int kMinTokenLength = 2;
 // A token that contains digits and is no longer than this is a reference
 // number, a date fragment or a truncated card number ("12", "4972", "T3"),
-// never a merchant name.
+// never a merchant name — except in the second pass (ShortCodes), for a label
+// that has no other name: "AS24", "O2" (#40).
 constexpr int kMaxShortDigitToken = 6;
 // Ratio above which a mixed letters+digits token counts as an identifier
 // rather than a name ("A1B2C3D4" → dropped, "M6" → dropped by length,
 // "CARREFOUR2" → kept).
 constexpr double kMaxDigitRatio = 0.5;
+// A run of at least this many hexadecimal characters with a digit is a
+// reference (a part of a UUID, a hash), not a name: "1A2B3C4D".
+constexpr int kMinHexReferenceLength = 8;
+// A masked card number has at least this many "X" before its digits:
+// "XXXXXXXXXXXX4972" (#55).
+constexpr int kMinMaskLength = 2;
+// A day or a year next to a month name makes a date: "05 MARS", "MARS 2026".
+constexpr int kMaxDayDigits = 2;
+constexpr int kYearLength = 4;
+constexpr int kFirstYear = 1900;
+constexpr int kLastYear = 2099;
+
+// Which tokens a pass keeps. A pass runs only when the passes before it
+// found no name.
+enum class Pass : std::uint8_t {
+    Strict,     // no short code, no month name: "T3", "4972B" are references
+    ShortCodes, // short codes too: "AS24", "O2" are names
+    MonthNames, // month names too: "MARS", "APRIL" are names
+};
+
+// A UUID ("a1b2c3d4-0000-4000-8000-000000000001") is a reference. Its groups
+// of four look like short codes or names ("4E8B", "BCDE"), so it goes as a
+// whole, before the split into tokens (#40).
+QString withoutUuids(const QString& value)
+{
+    if (!value.contains(QLatin1Char('-'))) {
+        return value; // no UUID: the common case, without the regular expression
+    }
+    static const QRegularExpression kUuid(QStringLiteral(
+        "\\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\\b"));
+    QString result = value;
+    result.replace(kUuid, QStringLiteral(" "));
+    return result;
+}
+
+// The text before the first reference ("External ref.: …", "Mandate
+// ref.: …"; the word before "ref", "End-to-end" too, is a part of the
+// reference). The description of an imported row is its name, then its
+// reference block (SumeriaCcpCsvExtractionTemplate.cpp), so a reference is
+// all that the fallback to the description can add: never a name (#40).
+// The fallback runs only when the name has only boilerplate, so the word
+// before "ref" is never the name of the row.
+QString beforeReferences(const QString& value)
+{
+    static const QRegularExpression kReference(QStringLiteral("(?:\\b[\\w-]+\\s+)?\\bref\\.?\\s*:"),
+                                               QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpressionMatch match = kReference.match(value);
+    return match.hasMatch() ? value.left(match.capturedStart()) : value;
+}
+
+// True if `token` can be the day or the year of a date next to a month name:
+// "05" ("05 MARS"), "26" ("MARS 26"), "2026" ("MARS 2026"). The tokens have
+// only letters and digits, so a number has no sign.
+bool isDayOrYear(const QString& token)
+{
+    bool isNumber = false;
+    const int value = token.toInt(&isNumber);
+    if (!isNumber) {
+        return false;
+    }
+    return token.size() <= kMaxDayDigits
+           || (token.size() == kYearLength && value >= kFirstYear && value <= kLastYear);
+}
 
 // Split on anything that isn't a letter or a digit, uppercasing as we go.
-// Accents are already gone by the time this runs.
+// Accents and ligatures are already gone by the time this runs. An "&"
+// between two letters or digits stays in its token, so "H&M" and "C&A" are
+// two names, not four letters that the length rule drops (#40).
 QStringList rawTokens(const QString& value)
 {
     QStringList tokens;
     QString current;
     current.reserve(value.size());
 
-    for (const QChar character : value) {
+    for (qsizetype i = 0; i < value.size(); ++i) {
+        const QChar character = value.at(i);
         if (character.isLetterOrNumber()) {
             current.append(character.toUpper());
+        } else if (character == QLatin1Char('&') && !current.isEmpty() && i + 1 < value.size()
+                   && value.at(i + 1).isLetterOrNumber()) {
+            current.append(character);
         } else if (!current.isEmpty()) {
             tokens.append(current);
             current.clear();
@@ -106,18 +253,24 @@ QStringList rawTokens(const QString& value)
 
 // True if `token` looks like an identifier (reference, card fragment, date
 // piece, amount) rather than a name. Applied regardless of the noise-word
-// filter — a reference number is never merchant content, so unlike the
-// stop-word list this one has no fallback that re-admits it.
-bool isIdentifierToken(const QString& token)
+// filter — a reference number is never merchant content.
+bool isIdentifierToken(const QString& token, Pass pass)
 {
     if (token.size() < kMinTokenLength) {
         return true;
     }
 
     int digits = 0;
+    int masks = 0;
+    int hex = 0;
     for (const QChar character : token) {
         if (character.isDigit()) {
             ++digits;
+        } else if (character == QLatin1Char('X')) {
+            ++masks;
+        }
+        if (character.isDigit() || (character >= QLatin1Char('A') && character <= QLatin1Char('F'))) {
+            ++hex;
         }
     }
     if (digits == 0) {
@@ -126,27 +279,47 @@ bool isIdentifierToken(const QString& token)
     if (digits == token.size()) {
         return true; // pure number
     }
-    if (token.size() <= kMaxShortDigitToken) {
+    if (masks >= kMinMaskLength && digits + masks == token.size()) {
+        return true; // a masked card number: "XXXXXXXXXXXX4972"
+    }
+    if (token.size() >= kMinHexReferenceLength && hex == token.size()) {
+        return true; // a part of a UUID or a hash: "A1B2C3D4"
+    }
+    if (pass == Pass::Strict && token.size() <= kMaxShortDigitToken) {
         return true; // short and partly numeric — "T3", "REF12", "4972B"
     }
     return static_cast<double>(digits) / static_cast<double>(token.size()) > kMaxDigitRatio;
 }
 
-// One normalization pass. `applyNoiseFilter` off means "keep the transport
-// words too" — the fallback used when filtering leaves nothing behind.
-Predict::NormalizedLabel normalizeOnce(const QString& value, bool applyNoiseFilter)
+// One normalization pass. The noise words always go: a label with only noise
+// words gets an empty key.
+Predict::NormalizedLabel normalizeOnce(const QString& value, Pass pass)
 {
     Predict::NormalizedLabel result;
     if (value.trimmed().isEmpty()) {
         return result;
     }
 
-    const QStringList tokens = rawTokens(Predict::LabelNormalizer::stripAccents(value));
-    for (const QString& token : tokens) {
-        if (isIdentifierToken(token)) {
+    const QStringList tokens = rawTokens(withoutUuids(foldLigatures(Predict::LabelNormalizer::stripAccents(value))));
+    for (qsizetype i = 0; i < tokens.size(); ++i) {
+        const QString& token = tokens.at(i);
+        if (isIdentifierToken(token, pass) || noiseTokens().contains(token)) {
             continue;
         }
-        if (applyNoiseFilter && Predict::LabelNormalizer::isNoiseToken(token)) {
+        if (monthNames().contains(token)) {
+            const bool date = (i > 0 && isDayOrYear(tokens.at(i - 1)))
+                              || (i + 1 < tokens.size() && isDayOrYear(tokens.at(i + 1)));
+            if (pass != Pass::MonthNames || date) {
+                continue;
+            }
+        }
+        // "Direct debit: …" (#55): the pair is boilerplate, each word alone
+        // can be a name. The pair is found in the kept tokens, so that
+        // "DIRECT 12/03 DEBIT" is a pair too and normalize() of a key gives
+        // the key.
+        if (token == QLatin1String("DEBIT") && !result.tokens.isEmpty()
+            && result.tokens.constLast() == QLatin1String("DIRECT")) {
+            result.tokens.removeLast();
             continue;
         }
         result.tokens.append(token);
@@ -178,31 +351,34 @@ QString stripAccents(const QString& value)
 
 bool isNoiseToken(const QString& token)
 {
-    return noiseTokens().contains(token.toUpper());
+    const QString upper = token.toUpper();
+    return noiseTokens().contains(upper) || monthNames().contains(upper);
 }
 
 NormalizedLabel normalize(const QString& name, const QString& description)
 {
-    // Four attempts, most aggressive first. Each fallback only runs when the
-    // previous one produced an empty key, so the common case costs exactly
-    // one pass — and a row whose label is *entirely* boilerplate still ends
-    // up with a key rather than silently dropping out of the predictor.
-    NormalizedLabel result = normalizeOnce(name, true);
-    if (!result.isEmpty()) {
-        return result;
+    // Six attempts, strictest first: three passes of the name, then of the
+    // description before its first reference. Each fallback only runs when
+    // the previous one produced an empty key, so the common case costs
+    // exactly one pass. The second pass keeps the short codes ("AS24", "O2")
+    // and the third the month names ("MARS", "APRIL"): a label whose only
+    // name is one. A label with only noise words gets an empty key — no
+    // suggestion, no rule — rather than the key of its boilerplate, which
+    // every such row would share (#40).
+    const auto firstKey = [](const QString& text) {
+        for (const Pass pass : {Pass::Strict, Pass::ShortCodes, Pass::MonthNames}) {
+            NormalizedLabel result = normalizeOnce(text, pass);
+            if (!result.isEmpty()) {
+                return result;
+            }
+        }
+        return NormalizedLabel();
+    };
+    NormalizedLabel result = firstKey(name);
+    if (result.isEmpty()) {
+        result = firstKey(beforeReferences(description));
     }
-
-    result = normalizeOnce(name, false);
-    if (!result.isEmpty()) {
-        return result;
-    }
-
-    result = normalizeOnce(description, true);
-    if (!result.isEmpty()) {
-        return result;
-    }
-
-    return normalizeOnce(description, false);
+    return result;
 }
 
 QStringList charNgrams(const QString& key)

@@ -3,6 +3,7 @@
 
 #include <QDate>
 #include <QObject>
+#include <QString>
 #include <QStringList>
 #include <QVariantList>
 #include <QtQml/qqml.h>
@@ -91,6 +92,10 @@ private:
     QVariantList m_kpis, m_projTimestamps, m_projValues;
     double m_targetAmount = 0, m_chartMax = 0, m_minTimeMs = 0, m_maxTimeMs = 0;
     double m_fundingGap = 0;
+    // Of the selected project: the earmarked amount covers the target, and
+    // the "Projected Completion" text ("Reached", "Never" or a month).
+    bool    m_targetReached = false;
+    QString m_completionText;
 
     static constexpr double kDefaultLoanRatePct = 3.5; // MOCK default annual rate shown in the loan simulator
     double m_loanRatePct = kDefaultLoanRatePct;

@@ -12,11 +12,15 @@ For how CI builds, tests and publishes the app, see `CI-CD.md`.
 | `main` | Released code only. Each merge is tagged `vX.Y.Z`. | — | — |
 | `develop` | Integration branch, and the default target of pull requests. | — | — |
 | `feature/<issue>-<slug>` | New work, for example `feature/42-sankey-balance`. | `develop` | `develop` (pull request, squash merge) |
-| `bugfix/<issue>-<slug>` | A fix for something that is not released yet. | `develop` | `develop` (pull request, squash merge) |
+| `bugfix/<issue>-<slug>` | A fix for something that is not released yet. | `develop`, or `release/<x.y.z>` for a fix of that release | the branch it was created from (pull request, squash merge) |
 | `release/<x.y.z>` | Prepares a release: the last fixes and the date of the version. | `develop` | `main` (merge commit), then back into `develop` |
 | `hotfix/<x.y.z>` | An urgent fix of a release. | `main` | `main` (merge commit), then back into `develop` |
 
 Do not push to `main` or `develop` directly.
+
+**History rewrite.** On 2026-10-20 at 06:39 UTC, the history on GitHub was rewritten to remove
+personal data. Delete a clone made before that time and clone the repository again. Do not push
+from an old clone: it would bring the old history back.
 
 ---
 
@@ -40,6 +44,13 @@ branch is deleted; otherwise rebase it with
 `git rebase --onto develop <merged-branch> <next-branch>`. A change to a pull request in the
 middle of the stack means a rebase of every pull request above it. The usual conflict is
 `version.json`: resolve it there, then run `python tools/version.py render`.
+
+**Merging a stack.** A whole stack can be merged in one operation: on GitHub, merge the highest
+pull request to merge. GitHub merges it together with all the unmerged pull requests below it
+([merging stacked pull requests](https://docs.github.com/en/pull-requests/how-tos/merge-and-close-pull-requests/merging-stacked-pull-requests),
+public preview). `develop` then gets one push and one CI run for all of them. Do it only when CI
+is green on each pull request of the stack: the CI run of each pull request tested it with all
+the pull requests below it.
 
 ---
 
@@ -84,9 +95,19 @@ A pull request is ready when:
 
 ## Releases
 
-See `CI-CD.md` § The release flow. After a release, CI opens a pull request that merges `main`
-back into `develop`, and starts CI on it. Merge it with a merge commit, not a squash: `develop`
-must contain the release commit.
+See `CI-CD.md` § The release flow. In short:
+
+1. Cut `release/<x.y.z>` from `develop` and push it. CI opens a pull request into `develop` that
+   opens the next version. Merge it before any other pull request into `develop`. Then update
+   the branch of each open pull request into `develop`, so that its CI runs again.
+2. Fixes for the release go into the release branch: a `bugfix/*` branch from it, and a pull
+   request into it.
+3. When the release is ready, run `python tools/version.py release` on the release branch (it
+   writes the date of the release), then merge the release branch into `main` with a merge
+   commit.
+4. CI publishes the release. Then it opens a pull request that merges `main` back into
+   `develop`, and starts CI on it. Merge it with a merge commit, not a squash: `develop` must
+   contain the release commit.
 
 ---
 

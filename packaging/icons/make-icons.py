@@ -9,16 +9,24 @@ Mocha, the same tokens as docs/styling.md). Run it after changing the design:
 
 Outputs, all committed:
     finance-dashboard.ico       Windows — 16/24/32/48/64/128/256, the icon of
-                                the setup (CPACK_INNOSETUP_ICON_FILE)
-    finance-dashboard-256.png   Linux — hicolor 256x256 app icon (.deb/AppImage)
+                                the setup (CPACK_INNOSETUP_ICON_FILE) and of
+                                the .exe (app.rc)
+    finance-dashboard-256.png   Linux — hicolor 256x256 app icon (.deb/AppImage),
+                                and the window icon (a Qt resource)
     finance-dashboard-512.png   Linux/AppStream — high-DPI source
+    finance-dashboard-test*     the same three files for the Test app (#130):
+                                the icon with an orange "TEST" band
 
 Needs Pillow (`pip install pillow`); nothing else in the build depends on it.
+The "TEST" text uses DejaVu Sans Bold when the system has it, else the
+default font of Pillow. Pass --test to write only the Test files: a new
+Pillow can write the prod files with other bytes.
 """
 
+import sys
 from pathlib import Path
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageChops, ImageDraw, ImageFont
 
 OUT_DIR = Path(__file__).resolve().parent
 
@@ -30,6 +38,7 @@ MAUVE = (203, 166, 247)
 BLUE = (137, 180, 250)
 SKY = (137, 220, 235)
 GREEN = (166, 227, 161)
+PEACH = (250, 179, 135)  # the "TEST" band of the Test app (#130)
 
 SS = 4  # supersampling factor — draw big, downscale for clean antialiasing
 
@@ -92,21 +101,54 @@ def draw_icon(size: int) -> Image.Image:
     return canvas
 
 
-def render(size: int) -> Image.Image:
-    return draw_icon(size * SS).resize((size, size), Image.LANCZOS)
+def band_font(size_px: int) -> ImageFont.FreeTypeFont:
+    """A bold sans font for the band; Pillow's default font if there is none."""
+    for path in ("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "DejaVuSans-Bold.ttf"):
+        try:
+            return ImageFont.truetype(path, size_px)
+        except OSError:
+            continue
+    return ImageFont.load_default(size=size_px)
+
+
+def add_test_band(canvas: Image.Image) -> Image.Image:
+    """An orange band with "TEST" across the lower part, inside the rounded panel."""
+    size = canvas.width
+    band = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(band)
+    top, bottom = size * 0.64, size * 0.90
+    draw.rectangle([0, top, size, bottom], fill=PEACH + (255,))
+    font = band_font(int(size * 0.19))
+    left, upper, right, lower = draw.textbbox((0, 0), "TEST", font=font)
+    x = (size - (right - left)) / 2 - left
+    y = top + ((bottom - top) - (lower - upper)) / 2 - upper
+    draw.text((x, y), "TEST", font=font, fill=CRUST + (255,))
+    # Clip the band to the rounded panel, so that the corners stay round.
+    mask = Image.new("L", (size, size), 0)
+    ImageDraw.Draw(mask).rounded_rectangle([0, 0, size - 1, size - 1], radius=int(size * 0.22), fill=255)
+    band.putalpha(ImageChops.multiply(band.getchannel("A"), mask))
+    canvas.alpha_composite(band)
+    return canvas
+
+
+def render(size: int, test: bool = False) -> Image.Image:
+    canvas = draw_icon(size * SS)
+    if test:
+        canvas = add_test_band(canvas)
+    return canvas.resize((size, size), Image.LANCZOS)
+
+
+def write_set(base: str, test: bool) -> None:
+    render(256, test).save(OUT_DIR / f"{base}-256.png")
+    render(512, test).save(OUT_DIR / f"{base}-512.png")
+    ico_sizes = [16, 24, 32, 48, 64, 128, 256]
+    render(256, test).save(OUT_DIR / f"{base}.ico", format="ICO", sizes=[(s, s) for s in ico_sizes])
 
 
 def main() -> None:
-    png_256 = render(256)
-    png_256.save(OUT_DIR / "finance-dashboard-256.png")
-    render(512).save(OUT_DIR / "finance-dashboard-512.png")
-
-    ico_sizes = [16, 24, 32, 48, 64, 128, 256]
-    render(256).save(
-        OUT_DIR / "finance-dashboard.ico",
-        format="ICO",
-        sizes=[(s, s) for s in ico_sizes],
-    )
+    if "--test" not in sys.argv[1:]:
+        write_set("finance-dashboard", test=False)
+    write_set("finance-dashboard-test", test=True)
     print("wrote", ", ".join(p.name for p in sorted(OUT_DIR.glob("finance-dashboard*"))))
 
 

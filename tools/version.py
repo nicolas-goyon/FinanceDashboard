@@ -15,11 +15,15 @@
 
 Release flow (gitflow, see CI-CD.md):
 
-    on release/0.2.1:  version.py release   -> stamps today's date on 0.2.1
+    cut release/0.2.1: CI runs version.py cut on a branch from develop
+                       -> 0.2.2 is in progress, 0.2.1 stays undated (it is
+                       in the release branch); CI opens a PR into develop
+    on release/0.2.1:  fixes are logged under 0.2.1; at the end,
+                       version.py release -> stamps today's date on 0.2.1
     merge into main:   CI publishes v0.2.1 (tag + GitHub release), using
                        version.py current / notes
-    CI, after that:    version.py bump patch on a branch from main
-                       -> opens 0.2.2; CI opens a PR from it into develop
+    CI, after that:    merges main into a branch from develop (0.2.1 gets
+                       its date there) and opens a PR into develop
 
 Day-to-day, log a change the moment you make it — same maintenance rule as
 before, just a different command:
@@ -79,10 +83,12 @@ fact. Small fixes to a feature that's still unreleased/in-progress in the *same*
 need their own extra line; fold them into the feature's own entry instead of listing "fixed a
 bug in the thing I just added two lines above."
 
-**Releases** follow gitflow. A `release/<x.y.z>` branch stamps the date here
-(`version.py release`). Its merge into `main` publishes the GitHub release (setup, portable
-builds, source archives). Then CI opens a pull request into `develop` that opens the next patch
-version as the new in-progress one. See `CI-CD.md`.
+**Releases** follow gitflow. When a `release/<x.y.z>` branch is cut, CI opens a pull request
+that opens the next patch version on `develop`. There, vX.Y.Z stays undated ("release in
+progress") until it is released. The release branch stamps the date here (`version.py release`)
+just before its merge into `main`, and that merge publishes the GitHub release (setup, portable
+builds, source archives). Then CI opens a pull request that merges the release back into
+`develop`. See `CI-CD.md`.
 """
 
 
@@ -113,6 +119,28 @@ def find_release(data: dict[str, Any], version: str) -> dict[str, Any]:
 
 def current_release(data: dict[str, Any]) -> dict[str, Any]:
     return find_release(data, data["current"])
+
+
+def version_key(version: str) -> tuple[int, int, int]:
+    match = SEMVER_RE.match(version)
+    if not match:
+        sys.exit(f"error: version {version!r} is not X.Y.Z")
+    major, minor, patch = (int(part) for part in match.groups())
+    return major, minor, patch
+
+
+def in_release(data: dict[str, Any]) -> dict[str, Any] | None:
+    """The version in a release branch, or None.
+
+    On develop, after `cut`, the version of the release branch has no date
+    and is not the current version: it waits for its release. Its date comes
+    from main with the back-merge. `check` allows one such version, just
+    below the current one.
+    """
+    for release in data["releases"]:
+        if not release.get("date") and release["version"] != data["current"]:
+            return release
+    return None
 
 
 def get_section(release: dict[str, Any], name: str, create: bool = False) -> dict[str, Any] | None:
@@ -160,9 +188,9 @@ def render_release(release: dict[str, Any], *, heading_level: int = 2, with_head
         elif date:
             suffix = ""
         else:
-            # Only the in-progress version is "current". `check` refuses any
-            # other undated release, so the second label is a safety net only.
-            suffix = " (current)" if version == current else " (unreleased)"
+            # Only the in-progress version is "current". The other undated
+            # version that `check` allows is the one in a release branch.
+            suffix = " (current)" if version == current else " (release in progress)"
         stamp = f" — {date}" if date else ""
         out.append(f"{heading} v{version}{stamp}{suffix}")
         out.append("")
@@ -384,13 +412,28 @@ def cmd_release(args: argparse.Namespace) -> int:
     return 0
 
 
-def latest_released(data: dict[str, Any]) -> str | None:
-    """The highest version that has a date, or None."""
-    dated = [r["version"] for r in data["releases"]
-             if r.get("date") and SEMVER_RE.match(r["version"])]
-    if not dated:
+def latest_other(data: dict[str, Any]) -> str | None:
+    """The highest version other than the current one, or None.
+
+    That is the latest release, or the version in a release branch (see
+    `in_release`): `check` allows no other kind of version.
+    """
+    others = [r["version"] for r in data["releases"]
+              if r["version"] != data["current"] and SEMVER_RE.match(r["version"])]
+    if not others:
         return None
-    return max(dated, key=lambda v: tuple(int(p) for p in SEMVER_RE.match(v).groups()))
+    return max(others, key=version_key)
+
+
+def next_version(base: str, part: str) -> str:
+    major, minor, patch = version_key(base)
+    if part == "major":
+        major, minor, patch = major + 1, 0, 0
+    elif part == "minor":
+        minor, patch = minor + 1, 0
+    else:
+        patch += 1
+    return f"{major}.{minor}.{patch}"
 
 
 def cmd_bump(args: argparse.Namespace) -> int:
@@ -400,29 +443,20 @@ def cmd_bump(args: argparse.Namespace) -> int:
     above it. If the current version is still in progress (undated), rename it
     instead, so that its entries stay together and there is never more than one
     in-progress version: a `bump minor` on an in-progress 0.2.2 makes it 0.3.0.
-    The next number is counted from the latest released version, so a rename
-    from 0.2.2 to 0.3.0 and back to a patch gives 0.2.2 again, not 0.3.1.
+    The next number is counted from the highest other version (the latest
+    release, or the version in a release branch), so a rename from 0.2.2 to
+    0.3.0 and back to a patch gives 0.2.2 again, not 0.3.1.
     """
     data = load()
     release = current_release(data)
     in_progress = not release.get("date")
-    base = latest_released(data) if in_progress else data["current"]
+    base = latest_other(data) if in_progress else data["current"]
     if base is None:
         base = data["current"]
         if in_progress:
             sys.exit(f"error: v{base} is the only version and is not released; "
                      f"there is nothing to count the next version from")
-    match = SEMVER_RE.match(base)
-    if not match:
-        sys.exit(f"error: version {base!r} is not X.Y.Z")
-    major, minor, patch = (int(part) for part in match.groups())
-    if args.part == "major":
-        major, minor, patch = major + 1, 0, 0
-    elif args.part == "minor":
-        minor, patch = minor + 1, 0
-    else:
-        patch += 1
-    new_version = f"{major}.{minor}.{patch}"
+    new_version = next_version(base, args.part)
     if in_progress and new_version == release["version"]:
         print(new_version)
         return 0
@@ -442,6 +476,75 @@ def cmd_bump(args: argparse.Namespace) -> int:
     save(data)
     VERSION_MD.write_text(render_markdown(data), encoding="utf-8", newline="\n")
     print(new_version)
+    return 0
+
+
+def cmd_cut(args: argparse.Namespace) -> int:
+    """Open the next version on develop, after release/X.Y.Z is cut from it.
+
+    Unlike `bump`, the in-progress version is not renamed: vX.Y.Z keeps its
+    entries and stays undated, because the release branch releases it. The
+    next version opens above it as the new in-progress one, so that develop
+    can take changes again while the release branch is tested. vX.Y.Z gets
+    its date with the back-merge from main.
+    """
+    data = load()
+    release = current_release(data)
+    require_in_progress(release)
+    other = in_release(data)
+    if other is not None:
+        sys.exit(f"error: v{other['version']} is already in a release branch. Release it and "
+                 f"merge the back-merge pull request first: only one release branch at a time. "
+                 f"If that release branch is deleted with no release, run `version.py uncut`.")
+    new_version = next_version(release["version"], args.part)
+    if any(r["version"] == new_version for r in data["releases"]):
+        sys.exit(f"error: v{new_version} already exists in version.json")
+    data["releases"].insert(data["releases"].index(release), {
+        "version": new_version,
+        "date": None,
+        "title": None,
+        "summary": "",
+        "sections": [],
+    })
+    data["current"] = new_version
+    save(data)
+    VERSION_MD.write_text(render_markdown(data), encoding="utf-8", newline="\n")
+    print(new_version)
+    return 0
+
+
+def cmd_uncut(_args: argparse.Namespace) -> int:
+    """Undo `cut`, after release/X.Y.Z is deleted with no release.
+
+    vX.Y.Z becomes the in-progress version again. The entries of the next
+    version move into it, and the next version is removed: the next release
+    of develop has both.
+    """
+    data = load()
+    current = current_release(data)
+    require_in_progress(current)
+    other = in_release(data)
+    if other is None:
+        sys.exit("error: no version is in a release branch")
+    for section in current["sections"]:
+        target_section = get_section(other, section["name"], create=True)
+        assert target_section is not None
+        for group in section["groups"]:
+            title = group.get("title") or None
+            target = next((g for g in target_section["groups"] if (g.get("title") or None) == title),
+                          None)
+            if target is None:
+                target = {"title": title, "entries": []}
+                target_section["groups"].append(target)
+            target["entries"].extend(group["entries"])
+    for field in ("title", "summary"):
+        if not other.get(field) and current.get(field):
+            other[field] = current[field]
+    data["releases"].remove(current)
+    data["current"] = other["version"]
+    save(data)
+    VERSION_MD.write_text(render_markdown(data), encoding="utf-8", newline="\n")
+    print(other["version"])
     return 0
 
 
@@ -479,41 +582,71 @@ def cmd_check(args: argparse.Namespace) -> int:
             print(f"duplicate version: {rel['version']}", file=sys.stderr)
             return 1
         seen.add(rel["version"])
-    if data["current"] not in seen:
-        print(f"current version v{data['current']} is not in the releases list", file=sys.stderr)
+    current = data["current"]
+    if current not in seen:
+        print(f"current version v{current} is not in the releases list", file=sys.stderr)
         return 1
-    # At most one version is in progress, and it is the current one. On develop
-    # the current version is in progress; on main (after a release) it is dated.
-    undated = [r["version"] for r in data["releases"] if not r.get("date")]
-    if len(undated) > 1:
-        print(f"more than one version has no date: {', '.join('v' + v for v in undated)}. "
-              f"Only the current version can be in progress.", file=sys.stderr)
+    # The current version is in progress (develop, a release branch) or dated
+    # (main, after a release). One more version can be undated: on develop,
+    # after `cut`, the version of the release branch. It is just below the
+    # current version, and the current version is in progress.
+    releases = data["releases"]
+    position = {r["version"]: i for i, r in enumerate(releases)}
+    current_dated = bool(releases[position[current]].get("date"))
+    others = [r["version"] for r in releases if not r.get("date") and r["version"] != current]
+    if len(others) > 1:
+        print(f"more than one version has no date apart from the current one: "
+              f"{', '.join('v' + v for v in others)}. Only the current version and the "
+              f"version of one release branch can be undated.", file=sys.stderr)
         return 1
-    if undated and undated[0] != data["current"]:
-        print(f"v{undated[0]} has no date but is not the current version "
-              f"(v{data['current']}).", file=sys.stderr)
+    if others:
+        other = others[0]
+        if (current_dated or position[other] != position[current] + 1
+                or version_key(other) >= version_key(current)):
+            print(f"v{other} has no date but is not the current version (v{current}). Only the "
+                  f"version of a release branch can be undated too: just below an in-progress "
+                  f"current version.", file=sys.stderr)
+            return 1
+    if args.dated and not current_dated:
+        print(f"v{current} has no date. Run `python tools/version.py release` on the release "
+              f"branch before its merge into main.", file=sys.stderr)
         return 1
-    # A version that is released on the base branch cannot change any more.
-    if args.base:
-        base = {r["version"]: r for r in load_at(args.base)["releases"]}
-        here = {r["version"]: r for r in data["releases"]}
-        for version, rel in base.items():
-            if not rel.get("date"):
-                continue
-            if version not in here:
-                print(f"v{version} is released on {args.base} but missing here.", file=sys.stderr)
-                return 1
-            if not here[version].get("date"):
-                # develop before the back-merge PR: not a change, only behind.
-                print(f"note: v{version} is released on {args.base}; merge the back-merge "
-                      f"pull request into this branch.")
-                continue
-            if here[version] != rel:
-                print(f"v{version} is released on {args.base}, and this branch changes it. "
-                      f"Log the change under the current version (v{data['current']}).",
-                      file=sys.stderr)
-                return 1
-    print(f"ok — version.json and version.md agree (current: v{data['current']})")
+    here = {r["version"]: r for r in releases}
+    for ref in args.base or []:
+        base = load_at(ref)
+        for rel in base["releases"]:
+            version = rel["version"]
+            if rel.get("date"):
+                # A version that is released on the base cannot change any more.
+                if version not in here:
+                    print(f"v{version} is released on {ref} but missing here.", file=sys.stderr)
+                    return 1
+                if not here[version].get("date"):
+                    # develop before the back-merge PR: not a change, only behind.
+                    print(f"note: v{version} is released on {ref}; merge the back-merge "
+                          f"pull request into this branch.")
+                    continue
+                if here[version] != rel:
+                    print(f"v{version} is released on {ref}, and this branch changes it. "
+                          f"Log the change under the current version (v{current}).",
+                          file=sys.stderr)
+                    return 1
+            elif version != base["current"]:
+                # In a release branch on the base: only that branch changes it.
+                if version not in here:
+                    print(f"v{version} is in a release branch on {ref} but missing here.",
+                          file=sys.stderr)
+                    return 1
+                if here[version].get("date"):
+                    continue    # released since then: the back-merge brings its date
+                if here[version] != rel:
+                    print(f"v{version} is in a release branch on {ref}, and this branch "
+                          f"changes it. Log the change under the current version (v{current}); "
+                          f"if the branch is older than the cut, update it from {ref} first. "
+                          f"A fix for the release goes into its release branch.",
+                          file=sys.stderr)
+                    return 1
+    print(f"ok — version.json and version.md agree (current: v{current})")
     return 0
 
 
@@ -559,10 +692,24 @@ def main(argv: list[str] | None = None) -> int:
     bump.add_argument("part", nargs="?", default="patch", choices=["major", "minor", "patch"])
     bump.set_defaults(func=cmd_bump)
 
+    cut = sub.add_parser("cut", help="after release/X.Y.Z is cut from develop: keep vX.Y.Z "
+                                     "undated and open the next version as in-progress")
+    cut.add_argument("part", nargs="?", default="patch", choices=["major", "minor", "patch"])
+    cut.set_defaults(func=cmd_cut)
+
+    sub.add_parser("uncut", help="after release/X.Y.Z is deleted with no release: vX.Y.Z in "
+                                 "progress again, with the entries of the next version"
+                   ).set_defaults(func=cmd_uncut)
+
     sub.add_parser("render", help="regenerate version.md from version.json").set_defaults(func=cmd_render)
     check = sub.add_parser("check", help="fail if version.md is stale or the model is invalid")
-    check.add_argument("--base", help="git ref (for example origin/main): fail if this branch "
-                                      "changes a version that is released there")
+    check.add_argument("--base", action="append",
+                       help="git ref (for example origin/main): fail if this branch changes a "
+                            "version that is released there, or that is in a release branch "
+                            "there; can be given more than once")
+    check.add_argument("--dated", action="store_true",
+                       help="also fail if the current version has no date (a pull request into "
+                            "main)")
     check.set_defaults(func=cmd_check)
 
     import_md = sub.add_parser("import-md", help="one-shot: build version.json from version.md")

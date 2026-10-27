@@ -17,9 +17,25 @@
 //     every step), closes it, and leaves no backup copy;
 //   - the backup copy is taken before any change to the file;
 //   - the accounts rebuild keeps the AUTOINCREMENT counter;
-//   - resetAll() keeps the latest schema.
+//   - resetAll() keeps the latest schema;
+//   - step 3 adds the settings table: an old file with accounts records that
+//     the account defaults were written, a new file records nothing, and
+//     resetAll() records both (#37);
+//   - a file from v0.2.1 (schema version 2) gets only step 3: with data, its
+//     defaults count as written; emptied by a reset, it records nothing (#37);
+//   - step 4 rounds the stored amounts to the cent, keeps the fingerprints
+//     and says how many rows changed; the backup copy keeps the old values
+//     (#33);
+//   - step 5 keeps the most recent link of each account hash, in lower
+//     case, makes the hash UNIQUE, and says how many links to another
+//     account it removed; a new file and a reset get the UNIQUE index, and
+//     an open does not add the old index again (#47);
+//   - step 6 normalizes the patterns of the category rules again: a pattern
+//     with only generic words goes, two that become one keep the newer rule,
+//     and the others are rewritten; the report counts them (#40, #55).
 
 #include "db/Database.h"
+#include "db/tables/TransactionsTable.h"
 
 #include <QDir>
 #include <QFile>
@@ -30,6 +46,7 @@
 #include <QTemporaryDir>
 #include <QTest>
 
+#include <array>
 #include <memory>
 
 namespace {
@@ -115,6 +132,10 @@ private slots:
     void backupIsTakenBeforeAnyChange();
     void accountCounterIsKept();
     void resetKeepsTheLatestSchema();
+    void version2DatabaseIsUpgraded();
+    void version3AmountsAreRoundedToTheCent();
+    void version4HashesGetOneAccount();
+    void version5RulesAreNormalizedAgain();
 
 private:
     // Runs SQL on `path` through its own connection, then closes it.
@@ -252,6 +273,12 @@ void DbMigrationTest::newDatabaseGetsTheLatestSchema()
     QVERIFY(columns(QStringLiteral("transactions")).contains(QStringLiteral("fingerprint")));
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index'"
                                   " AND name = 'idx_transactions_fingerprint';")), 1);
+    // Step 3: the settings table, with no record. The first run writes the
+    // defaults.
+    QVERIFY(columns(QStringLiteral("settings")).contains(QStringLiteral("value")));
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM settings;")), 0);
+    QVERIFY(!db.defaultsWritten(Database::Defaults::Categories));
+    QVERIFY(!db.defaultsWritten(Database::Defaults::Accounts));
 }
 
 void DbMigrationTest::oldDatabaseIsUpgraded()
@@ -294,6 +321,10 @@ void DbMigrationTest::oldDatabaseIsUpgraded()
     QVERIFY2(report.contains(QStringLiteral("Warning: 1 of the removed copies")), qPrintable(report));
     QVERIFY2(report.contains(QLatin1String(TransactionsTable::kReusedReferenceIssueUrl)), qPrintable(report));
     QVERIFY2(report.contains(QStringLiteral("IBAN, BIC and account numbers were removed")), qPrintable(report));
+    // Step 3: the file has accounts, so their defaults count as written; it has
+    // no category, so the default categories come on the next start.
+    QVERIFY(db.defaultsWritten(Database::Defaults::Accounts));
+    QVERIFY(!db.defaultsWritten(Database::Defaults::Categories));
 
     // The backup is the database as it was before the upgrade.
     const QStringList copies = backups();
@@ -461,6 +492,249 @@ void DbMigrationTest::resetKeepsTheLatestSchema()
     QVERIFY2(db.resetAll(), qPrintable(db.lastError()));
     QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
     QVERIFY(columns(QStringLiteral("transactions")).contains(QStringLiteral("fingerprint")));
+    // After a reset, no default data comes back (#37).
+    QVERIFY(db.defaultsWritten(Database::Defaults::Categories));
+    QVERIFY(db.defaultsWritten(Database::Defaults::Accounts));
+}
+
+void DbMigrationTest::version2DatabaseIsUpgraded()
+{
+    // Two files as v0.2.1 left them: schema version 2, that is the latest
+    // schema without the settings table. One has data, and "Reset Database"
+    // of v0.2.1 emptied the other one.
+    Database& db = Database::instance();
+    const QString used = m_dir->filePath(QStringLiteral("used-v2.db"));
+    const QString emptied = m_dir->filePath(QStringLiteral("emptied-v2.db"));
+    for (const QString& path : {used, emptied}) {
+        QVERIFY2(db.open(path), qPrintable(db.lastError()));
+        db.close();
+        execOn(path, {QStringLiteral("DROP TABLE settings;"), QStringLiteral("PRAGMA user_version = 2;")});
+    }
+    execOn(used, {
+        QStringLiteral("INSERT INTO categories (name, color) VALUES ('Groceries', '#a6e3a1');"),
+        QStringLiteral("INSERT INTO account_types (name) VALUES ('CCP');"),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    QVERIFY2(db.open(used), qPrintable(db.lastError()));
+    QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
+    QVERIFY2(db.upgradeReport().contains(QStringLiteral("from schema version 2 to %1").arg(Database::kSchemaVersion)),
+             qPrintable(db.upgradeReport()));
+    QCOMPARE(backups().size(), qsizetype(1));
+    // It has data: its defaults count as written, and its data stays.
+    QVERIFY(db.defaultsWritten(Database::Defaults::Categories));
+    QVERIFY(db.defaultsWritten(Database::Defaults::Accounts));
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM categories;")), 1);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM account_types;")), 1);
+    db.close();
+
+    // Empty: step 3 cannot tell it from a new file, so it records nothing.
+    // The defaults come one more time, at the first start after the upgrade
+    // (the changelog says it).
+    QVERIFY2(db.open(emptied), qPrintable(db.lastError()));
+    QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
+    QVERIFY(!db.defaultsWritten(Database::Defaults::Categories));
+    QVERIFY(!db.defaultsWritten(Database::Defaults::Accounts));
+}
+
+void DbMigrationTest::version3AmountsAreRoundedToTheCent()
+{
+    // A file as the builds of v0.2.2 before #33 left it: schema version 3,
+    // amounts with more than two decimals (a typed amount, a reconciliation
+    // adjustment, a sum), and the fingerprints of the unrounded amounts.
+    Database& db = Database::instance();
+    const QString path = m_dir->filePath(QStringLiteral("v3.db"));
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    db.close();
+    const QString typed = TransactionsTable::fingerprint(QStringLiteral("2026-03-02"), QStringLiteral("2026-03-02"),
+                                                         12.344, 0.0, 487.656, QStringLiteral("Typed amount"));
+    const QString adjustment = TransactionsTable::fingerprint(QStringLiteral("2026-03-31"), QStringLiteral("2026-03-31"),
+                                                              0.0, 0.00999999999999995, 0.31,
+                                                              QStringLiteral("Auto-added"));
+    const QString exact = TransactionsTable::fingerprint(QStringLiteral("2026-03-05"), QStringLiteral("2026-03-05"),
+                                                         5.0, 0.0, 482.66, QStringLiteral("Exact amount"));
+    execOn(path, {
+        QStringLiteral("INSERT INTO accounts (name, type, category, currency, notes)"
+                       " VALUES ('Checking', 'CCP', '', 'EUR', '');"),
+        QStringLiteral("INSERT INTO transactions (account_id, confirmation_date, operation_date, name, description,"
+                       " debit, credit, balance_after, fingerprint) VALUES"
+                       " (1, '2026-03-02', '2026-03-02', 'SHOP', 'Typed amount', 12.344, 0, 487.656, '%1'),"
+                       " (1, '2026-03-31', '2026-03-31', 'ADJUSTMENT', 'Auto-added', 0, 0.00999999999999995, 0.31, '%2'),"
+                       " (1, '2026-03-05', '2026-03-05', 'BAKERY', 'Exact amount', 5, 0, 482.66, '%3');")
+            .arg(typed, adjustment, exact),
+        QStringLiteral("INSERT INTO account_balance_checkpoints (account_id, date, balance, note) VALUES"
+                       " (1, '2026-03-01', 500.0000001, ''), (1, '2026-03-31', 0.31, '');"),
+        QStringLiteral("PRAGMA user_version = 3;"),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
+    // Two transactions and one checkpoint changed.
+    QVERIFY2(db.upgradeReport().contains(QStringLiteral("3 row(s) had an amount with more than two decimals")),
+             qPrintable(db.upgradeReport()));
+
+    // Exact comparisons: the stored doubles are the ones of whole cents.
+    QSqlQuery query(db.sqlDatabase());
+    QVERIFY(query.exec(QStringLiteral("SELECT debit, credit, balance_after, fingerprint FROM transactions ORDER BY id;")));
+    const std::array<std::array<double, 3>, 3> expected = {{{12.34, 0.0, 487.66}, {0.0, 0.01, 0.31}, {5.0, 0.0, 482.66}}};
+    const QStringList fingerprints = {typed, adjustment, exact};
+    for (qsizetype row = 0; row < 3; ++row) {
+        QVERIFY(query.next());
+        const auto& amounts = expected.at(static_cast<size_t>(row));
+        for (int column = 0; column < 3; ++column) {
+            QVERIFY2(query.value(column).toDouble() == amounts.at(static_cast<size_t>(column)),
+                     qPrintable(QStringLiteral("row %1, column %2: %3").arg(row).arg(column)
+                                    .arg(query.value(column).toDouble(), 0, 'g', 17)));
+        }
+        // The fingerprint stays, and it is also the one of the rounded amounts.
+        QCOMPARE(query.value(3).toString(), fingerprints.at(row));
+    }
+    QCOMPARE(TransactionsTable::fingerprint(QStringLiteral("2026-03-02"), QStringLiteral("2026-03-02"), 12.34, 0.0,
+                                            487.66, QStringLiteral("Typed amount")),
+             typed);
+    QVERIFY(query.exec(QStringLiteral("SELECT balance FROM account_balance_checkpoints ORDER BY id;")));
+    QVERIFY(query.next());
+    QVERIFY(query.value(0).toDouble() == 500.0);
+    QVERIFY(query.next());
+    QVERIFY(query.value(0).toDouble() == 0.31);
+    query.finish();
+    db.close();
+
+    // The copy from before the upgrade keeps the old values.
+    QCOMPARE(backups().size(), qsizetype(1));
+    const QString backup = m_dir->filePath(backups().first());
+    QCOMPARE(countOn(backup, QStringLiteral("SELECT ROUND(debit * 1000) FROM transactions WHERE id = 1;")), 12344);
+    QCOMPARE(countOn(backup, QStringLiteral("PRAGMA user_version;")), 3);
+}
+
+void DbMigrationTest::version4HashesGetOneAccount()
+{
+    // A file at schema version 4: the index on the hash is not UNIQUE, and
+    // the hashes keep the case in which they were written.
+    Database& db = Database::instance();
+    const QString path = m_dir->filePath(QStringLiteral("v4.db"));
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    db.close();
+    const QString shared = QStringLiteral("ABCDEF0123456789").repeated(4);
+    const QString own = QStringLiteral("0123456789abcdef").repeated(4);
+    const QString tabbed = QStringLiteral("fedcba9876543210").repeated(4);
+    execOn(path, {
+        QStringLiteral("DROP INDEX idx_account_hashes_hash;"),
+        QStringLiteral("CREATE INDEX idx_account_hashes_hash ON account_hashes(hash);"),
+        QStringLiteral("INSERT INTO accounts (name, type, category, currency, notes) VALUES"
+                       " ('Checking', 'CCP', '', 'EUR', ''), ('Savings', 'CCP', '', 'EUR', '');"),
+        // Ids 1–3: the shared hash, typed in upper case on Checking, linked
+        // in lower case to Savings by a save, then linked again to Checking
+        // (a second row in another case: the most recent link). Id 4: a hash
+        // of Savings only. Ids 5–6: a hash with a tab after it on Checking,
+        // then on Savings. Ids 7–8: a typed value that is not a fingerprint,
+        // on both accounts in two cases: removed from Checking, not counted.
+        QStringLiteral("INSERT INTO account_hashes (account_id, hash, source) VALUES"
+                       " (1, '%1', 'manual'), (2, '%2', 'auto'), (1, '%2', 'auto'), (2, '%3', 'auto'),"
+                       " (1, '%4' || char(9), 'manual'), (2, '%4', 'auto'),"
+                       " (1, 'MY OLD HASH', 'manual'), (2, 'my old hash', 'manual');")
+            .arg(shared, shared.toLower(), own, tabbed),
+        QStringLiteral("PRAGMA user_version = 4;"),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
+    // Savings loses the shared hash and Checking the tabbed one; the second
+    // row of Checking is not a link to another account, and the value that is
+    // not a fingerprint is not counted.
+    QVERIFY2(db.upgradeReport().contains(QStringLiteral("2 link(s) of an account hash to another account were removed")),
+             qPrintable(db.upgradeReport()));
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM account_hashes;")), 4);
+    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = '%1' AND account_id = 1;").arg(shared.toLower())), 3);
+    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = '%1' AND account_id = 2;").arg(own)), 4);
+    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = '%1' AND account_id = 2;").arg(tabbed)), 6);
+    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = 'my old hash' AND account_id = 2;")), 8);
+    QCOMPARE(db.accountOfHash(shared), 1);
+    const QString uniqueIndex =
+        QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_account_hashes_hash'"
+                       " AND sql LIKE 'CREATE UNIQUE INDEX%';");
+    const QString namedIndexes = QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index'"
+                                                " AND tbl_name = 'account_hashes' AND name NOT LIKE 'sqlite_%';");
+    QCOMPARE(count(uniqueIndex), 1);
+    QCOMPARE(count(namedIndexes), 2); // the account index and the UNIQUE hash index
+    // A second account cannot get the hash, in any case.
+    QSqlQuery insert(db.sqlDatabase());
+    QVERIFY(!insert.exec(QStringLiteral("INSERT INTO account_hashes (account_id, hash, source) VALUES (2, '%1', 'auto');")
+                             .arg(shared.toLower())));
+    insert.finish();
+    db.close();
+
+    // At the next open, createTable() does not add the old index again.
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    QVERIFY(db.upgradeReport().isEmpty());
+    QCOMPARE(count(uniqueIndex), 1);
+    QCOMPARE(count(namedIndexes), 2);
+    // A reset and a new file have the UNIQUE index too.
+    QVERIFY2(db.resetAll(), qPrintable(db.lastError()));
+    QCOMPARE(count(uniqueIndex), 1);
+    db.close();
+    QVERIFY2(db.open(m_dir->filePath(QStringLiteral("new.db"))), qPrintable(db.lastError()));
+    QCOMPARE(count(uniqueIndex), 1);
+    QCOMPARE(count(namedIndexes), 2);
+}
+
+void DbMigrationTest::version5RulesAreNormalizedAgain()
+{
+    // A file at schema version 5, with rules that the normalizer of v0.2.1
+    // made: "CARD PAYMENT" (taught from an H&M row), a month name, a pattern
+    // that becomes another rule with the same category, a ligature, English
+    // boilerplate, three rules with different categories that become one
+    // label, a month name alone, and a newer rule that takes the pattern of
+    // an older one (the older one goes before the rename: UNIQUE pattern).
+    Database& db = Database::instance();
+    const QString path = m_dir->filePath(QStringLiteral("v5.db"));
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    db.close();
+    execOn(path, {
+        QStringLiteral("INSERT INTO category_rules (pattern, category, subcategory) VALUES"
+                       " ('CARD PAYMENT', 'Shopping', 'Clothes'),"            // id 1: removed
+                       " ('MARS CARREFOUR', 'Groceries', ''),"               // id 2: merged into id 3
+                       " ('CARREFOUR', 'Groceries', 'Supermarket'),"         // id 3: stays
+                       " ('CŒUR BŒUF', 'Restaurants', ''),"      // id 4: COEUR BOEUF
+                       " ('RECEIVED FROM JANE ROE', 'Income', 'Rent'),"     // id 5: JANE ROE
+                       " ('EDF', 'Utilities', 'Power'),"                     // id 6: unchanged
+                       " ('TRANSFER TO JOHN DOE', 'Housing', 'Rent'),"      // id 7: removed (JOHN DOE)
+                       " ('RECEIVED FROM JOHN DOE', 'Income', 'Refund'),"   // id 8: removed (JOHN DOE)
+                       " ('JOHN DOE', 'Gifts', ''),"                         // id 9: removed (JOHN DOE)
+                       " ('DIRECT DEBIT FREE MOBILE', 'Utilities', 'Phone')," // id 10: FREE MOBILE
+                       " ('MARS', 'Groceries', 'Sweets'),"                    // id 11: unchanged
+                       " ('CARREFOUR MARKET', 'Groceries', ''),"             // id 12: merged into id 13
+                       " ('MARS CARREFOUR MARKET', 'Groceries', 'Market');"), // id 13: CARREFOUR MARKET
+        QStringLiteral("PRAGMA user_version = 5;"),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
+    const QString report = db.upgradeReport();
+    QVERIFY2(report.contains(QStringLiteral("1 category rule(s) were removed: their label had only generic words")),
+             qPrintable(report));
+    QVERIFY2(report.contains(QStringLiteral("4 rule(s) were rewritten, and 2 merged")), qPrintable(report));
+    QVERIFY2(report.contains(QStringLiteral("3 category rule(s) were removed: with the new rules for merchant names")),
+             qPrintable(report));
+
+    QSqlQuery query(db.sqlDatabase());
+    QVERIFY(query.exec(QStringLiteral("SELECT id, pattern, category, subcategory FROM category_rules ORDER BY id;")));
+    const QStringList expected = {
+        QStringLiteral("3|CARREFOUR|Groceries|Supermarket"), QStringLiteral("4|COEUR BOEUF|Restaurants|"),
+        QStringLiteral("5|JANE ROE|Income|Rent"),            QStringLiteral("6|EDF|Utilities|Power"),
+        QStringLiteral("10|FREE MOBILE|Utilities|Phone"),    QStringLiteral("11|MARS|Groceries|Sweets"),
+        QStringLiteral("13|CARREFOUR MARKET|Groceries|Market"),
+    };
+    QStringList rows;
+    while (query.next()) {
+        rows.append(QStringLiteral("%1|%2|%3|%4").arg(query.value(0).toString(), query.value(1).toString(),
+                                                     query.value(2).toString(), query.value(3).toString()));
+    }
+    query.finish();
+    QCOMPARE(rows, expected);
 }
 
 QTEST_GUILESS_MAIN(DbMigrationTest)

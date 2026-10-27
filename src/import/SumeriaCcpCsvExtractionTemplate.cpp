@@ -1,7 +1,9 @@
 #include "SumeriaCcpCsvExtractionTemplate.h"
 #include "models/ImportLog.h"
 #include "models/ImportedStatement.h"
+#include "utils/Money.h"
 
+#include <QByteArray>
 #include <QChar>
 #include <QDate>
 #include <QFile>
@@ -10,11 +12,13 @@
 #include <QRegularExpression>
 #include <QString>
 #include <QStringConverter>
+#include <QStringDecoder>
 #include <QStringList>
-#include <QTextStream>
 #include <QVector>
 #include <algorithm>
+#include <array>
 #include <cmath>
+#include <optional>
 
 namespace {
 
@@ -32,6 +36,64 @@ constexpr int kColDescription = 2;
 constexpr int kColDebit = 3;
 constexpr int kColCredit = 4;
 constexpr int kColBalanceAfter = 5;
+
+// Windows-1252 bytes 0x80-0x9F as UTF-16. The other bytes are the same as in
+// Latin-1. The five bytes that Windows-1252 leaves undefined (0x81, 0x8D,
+// 0x8F, 0x90, 0x9D) stay the C1 control characters of the same value.
+constexpr std::array<char16_t, 32> kWindows1252High = {
+    0x20AC, 0x0081, 0x201A, 0x0192, 0x201E, 0x2026, 0x2020, 0x2021,
+    0x02C6, 0x2030, 0x0160, 0x2039, 0x0152, 0x008D, 0x017D, 0x008F,
+    0x0090, 0x2018, 0x2019, 0x201C, 0x201D, 0x2022, 0x2013, 0x2014,
+    0x02DC, 0x2122, 0x0161, 0x203A, 0x0153, 0x009D, 0x017E, 0x0178,
+};
+
+QString decodeWindows1252(const QByteArray& bytes)
+{
+    QString text;
+    text.reserve(bytes.size());
+    for (const char byte : bytes) {
+        const auto value = static_cast<unsigned char>(byte);
+        text += (value >= 0x80 && value <= 0x9F) ? QChar(kWindows1252High.at(value - 0x80))
+                                                 : QChar(value);
+    }
+    return text;
+}
+
+// Decoding (#45). The bank exports UTF-8. A spreadsheet that saves the file
+// again can write Windows-1252 (the "ANSI" code page of Western Windows): "€"
+// is then the byte 0x80 and "é" the byte 0xE9, which are not valid UTF-8. Or
+// it writes UTF-16, with a byte order mark. In this order:
+//   1. a byte order mark gives the encoding (UTF-8, UTF-16 or UTF-32);
+//   2. else UTF-8, when every byte is valid UTF-8;
+//   3. else, when the text has a valid UTF-8 character other than ASCII (a
+//      UTF-8 file with a few bad bytes), UTF-8, with U+FFFD for the bad bytes:
+//      a Windows-1252 file almost never has a valid UTF-8 sequence;
+//   4. else Windows-1252. Qt has no Windows-1252 decoder without ICU, so the
+//      table above does it.
+// Stateless: a sequence that the end of the file cuts is an error too. The
+// decoder skips the byte order mark. `note` gets a sentence for the import log
+// when the file is not plain UTF-8.
+QString decodeStatementText(const QByteArray& bytes, QString& note)
+{
+    const std::optional<QStringConverter::Encoding> byteOrderMark = QStringConverter::encodingForData(bytes);
+    const QStringConverter::Encoding encoding = byteOrderMark.value_or(QStringConverter::Utf8);
+    QStringDecoder decoder(encoding, QStringConverter::Flag::Stateless);
+    const QString text = decoder.decode(bytes);
+    if (!decoder.hasError()) {
+        return text;
+    }
+    const bool hasOtherThanAscii = std::any_of(text.cbegin(), text.cend(), [](QChar character) {
+        return character.unicode() > 0x7F && character != QChar(QChar::ReplacementCharacter);
+    });
+    if (byteOrderMark.has_value() || hasOtherThanAscii) {
+        note = QStringLiteral("Some bytes of the file are not valid %1: they show as \u201C\uFFFD\u201D. "
+                              "Check the names and the amounts.")
+                   .arg(QLatin1String(QStringConverter::nameForEncoding(encoding)));
+        return text;
+    }
+    note = QStringLiteral("The file is not UTF-8: it was read as Windows-1252.");
+    return decodeWindows1252(bytes);
+}
 
 // ── One logical CSV record (row), possibly spanning several physical lines
 //    when a quoted field — e.g. "Description and identifier" — contains
@@ -130,14 +192,15 @@ QString normalizeField(QString text)
     return text.simplified();
 }
 
-// A line that starts the reference block ("External ref.: …", "Internal
-// ref.: …") — matched on the "ref.:" (or "ref :" / "ref:") suffix alone
-// rather than hardcoding "External"/"Internal", since that's the part both
-// known examples share and a third ref label isn't unlikely.
+// A reference line ("External ref.: …", "Internal ref.: …", "End-to-end
+// ref.: …"): "ref", an optional ".", and ":". The label before it is not
+// hardcoded: other labels are possible. See extractTransactionName() for why
+// a "ref:" in free text ("Rent for March, ref: APT12") does not end the name.
 bool isReferenceLine(const QString& line)
 {
     static const QRegularExpression kRefLineRe(
-        QStringLiteral("\\bref\\s*[.:]"), QRegularExpression::CaseInsensitiveOption);
+        QStringLiteral("\\bref\\.?\\s*:"),
+        QRegularExpression::CaseInsensitiveOption | QRegularExpression::UseUnicodePropertiesOption);
     return kRefLineRe.match(line).hasMatch();
 }
 
@@ -156,15 +219,22 @@ bool isReferenceLine(const QString& line)
 //
 // ("External ref." isn't always present.) Both examples share the same
 // shape: one or more free-text lines, followed by a block of "…ref.: …"
-// lines that are never part of the name. So the rule is: take every line
-// from the start of the (raw, pre-normalizeField) description UP TO the
-// first line that looks like a reference line, and join them with a single
-// space — one line for the card-payment example, two for the dividend one,
-// with no per-transaction-type special-casing needed. If a future real
+// lines that are never part of the name. So the rule is: the reference
+// block is the run of reference lines at the END of the (raw,
+// pre-normalizeField) description; take every line before it, and join them
+// with a single space — one line for the card-payment example, two for the
+// dividend one, with no per-transaction-type special-casing needed. A free
+// text line with "ref:" in it ("Rent for March, ref: APT12") stays in the
+// name when a line that is not a reference line comes after it (#46). If a future real
 // example needs different handling, verify against a real file first (see
 // ARCHITECTURE.MD § Statement Import / this file's header note) before
 // changing this rule. The full description (all lines, refs included) is
 // unaffected — still stored via normalizeField() as before.
+//
+// When every line looks like a reference line ("Transfer ref: rent March"
+// then "Internal ref.: …", or only "Internal ref.: …"), the rule gives no
+// name: the name is then the first line, never empty or null when the
+// description has text (#46).
 //
 // Defensively collapses any doubled CSV-escaped quote ("" -> ") that
 // might still be present in the extracted name — parseCsvRecords() already
@@ -174,22 +244,26 @@ bool isReferenceLine(const QString& line)
 // differently than expected.
 QString extractTransactionName(const QString& rawDescription)
 {
-    const QStringList lines = rawDescription.split(QLatin1Char('\n'));
-    QStringList nameLines;
-    for (const QString& rawLine : lines) {
+    QStringList lines;
+    for (const QString& rawLine : rawDescription.split(QLatin1Char('\n'))) {
         const QString line = rawLine.trimmed();
-        if (line.isEmpty()) {
-            continue;
+        if (!line.isEmpty()) {
+            lines << line;
         }
-        if (isReferenceLine(line)) {
-            break; // this line and everything after it is the reference block, never the name
-        }
-        nameLines << line;
+    }
+    qsizetype referenceBlock = lines.size();
+    while (referenceBlock > 0 && isReferenceLine(lines.at(referenceBlock - 1))) {
+        --referenceBlock; // this line and everything after it is the reference block, never the name
+    }
+    QStringList nameLines = lines.mid(0, referenceBlock);
+    if (nameLines.isEmpty() && !lines.isEmpty()) {
+        nameLines << lines.first();
     }
 
     QString name = nameLines.join(QLatin1Char(' '));
     name.replace(QStringLiteral("\"\""), QStringLiteral("\""));
-    return name.simplified();
+    // Never a null string: a null QString is bound as SQL NULL (#16).
+    return name.isEmpty() ? QStringLiteral("") : name.simplified();
 }
 
 // Single-line, truncated preview of a (possibly multi-line) raw record, for
@@ -212,9 +286,14 @@ QString previewRawText(const CsvRecord& rec)
 // other separator groups thousands: one kind only, a first group of 1 to 3
 // digits that does not start with 0, then groups of exactly 3 digits — so
 // "1,234" is 1234, and "1.2.3", "1,,5" or "0,123" are refused. Anything else
-// — letters, "nan", "inf", an exponent — is refused too (#32).
-bool parseAmount(const QString& raw, double& outValue)
+// — letters, "nan", "inf", an exponent — is refused too (#32), and so is an
+// amount larger than Money::kMaxAmount, which the app cannot store (#33):
+// then `tooLarge`, when not null, is set to true.
+bool parseAmount(const QString& raw, double& outValue, bool* tooLarge = nullptr)
 {
+    if (tooLarge != nullptr) {
+        *tooLarge = false;
+    }
     QString compact;
     compact.reserve(raw.size());
     for (const QChar c : raw) {
@@ -264,6 +343,12 @@ bool parseAmount(const QString& raw, double& outValue)
     bool success = false;
     const double parsed = number.toDouble(&success);
     if (!success || !std::isfinite(parsed)) {
+        return false;
+    }
+    if (!Money::isValid(parsed)) {
+        if (tooLarge != nullptr) {
+            *tooLarge = true;
+        }
         return false;
     }
     outValue = parsed;
@@ -320,9 +405,11 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
         return false;
     }
 
-    QTextStream stream(&file);
-    stream.setEncoding(QStringConverter::Utf8);
-    const QString content = stream.readAll();
+    QString encodingNote;
+    const QString content = decodeStatementText(file.readAll(), encodingNote);
+    if (!encodingNote.isEmpty()) {
+        outLog.append(ImportLogEntry{ LogLevel::Warning, 0, encodingNote, QString() });
+    }
 
     if (content.trimmed().isEmpty()) {
         outLog.append(ImportLogEntry{ LogLevel::Error, 0,
@@ -384,8 +471,11 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
                              : QString();
         const QString labelLower = label.toLower();
 
-        // Accent-insensitive-ish match: accept both "Prénom" and "Prenom".
-        if (labelLower.contains(QLatin1String("prénom")) || labelLower.contains(QLatin1String("prenom"))) {
+        // Accent-insensitive-ish match: accept both "Prénom" and "Prenom". The
+        // "é" is the escape \u00e9 in a QStringLiteral: QLatin1String would
+        // read the two UTF-8 bytes of the source as two Latin-1 characters
+        // (#43).
+        if (labelLower.contains(QStringLiteral("pr\u00e9nom")) || labelLower.contains(QLatin1String("prenom"))) {
             outStatement.accountHolderName = value;
         } else if (labelLower == QLatin1String("account name")) {
             outStatement.accountName = value;
@@ -406,24 +496,31 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
         } else {
             const QRegularExpressionMatch match = kBalanceLabelRe.match(label);
             if (match.hasMatch()) {
+                // The place of the line tells start or end: count it before
+                // its amount is read, so that a start line that cannot be read
+                // does not make the end line the start balance (#44).
+                const int balanceLine = balanceLinesSeen++;
+                if (balanceLine > 1) {
+                    outLog.append(ImportLogEntry{ LogLevel::Info, rec.startLine,
+                        QStringLiteral("Extra \"Account balance on\" line ignored (only 2 expected)"), previewRawText(rec) });
+                    continue;
+                }
                 double amount = 0.0;
                 if (!parseAmount(value, amount)) {
                     outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
-                        QStringLiteral("Could not parse a statement balance amount"), previewRawText(rec) });
+                        balanceLine == 0 ? QStringLiteral("Could not read the amount of the start balance")
+                                         : QStringLiteral("Could not read the amount of the end balance"),
+                        previewRawText(rec) });
                     continue;
                 }
                 const QDate date = parseStatementDate(match.captured(1));
-                if (balanceLinesSeen == 0) {
+                if (balanceLine == 0) {
                     outStatement.balanceStartDate = date;
                     outStatement.balanceStart = amount;
-                } else if (balanceLinesSeen == 1) {
+                } else {
                     outStatement.balanceEndDate = date;
                     outStatement.balanceEnd = amount;
-                } else {
-                    outLog.append(ImportLogEntry{ LogLevel::Info, rec.startLine,
-                        QStringLiteral("Extra \"Account balance on\" line ignored (only 2 expected)"), previewRawText(rec) });
                 }
-                ++balanceLinesSeen;
             }
             // Unrecognized metadata lines are silently ignored — not every
             // export necessarily has exactly this header set.
@@ -495,8 +592,16 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
         double debit       = 0.0;
         double credit      = 0.0;
         double balanceAfter = 0.0;
-        const bool hasDebit  = parseAmount(rec.fields.at(kColDebit), debit);
-        const bool hasCredit = parseAmount(rec.fields.at(kColCredit), credit);
+        bool debitTooLarge = false;
+        bool creditTooLarge = false;
+        const bool hasDebit  = parseAmount(rec.fields.at(kColDebit), debit, &debitTooLarge);
+        const bool hasCredit = parseAmount(rec.fields.at(kColCredit), credit, &creditTooLarge);
+        if (debitTooLarge || creditTooLarge) {
+            outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
+                QStringLiteral("An amount of this row is larger than 10^13: the app cannot store it — row skipped"),
+                previewRawText(rec) });
+            continue;
+        }
         if (!hasDebit && !hasCredit) {
             outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
                 QStringLiteral("Row has neither a debit nor a credit amount — row skipped"), previewRawText(rec) });

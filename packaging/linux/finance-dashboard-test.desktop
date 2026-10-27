@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Finance Dashboard Test
+GenericName=Personal Finance Analytics
+Comment=Test app of Finance Dashboard: experimental and preprod builds, with its own data
+Exec=FinanceDashboard %f
+Icon=finance-dashboard-test
+Terminal=false
+Categories=Office;Finance;
+Keywords=finance;budget;bank;statement;transactions;accounting;net worth;
+StartupNotify=true
+StartupWMClass=FinanceDashboardTest

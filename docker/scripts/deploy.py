@@ -43,11 +43,14 @@ from pathlib import Path
 APP = "FinanceDashboard"
 
 # Qt plugin types/files to ship for shared builds. Plugin directories that
-# don't exist in the Qt install are skipped silently.
+# don't exist in the Qt install are skipped silently. "tls": the HTTPS of the
+# update check (#117) — Schannel on Windows (the TLS of the system, no OpenSSL
+# DLL), OpenSSL on Linux (Qt loads the libssl.so.3 of the system at run time).
 WINDOWS_PLUGINS = {
     "platforms": ["qwindows.dll"],
     "sqldrivers": ["qsqlite.dll"],
     "imageformats": None,  # None = whole directory
+    "tls": ["qschannelbackend.dll"],
 }
 LINUX_PLUGINS = {
     "platforms": None,
@@ -59,8 +62,13 @@ LINUX_PLUGINS = {
     "platformthemes": ["libqxdgdesktopportal.so"],  # gtk3 theme would drag in GTK
     "sqldrivers": ["libqsqlite.so"],
     "imageformats": None,
+    "tls": ["libqopensslbackend.so"],
 }
 SKIP_SUFFIXES = (".debug", ".pdb", ".prl", ".a", ".lib")
+# Plugin types whose listed files must all be in the Qt install: a missing
+# one stops the deploy, instead of a package that fails when it runs. "tls":
+# without it, the update check (#117, HTTPS) cannot work.
+REQUIRED_PLUGIN_TYPES = {"tls"}
 
 
 def log(msg: str) -> None:
@@ -143,6 +151,11 @@ def copy_plugins(qt_target: Path, out_plugins: Path, spec: dict) -> list[Path]:
     binaries: list[Path] = []
     for ptype, names in spec.items():
         src = qt_target / "plugins" / ptype
+        if ptype in REQUIRED_PLUGIN_TYPES:
+            missing = [n for n in (names or []) if not (src / n).is_file()]
+            if not src.is_dir() or missing:
+                sys.exit(f"[deploy] error: {', '.join(missing) or 'the ' + ptype + ' plugins'} "
+                         f"not found in {src} — the update check (HTTPS) needs them")
         if not src.is_dir():
             continue
         candidates = [src / n for n in names] if names else sorted(src.iterdir())

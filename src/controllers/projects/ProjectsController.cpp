@@ -9,6 +9,7 @@
 #include <QtNumeric>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
 #include <cmath>
+#include <cstdint>
 
 namespace {
 
@@ -42,6 +43,50 @@ constexpr int    kCarTargetMonths = 15;
 constexpr double kCarEarmarked = 6200;
 constexpr double kCarMonthly = 300;
 constexpr double kChartMaxHeadroom = 1.15; // 15% headroom above the target/projection for the chart axis
+constexpr double kSampleLoan = 10000.0;    // the loan of the simulator when there is no gap
+// A contribution below half a cent shows as "0,00 €": it counts as none.
+constexpr double kMinContribution = 0.005;
+// 100 years. A later completion counts as never, and the month counts stay
+// far from the range of int (#41).
+constexpr int kMaxMonths = 1200;
+
+bool hasContribution(double monthly)
+{
+    return monthly >= kMinContribution;
+}
+
+// When a project reaches its target at its monthly contribution (#41).
+struct Completion {
+    enum class State : std::uint8_t { Reached, Never, OnDate };
+    State state;
+    QDate date; // OnDate only: the first day of that month
+};
+
+Completion completionOf(double target, double earmarked, double monthly, const QDate& today)
+{
+    const double remaining = target - earmarked;
+    if (remaining <= 0.0) {
+        return {Completion::State::Reached, {}};
+    }
+    if (!hasContribution(monthly)) {
+        return {Completion::State::Never, {}}; // no contribution: the target is never reached
+    }
+    const double months = std::ceil(remaining / monthly);
+    if (months > kMaxMonths) {
+        return {Completion::State::Never, {}};
+    }
+    return {Completion::State::OnDate, QDate(today.year(), today.month(), 1).addMonths(static_cast<int>(months))};
+}
+
+QString completionText(const Completion& completion, const QString& dateFormat)
+{
+    switch (completion.state) {
+        case Completion::State::Reached: return QStringLiteral("Reached");
+        case Completion::State::Never:   return QStringLiteral("Never");
+        case Completion::State::OnDate:  break;
+    }
+    return completion.date.toString(dateFormat);
+}
 
 } // namespace
 
@@ -75,18 +120,14 @@ void ProjectsController::rebuildCards()
                         + project.targetDate.month() - today.month());
         const double projectedAtTarget = project.earmarked + (project.monthly * monthsToTarget);
         const double gap = qMax(0.0, project.target - projectedAtTarget);
-
-        const int monthsToComplete =
-            project.monthly > 0 ? static_cast<int>(std::ceil((project.target - project.earmarked) / project.monthly)) : 0;
-        const QDate completion = QDate(today.year(), today.month(), 1)
-                                     .addMonths(qMax(monthsToComplete, 0));
+        const Completion completion = completionOf(project.target, project.earmarked, project.monthly, today);
 
         m_projectCards.append(QVariantMap{
             { "name",           project.name },
             { "targetText",     Fmt::money(project.target) },
             { "earmarkedText",  Fmt::money(project.earmarked) },
             { "monthlyText",    Fmt::money(project.monthly) + "/mo" },
-            { "completionText", completion.toString("MMM yyyy") },
+            { "completionText", completionText(completion, QStringLiteral("MMM yyyy")) },
             { "targetDateText", project.targetDate.toString("MMM yyyy") },
             { "progressPct",    qBound(0.0, project.earmarked / project.target, 1.0) },
             { "gapText",        gap > 0 ? Fmt::money(gap) : QStringLiteral("—") },
@@ -101,7 +142,10 @@ void ProjectsController::addProject(const QString& name, double target,
                                     int monthsToTarget, double earmarked,
                                     double monthly)
 {
-    if (name.trimmed().isEmpty() || target <= 0 || monthsToTarget < 1) {
+    // Not a number or an infinity ("Infinity" is a number for parseFloat()),
+    // and a target date more than 100 years away, are refused too (#41).
+    if (name.trimmed().isEmpty() || !std::isfinite(target) || target <= 0 || monthsToTarget < 1
+        || monthsToTarget > kMaxMonths || !std::isfinite(earmarked) || !std::isfinite(monthly)) {
         return;
     }
 
@@ -165,15 +209,15 @@ void ProjectsController::recomputeProject()
     m_fundingGap = qMax(0.0, project.target - projectedAtTarget);
 
     // Projected completion date at current rate (ignoring the target date)
-    const int monthsToComplete =
-        project.monthly > 0 ? static_cast<int>(std::ceil((project.target - project.earmarked) / project.monthly)) : 0;
-    const QDate completion = QDate(today.year(), today.month(), 1)
-                                 .addMonths(qMax(monthsToComplete, 0));
+    const Completion completion = completionOf(project.target, project.earmarked, project.monthly, today);
+    m_targetReached  = completion.state == Completion::State::Reached;
+    m_completionText = completionText(completion, QStringLiteral("MMMM yyyy"));
 
     m_kpis = {
-        kpi("Still Needed", Fmt::money(project.target - project.earmarked),
+        // Earmarked above the target: nothing is needed, not a negative amount (#41).
+        kpi("Still Needed", Fmt::money(qMax(0.0, project.target - project.earmarked)),
             "of " + Fmt::money(project.target)),
-        kpi("Projected Completion", completion.toString("MMMM yyyy"),
+        kpi("Projected Completion", m_completionText,
             QString("at %1 / month").arg(Fmt::money(project.monthly))),
         kpi("Gap at Target Date",
             m_fundingGap > 0 ? Fmt::money(m_fundingGap) : "None",
@@ -189,7 +233,7 @@ void ProjectsController::recomputeLoan()
 {
     // Simulate borrowing the funding gap (or a nominal 10 k€ if there is none,
     // so the simulator stays usable).
-    const double principal = m_fundingGap > 0 ? m_fundingGap : 10000.0;
+    const double principal = m_fundingGap > 0 ? m_fundingGap : kSampleLoan;
     const double rate = m_loanRatePct / 100.0;
 
     m_loanScenarios.clear();
@@ -206,20 +250,42 @@ void ProjectsController::recomputeLoan()
     }
 
     // "Save longer vs borrow now" — months needed to save the gap vs the
-    // interest cost of the middle (15-year) scenario.
+    // interest cost of the middle (15-year) scenario. With no gap, or no
+    // monthly contribution, a text of its own: not "the 10 000 € gap" or
+    // "~0 more months" (#41).
     const Project& project = m_projects.at(m_currentProject);
-    const int monthsToSaveGap =
-        project.monthly > 0 ? static_cast<int>(std::ceil(principal / project.monthly)) : 0;
     const double interest15y =
         (annuityMonthly(principal, rate, 180) * 180) - principal;
 
-    m_saveVsBorrowText =
-        QString("Saving the %1 gap at %2/month takes ~%3 more months. "
-                "Borrowing it today over 15 years costs %4 in interest.")
-            .arg(Fmt::money(principal))
-            .arg(Fmt::money(project.monthly))
-            .arg(monthsToSaveGap)
-            .arg(Fmt::money(interest15y));
+    if (m_fundingGap <= 0) {
+        const QString reached = m_targetReached
+            ? QStringLiteral("The earmarked amount already covers the target.")
+            : QString("At %1/month, the target is reached in %2.").arg(Fmt::money(project.monthly), m_completionText);
+        m_saveVsBorrowText =
+            QString("There is no gap. %1 The loan scenarios borrow a sample amount of %2.")
+                .arg(reached, Fmt::money(principal));
+    } else if (!hasContribution(project.monthly)) {
+        m_saveVsBorrowText =
+            QString("With no monthly contribution, saving does not close the %1 gap. "
+                    "Borrowing it today over 15 years costs %2 in interest.")
+                .arg(Fmt::money(principal), Fmt::money(interest15y));
+    } else if (std::ceil(principal / project.monthly) > kMaxMonths) {
+        m_saveVsBorrowText =
+            QString("Saving the %1 gap at %2/month takes more than %3 years. "
+                    "Borrowing it today over 15 years costs %4 in interest.")
+                .arg(Fmt::money(principal), Fmt::money(project.monthly))
+                .arg(kMaxMonths / 12)
+                .arg(Fmt::money(interest15y));
+    } else {
+        const auto monthsToSaveGap = static_cast<int>(std::ceil(principal / project.monthly));
+        m_saveVsBorrowText =
+            QString("Saving the %1 gap at %2/month takes ~%3 more months. "
+                    "Borrowing it today over 15 years costs %4 in interest.")
+                .arg(Fmt::money(principal))
+                .arg(Fmt::money(project.monthly))
+                .arg(monthsToSaveGap)
+                .arg(Fmt::money(interest15y));
+    }
 
     emit loanChanged();
 }
