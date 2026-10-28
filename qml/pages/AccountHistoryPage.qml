@@ -149,6 +149,51 @@ Item {
         buildCategoryRings(expenseCategoryPie, expenseSubcategoryPie, page.breakdown.expenses ? page.breakdown.expenses : [])
     }
 
+    // Shows the details of the slice under the last press of a 2-level pie.
+    // The clicked signal does not tell which ring was hit: in Qt Graphs 6.10,
+    // PieRenderer::isPointInSlice() ignores holeSize, so a click on the
+    // category ring can come from a subcategory slice, and a click in a hole
+    // from any slice. This function finds the ring from the distance to the
+    // centre and the slice from the angle, with the same geometry as the
+    // renderer: the pie fills the plot area, its radius is
+    // min(width, height) / 2 × pieSize, its hole radius is that radius ×
+    // holeSize, and 0 degrees is at 12 o'clock, clockwise.
+    function showRingSliceInfo(view, categoryRing, subcategoryRing, info) {
+        var area = view.plotArea
+        var half = Math.min(area.width, area.height) / 2
+        if (half <= 0)
+            return
+        var dx = view.lastPress.x - (area.x + area.width * categoryRing.horizontalPosition)
+        var dy = view.lastPress.y - (area.y + area.height * categoryRing.verticalPosition)
+        var distance = Math.sqrt(dx * dx + dy * dy) / half
+        var angle = Math.atan2(dy, dx) * 180 / Math.PI + 90
+        if (angle < 0)
+            angle += 360
+
+        var ring = null
+        var kind = ""
+        if (distance >= categoryRing.pieSize * categoryRing.holeSize && distance <= categoryRing.pieSize) {
+            ring = categoryRing
+            kind = "Category"
+        } else if (distance >= subcategoryRing.pieSize * subcategoryRing.holeSize
+                   && distance <= subcategoryRing.pieSize) {
+            ring = subcategoryRing
+            kind = "Subcategory"
+        }
+        if (!ring)
+            return
+
+        for (var i = 0; i < ring.count; i++) {
+            var slice = ring.at(i)
+            if (angle >= slice.startAngle && angle <= slice.startAngle + slice.angleSpan) {
+                info.text = kind + " — " + slice.label + "  —  "
+                    + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
+                    + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
+                return
+            }
+        }
+    }
+
     // Builds one 2-level pie as *two independently-sized, concentric
     // PieSeries* sharing the same GraphsView — categoryRing (inner, smaller
     // pieSize/holeSize) and subcategoryRing (outer, larger pieSize/holeSize
@@ -465,17 +510,10 @@ Item {
                 // Income and expense are derived per-transaction from
                 // credit/debit (not a category-level tag — see
                 // AccountController::accountCategoryBreakdown()'s doc comment),
-                // so the same category can appear in both pies. Each pie is
-                // *two separate, stacked `GraphsView`s* (one `PieSeries` each —
-                // categoryRing inner, subcategoryRing outer), not two
-                // `PieSeries` sharing one `GraphsView`. That single-view
-                // version had both rings' `onClicked` go dead — every other
-                // pie in this app (Import report, Cash Flow) is one
-                // `PieSeries` per `GraphsView`, the only configuration Qt
-                // Graphs actually demonstrates anywhere, so this keeps each
-                // ring in its own isolated, individually-proven-clickable
-                // view instead of guessing at how two series interact inside
-                // one. See docs/charting-gotchas.md.
+                // so the same category can appear in both pies. Each pie is one
+                // GraphsView with two PieSeries: the category ring (inner) and
+                // the subcategory ring (outer). Both series are selectable; the
+                // slice that shows its details comes from showRingSliceInfo().
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 16
@@ -494,20 +532,16 @@ Item {
                                 message: "No income transactions for this account yet."
                             }
 
-                            // Plain Item host, not a Layout — the two GraphsViews
-                            // inside are stacked via anchors.fill: parent (exactly
-                            // overlapping), which anchors on a direct Layout child
-                            // can't do (see the "direct anchored child of a plain
-                            // Item" convention used everywhere else on this page).
                             Item {
                                 id: incomePieHost
                                 visible: page.breakdown.income && page.breakdown.income.length > 0
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
 
-                                // Inner ring — categories. Own GraphsView, carries
-                                // the shared plot-area background for both rings.
                                 GraphsView {
+                                    id: incomePieView
+                                    // Position of the last press, in this view's coordinates.
+                                    property point lastPress
                                     anchors.fill: parent
                                     theme: GraphsTheme {
                                         colorScheme: GraphsTheme.ColorScheme.Dark
@@ -517,48 +551,33 @@ Item {
                                         labelTextColor: "#cdd6f4"
                                         labelFont.pixelSize: 13
                                     }
+
+                                    // The press comes before the release that emits clicked.
+                                    TapHandler {
+                                        onPressedChanged: if (pressed) incomePieView.lastPress = point.position
+                                    }
+
+                                    // Inner ring: categories.
                                     PieSeries {
                                         id: incomeCategoryPie
+                                        selectable: true
                                         pieSize: 0.55
                                         holeSize: 0.28
-                                        onClicked: (slice) => {
-                                            incomePieInfo.text = "Category — " + slice.label + "  —  "
-                                                + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
-                                        }
+                                        onClicked: page.showRingSliceInfo(incomePieView, incomeCategoryPie,
+                                                                          incomeSubcategoryPie, incomePieInfo)
                                     }
-                                }
 
-                                // Outer ring — subcategories, starts right where
-                                // the category ring ends (holeSize 0.58 vs. its
-                                // pieSize 0.55 — a thin 0.03 gap for separation).
-                                // Own GraphsView stacked exactly on top; no
-                                // plot-area background of its own (the inner
-                                // view's is directly behind it) so it doesn't
-                                // paint a second opaque layer over the first.
-                                GraphsView {
-                                    anchors.fill: parent
-                                    theme: GraphsTheme {
-                                        colorScheme: GraphsTheme.ColorScheme.Dark
-                                        plotAreaBackgroundVisible: false
-                                        backgroundVisible: false
-                                        labelTextColor: "#cdd6f4"
-                                        labelFont.pixelSize: 11
-                                    }
+                                    // Outer ring: subcategories. Its inner edge is at
+                                    // 0.92 × 0.63 = 0.58, 0.03 outside the category ring (0.55).
                                     PieSeries {
                                         id: incomeSubcategoryPie
+                                        selectable: true
                                         pieSize: 0.92
-                                        holeSize: 0.58
-                                        // Hides labels on the thinnest slices so many
-                                        // subcategories don't pile their label arms
-                                        // on top of each other (Qt 6.10+ property,
-                                        // verified on doc.qt.io before using it).
+                                        holeSize: 0.63
+                                        // Hides the labels of the thinnest slices (Qt 6.10 property).
                                         angleSpanVisibleLimit: 10
-                                        onClicked: (slice) => {
-                                            incomePieInfo.text = "Subcategory — " + slice.label + "  —  "
-                                                + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
-                                        }
+                                        onClicked: page.showRingSliceInfo(incomePieView, incomeCategoryPie,
+                                                                          incomeSubcategoryPie, incomePieInfo)
                                     }
                                 }
                             }
@@ -597,8 +616,10 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
 
-                                // Inner ring — categories.
                                 GraphsView {
+                                    id: expensePieView
+                                    // Position of the last press, in this view's coordinates.
+                                    property point lastPress
                                     anchors.fill: parent
                                     theme: GraphsTheme {
                                         colorScheme: GraphsTheme.ColorScheme.Dark
@@ -608,38 +629,33 @@ Item {
                                         labelTextColor: "#cdd6f4"
                                         labelFont.pixelSize: 13
                                     }
+
+                                    // The press comes before the release that emits clicked.
+                                    TapHandler {
+                                        onPressedChanged: if (pressed) expensePieView.lastPress = point.position
+                                    }
+
+                                    // Inner ring: categories.
                                     PieSeries {
                                         id: expenseCategoryPie
+                                        selectable: true
                                         pieSize: 0.55
                                         holeSize: 0.28
-                                        onClicked: (slice) => {
-                                            expensePieInfo.text = "Category — " + slice.label + "  —  "
-                                                + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
-                                        }
+                                        onClicked: page.showRingSliceInfo(expensePieView, expenseCategoryPie,
+                                                                          expenseSubcategoryPie, expensePieInfo)
                                     }
-                                }
 
-                                // Outer ring — subcategories.
-                                GraphsView {
-                                    anchors.fill: parent
-                                    theme: GraphsTheme {
-                                        colorScheme: GraphsTheme.ColorScheme.Dark
-                                        plotAreaBackgroundVisible: false
-                                        backgroundVisible: false
-                                        labelTextColor: "#cdd6f4"
-                                        labelFont.pixelSize: 11
-                                    }
+                                    // Outer ring: subcategories. Its inner edge is at
+                                    // 0.92 × 0.63 = 0.58, 0.03 outside the category ring (0.55).
                                     PieSeries {
                                         id: expenseSubcategoryPie
+                                        selectable: true
                                         pieSize: 0.92
-                                        holeSize: 0.58
+                                        holeSize: 0.63
+                                        // Hides the labels of the thinnest slices (Qt 6.10 property).
                                         angleSpanVisibleLimit: 10
-                                        onClicked: (slice) => {
-                                            expensePieInfo.text = "Subcategory — " + slice.label + "  —  "
-                                                + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
-                                        }
+                                        onClicked: page.showRingSliceInfo(expensePieView, expenseCategoryPie,
+                                                                          expenseSubcategoryPie, expensePieInfo)
                                     }
                                 }
                             }

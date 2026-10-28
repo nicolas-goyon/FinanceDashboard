@@ -207,3 +207,10 @@ shape of the data — `LineSeries`/`BarSeries` via a hover tooltip (`pointDelega
 see `docs/charting-gotchas.md`), `PieSeries` via `onClicked` (it has no hover signal at all —
 confirmed against Qt's own C++ class docs, not assumed). Treat a new chart with neither as the
 exception that needs a reason, not the default.
+
+A `PieSeries` must set `selectable: true`. The default is `false`, and then Qt Graphs emits no
+`clicked` signal. In Qt Graphs 6.10, the hit test of a click ignores `holeSize`: a click in the
+hole of a donut is reported as a slice, and when two `PieSeries` share one `GraphsView`, a click
+on one ring can be reported by the other. The 2-level pies of Account Details are one
+`GraphsView` with two `PieSeries`; `showRingSliceInfo()` in `AccountHistoryPage.qml` finds the
+ring and the slice from the position of the press.
