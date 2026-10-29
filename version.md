@@ -44,6 +44,11 @@ builds, source archives). Then CI opens a pull request that merges the release b
 - Bar charts: the hover tooltip of every bar is shown in full. Before, the tooltip of a stacked
   segment was drawn under the segments above it, and the tooltip of the tallest bars was cut at
   the top of the chart. `HoverBar` shows a `ToolTip`, drawn in the overlay of the window (#59).
+- Account Details, balance chart: the Y-axis "Auto" / "From 0" toggle now changes the axis.
+  "Auto" fits the axis to the balances (10 % of the range on each side); before, it started at
+  0 for an account that is never negative, as "From 0" does. "From 0" includes 0: it starts the
+  axis at 0 for a positive account and ends it at 0 for a negative account. An account that is
+  always negative now shows its line with both settings (#65).
 
 ---
 
