@@ -92,6 +92,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   points and series. Before, a marker created after the point (on Overview, the Savings and
   Trading markers above a Checking point) was drawn over its tooltip. `HoverPoint` shows a
   `ToolTip`, drawn in the overlay of the window, as `HoverBar` does (#74).
+- Cash Flow, "Category spending across months": each bar set takes its label and colour from
+  the category of `CashFlowController` that gives its values, instead of names and colours
+  written in the QML. A change of the order of the categories in C++ can no longer mislabel the
+  bars and their tooltips (#72).
 
 ### Docs
 - README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest
