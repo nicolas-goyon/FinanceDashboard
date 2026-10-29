@@ -321,6 +321,16 @@ Item {
         width: 440
 
         property int editIndex: -1
+        // The stored values of the edited account. A value that is not in its
+        // list (a removed type or category, an unknown currency) gives the
+        // ComboBox index -1: the box shows the value, and Save keeps it (#63).
+        property string keptType: ""
+        property string keptCategory: ""
+        property string keptCurrency: ""
+
+        function keptText(value) {
+            return value.length > 0 ? value + " (kept)" : "(none)"
+        }
 
         readonly property var currencyOptions: [
             { code: "EUR", label: "EUR €" },
@@ -337,11 +347,14 @@ Item {
             for (var i = 0; i < currencyOptions.length; ++i)
                 if (currencyOptions[i].code === code)
                     return i
-            return 0
+            return -1
         }
 
         function openForNew() {
             editIndex = -1
+            keptType = ""
+            keptCategory = ""
+            keptCurrency = ""
             accNameRow.text = ""
             // -1 when there is no type, after "Reset Database" (#62).
             accTypeBox.currentIndex = AccountController.accountTypes.length > 0 ? 0 : -1
@@ -354,6 +367,9 @@ Item {
         function openForEdit(idx) {
             var acc = AccountController.accounts[idx]
             editIndex = idx
+            keptType = acc.type
+            keptCategory = acc.category
+            keptCurrency = acc.currency
             accNameRow.text = acc.name
             // -1 when the type of the account is not in the list (no type, or
             // a removed one): Save then keeps it, instead of the first type.
@@ -374,6 +390,7 @@ Item {
                 Layout.fillWidth: true
                 model: AccountController.accountTypes
                 textRole: "name"
+                displayText: currentIndex >= 0 ? currentText : accountDialog.keptText(accountDialog.keptType)
             }
         }
         // After "Reset Database" the list of types is empty (#62).
@@ -394,6 +411,7 @@ Item {
                 Layout.fillWidth: true
                 model: AccountController.accountCategories
                 textRole: "name"
+                displayText: currentIndex >= 0 ? currentText : accountDialog.keptText(accountDialog.keptCategory)
             }
         }
         RowLayout {
@@ -404,6 +422,7 @@ Item {
                 Layout.preferredWidth: 140
                 model: accountDialog.currencyOptions
                 textRole: "label"
+                displayText: currentIndex >= 0 ? currentText : accountDialog.keptText(accountDialog.keptCurrency)
             }
         }
         FormRow { id: accNotesRow; label: "Notes"; labelWidth: 70; placeholderText: "optional" }
@@ -424,7 +443,9 @@ Item {
             var category = ci >= 0 && ci < categories.length ? categories[ci].name
                                                              : (current ? current.category : "")
             var type = ti >= 0 && ti < types.length ? types[ti].name : (current ? current.type : "")
-            var currency = accountDialog.currencyOptions[accCurrencyBox.currentIndex].code
+            var cu = accCurrencyBox.currentIndex
+            var currency = cu >= 0 && cu < accountDialog.currencyOptions.length
+                ? accountDialog.currencyOptions[cu].code : (current ? current.currency : "EUR")
             if (editIndex < 0) {
                 AccountController.addAccount(trimmed, type, category, currency, accNotesRow.text.trim())
             } else {
