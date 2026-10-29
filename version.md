@@ -107,6 +107,9 @@ builds, source archives). Then CI opens a pull request that merges the release b
 - Bar and pie charts: no mint outline around each bar and slice. The bars of `HoverBar` and the
   pie slices get an outline of their own colour, instead of the outline colour of the default
   theme (#71).
+- Hashes and import logs use the fixed-pitch font of the system (`Fonts.monospace`, from
+  `QFontDatabase::FixedFont`), instead of `font.family: "monospace"`, a family that Windows
+  does not have, so it could show them in a proportional font (#77).
 
 ### Docs
 - README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest

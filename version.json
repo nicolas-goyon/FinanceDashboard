@@ -29,7 +29,8 @@
                 "Cash Flow, \"Category spending across months\": each bar set takes its label and colour from the category of `CashFlowController` that gives its values, instead of names and colours written in the QML. A change of the order of the categories in C++ can no longer mislabel the bars and their tooltips (#72).",
                 "Manage Accounts: the \"×\" of a hash and of a balance checkpoint is a `GhostButton` with the red hover of the other remove buttons, instead of a bare text. Removing a hash asks first, because the import then no longer picks the account by itself; the dialog keeps the account id and the hash, so it removes that hash even if the list changes (#78).",
                 "Account Details no longer logs \"Unable to assign [undefined] to bool\" (8 times on an empty database) when an account has no category breakdown: the visibility of the pies is always a boolean (#76). The Cash Flow chart titles read the label of the selected month through a guarded `selectedMonthLabel` (#69).",
-                "Bar and pie charts: no mint outline around each bar and slice. The bars of `HoverBar` and the pie slices get an outline of their own colour, instead of the outline colour of the default theme (#71)."
+                "Bar and pie charts: no mint outline around each bar and slice. The bars of `HoverBar` and the pie slices get an outline of their own colour, instead of the outline colour of the default theme (#71).",
+                "Hashes and import logs use the fixed-pitch font of the system (`Fonts.monospace`, from `QFontDatabase::FixedFont`), instead of `font.family: \"monospace\"`, a family that Windows does not have, so it could show them in a proportional font (#77)."
               ]
             }
           ]

@@ -217,7 +217,7 @@ Item {
                                                 Text {
                                                     text: hashChip.modelData.hash.substring(0, 10) + "… (" + hashChip.modelData.source + ")"
                                                     font.pixelSize: 11
-                                                    font.family: "monospace"
+                                                    font.family: Fonts.monospace
                                                     color: "#a6adc8"
                                                 }
                                                 // Asks first: without the hash, the import no
@@ -544,7 +544,7 @@ Item {
             Layout.fillWidth: true
             placeholderText: "64 hexadecimal characters"
             placeholderTextColor: "#45475a"
-            font.family: "monospace"
+            font.family: Fonts.monospace
             color: "#cdd6f4"
             font.pixelSize: 14
             background: Rectangle { color: "#11111b"; radius: 4; border.color: hashField.activeFocus ? "#89b4fa" : "#313244" }
