@@ -12,7 +12,17 @@ import FinanceDashboard
 // expenses table    [MOCK DATA — CashFlowController]
 
 Item {
+    id: page
+
     CashFlowController { id: controller }
+
+    // The name and colour of spending category i (controller.categories).
+    function categoryName(i) {
+        return i < controller.categories.length ? controller.categories[i].name : ""
+    }
+    function categoryColor(i) {
+        return i < controller.categories.length ? controller.categories[i].color : "#6c7086"
+    }
 
     ScrollView {
         anchors.fill: parent
@@ -259,8 +269,11 @@ Item {
                         labelFormat: "%.0f"
                     }
 
-                    // BarSets are static — a Repeater cannot populate a BarSeries.
-                    // Labels/colors mirror CashFlowController's category table.
+                    // BarSets are static: a Repeater cannot fill a BarSeries, and the
+                    // QtGraphsExamples bar charts declare each BarSet. There is one
+                    // BarSet for each of the CashFlowController::kCategories (6)
+                    // categories. Set i takes its label, colour and values from
+                    // category i of the controller, so they cannot disagree (#72).
                     BarSeries {
                         barsType: BarSeries.BarsType.Stacked
                         barDelegate: Component { HoverBar {} }
@@ -269,12 +282,12 @@ Item {
                             Component.onCompleted: categories = controller.monthLabels
                         }
 
-                        BarSet { label: "Rent";      color: "#f38ba8"; Component.onCompleted: values = controller.categoryValues(0) }
-                        BarSet { label: "Groceries"; color: "#a6e3a1"; Component.onCompleted: values = controller.categoryValues(1) }
-                        BarSet { label: "Transport"; color: "#89b4fa"; Component.onCompleted: values = controller.categoryValues(2) }
-                        BarSet { label: "Utilities"; color: "#fab387"; Component.onCompleted: values = controller.categoryValues(3) }
-                        BarSet { label: "Leisure";   color: "#f9e2af"; Component.onCompleted: values = controller.categoryValues(4) }
-                        BarSet { label: "Other";     color: "#cba6f7"; Component.onCompleted: values = controller.categoryValues(5) }
+                        BarSet { label: page.categoryName(0); color: page.categoryColor(0); Component.onCompleted: values = controller.categoryValues(0) }
+                        BarSet { label: page.categoryName(1); color: page.categoryColor(1); Component.onCompleted: values = controller.categoryValues(1) }
+                        BarSet { label: page.categoryName(2); color: page.categoryColor(2); Component.onCompleted: values = controller.categoryValues(2) }
+                        BarSet { label: page.categoryName(3); color: page.categoryColor(3); Component.onCompleted: values = controller.categoryValues(3) }
+                        BarSet { label: page.categoryName(4); color: page.categoryColor(4); Component.onCompleted: values = controller.categoryValues(4) }
+                        BarSet { label: page.categoryName(5); color: page.categoryColor(5); Component.onCompleted: values = controller.categoryValues(5) }
                     }
                 }
             }
