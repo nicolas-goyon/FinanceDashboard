@@ -88,6 +88,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   1-month range read the same month. The tooltips of this chart show the day too ("02 Oct
   2026"): `HoverPoint` has a `dateFormat` property, and the monthly charts keep "MMM yyyy"
   (#73).
+- Line and area charts: the hover tooltip of a point is drawn over the markers of the other
+  points and series. Before, a marker created after the point (on Overview, the Savings and
+  Trading markers above a Checking point) was drawn over its tooltip. `HoverPoint` shows a
+  `ToolTip`, drawn in the overlay of the window, as `HoverBar` does (#74).
 
 ### Docs
 - README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest
