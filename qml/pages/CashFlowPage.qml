@@ -185,6 +185,8 @@ Item {
                                     for (var i = 0; i < s.length; i++) {
                                         var slice = append(s[i].label, s[i].value)
                                         slice.color = s[i].color
+                                        // Without it, the slice gets the outline colour of the theme (#71).
+                                        slice.borderColor = slice.color
                                         slice.labelVisible = true
                                     }
                                 }

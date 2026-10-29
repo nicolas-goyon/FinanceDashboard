@@ -20,7 +20,9 @@ Rectangle {
     property int    decimals: 0
 
     color: hh.hovered ? Qt.lighter(barColor, 1.2) : barColor
-    border.color: barBorderColor
+    // The fill colour, not barBorderColor: without a borderColors list on the
+    // series, that is the outline colour of the theme on every bar (#71).
+    border.color: bar.color
     border.width: barBorderWidth
 
     HoverHandler { id: hh }

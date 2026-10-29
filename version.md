@@ -104,6 +104,9 @@ builds, source archives). Then CI opens a pull request that merges the release b
   database) when an account has no category breakdown: the visibility of the pies is always a
   boolean (#76). The Cash Flow chart titles read the label of the selected month through a
   guarded `selectedMonthLabel` (#69).
+- Bar and pie charts: no mint outline around each bar and slice. The bars of `HoverBar` and the
+  pie slices get an outline of their own colour, instead of the outline colour of the default
+  theme (#71).
 
 ### Docs
 - README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest

@@ -1031,6 +1031,8 @@ Item {
                                             continue
                                         var slice = append(cats[i].category, magnitude)
                                         slice.color = CategoryController.categoryColor(cats[i].category) || "#6c7086"
+                                        // Without it, the slice gets the outline colour of the theme (#71).
+                                        slice.borderColor = slice.color
                                         slice.labelVisible = true
                                     }
                                 }
