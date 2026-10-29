@@ -427,15 +427,28 @@ ApplicationWindow {
     }
 
     // ── Overlay — Import Transactions (see SidebarCategory.actionTriggered
-    //    handling above). Lazily loaded/unloaded via Loader.active. ────────────
+    //    handling above). Loaded the first time it is shown, then kept: the
+    //    review of a statement survives a visit to another page, for example
+    //    to add a missing category (#64). "Done" on the report resets it. ────
     Loader {
+        id: importPageLoader
+        property bool kept: false
         anchors {
             top: updateBanner.bottom; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
-        active: root.currentViewId === "importTransactions"
-        visible: active
+        active: kept || root.currentViewId === "importTransactions"
+        visible: root.currentViewId === "importTransactions"
         sourceComponent: importPageComponent
+    }
+    // Sets `kept` after the view change, not in onLoaded: onLoaded runs while
+    // `active` is evaluated, and changing `kept` there is a binding loop.
+    Connections {
+        target: root
+        function onCurrentViewIdChanged() {
+            if (root.currentViewId === "importTransactions")
+                importPageLoader.kept = true
+        }
     }
 
     Component {
