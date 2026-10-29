@@ -133,39 +133,43 @@ Item {
                         lowerSeries: savingsBound
                     }
 
-                    // ── Invisible hover-carrier lines on each layer boundary ──
-                    // (AreaSeries has no pointDelegate; these transparent lines
-                    // put hoverable marker dots at the top of each layer and the
-                    // tooltip shows the layer's OWN value.)
+                    // ── Hover-carrier lines on each layer boundary ──
+                    // AreaSeries has no pointDelegate. These lines put hoverable
+                    // marker dots at the top of each layer, and the tooltip shows
+                    // the layer's own value. Each line has the border colour and
+                    // width of its layer, so it covers that border exactly. Do not
+                    // set "transparent": Qt Graphs replaces a colour with alpha 0
+                    // by the theme colour. The series colour is also the
+                    // pointColor of each HoverPoint.
                     LineSeries {
                         id: hoverChecking
-                        color: "transparent"
+                        color: "#89b4fa"
+                        width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
                                 seriesName: "Checking"
-                                pointColor: "#89b4fa"
                                 overrideValues: page.checkingOwn
                             }
                         }
                     }
                     LineSeries {
                         id: hoverSavings
-                        color: "transparent"
+                        color: "#a6e3a1"
+                        width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
                                 seriesName: "Savings"
-                                pointColor: "#a6e3a1"
                                 overrideValues: page.savingsOwn
                             }
                         }
                     }
                     LineSeries {
                         id: hoverTrading
-                        color: "transparent"
+                        color: "#cba6f7"
+                        width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
                                 seriesName: "Trading"
-                                pointColor: "#cba6f7"
                                 overrideValues: page.tradingOwn
                             }
                         }
