@@ -60,14 +60,11 @@ Item {
     //   two "Income by category" / "Expenses by category" nested pie charts.
     property var breakdown: ({})
 
-    // Y-axis scale toggle for the balance chart (product request: "a way to
-    // change the balance over time to change the scale of it"). "Auto" keeps
-    // the existing tight-fit behavior (balanceAxisMin/Max below, padded ±10%,
-    // capped at 0 for accounts that never go negative). "From 0" pins the
-    // axis minimum to 0 so growth reads against a fixed zero baseline —
-    // trading off clipping the line if the balance dips negative for an
-    // easier "how big is the change" read. Doesn't touch balanceAxisMin
-    // itself; only the GraphsView's axisY.min binding switches on it.
+    // Y-axis scale toggle for the balance chart. "Auto" fits the axis to the
+    // balances: from the minimum to the maximum, plus 10 % of that range on
+    // each side. "From 0" also includes 0: the axis starts at 0 for a positive
+    // account, and ends at 0 for a negative account (#65). See balanceAxisMin
+    // and balanceAxisMax.
     property bool axisStartAtZero: false
 
     // X-axis time-range presets for the balance chart — "7d"/"1m"/"6m"/"1y"/
@@ -254,17 +251,35 @@ Item {
     readonly property double minTimeMs: page.history.length > 0 ? page.history[0].timeMs : 0
     readonly property double maxTimeMsRaw: page.history.length > 0 ? page.history[page.history.length - 1].timeMs : 86400000
     readonly property double maxTimeMs: page.maxTimeMsRaw > page.minTimeMs ? page.maxTimeMsRaw : page.minTimeMs + 86400000
-    readonly property double balanceAxisMin: {
+    readonly property double balanceMin: {
         if (page.history.length === 0) return 0
         var m = page.history[0].balance
         for (var i = 1; i < page.history.length; i++) m = Math.min(m, page.history[i].balance)
-        return Math.min(m * 1.1, 0)
+        return m
     }
-    readonly property double balanceAxisMax: {
-        if (page.history.length === 0) return 1
+    readonly property double balanceMax: {
+        if (page.history.length === 0) return 0
         var m = page.history[0].balance
         for (var i = 1; i < page.history.length; i++) m = Math.max(m, page.history[i].balance)
-        return m > 0 ? m * 1.1 : 1
+        return m
+    }
+    // 10 % of the range. When all balances are equal, 10 % of the balance,
+    // and at least 1, so that the axis min is always below its max.
+    readonly property double balancePadding: {
+        var range = page.balanceMax - page.balanceMin
+        if (range > 0) return range * 0.1
+        return Math.max(Math.abs(page.balanceMax) * 0.1, 1)
+    }
+    // "From 0": a balance that is never negative starts at 0; a balance that
+    // is never positive (and not always 0) ends at 0; a balance on both
+    // sides of 0 already includes it.
+    readonly property double balanceAxisMin: {
+        if (page.axisStartAtZero && page.balanceMin >= 0) return 0
+        return page.balanceMin - page.balancePadding
+    }
+    readonly property double balanceAxisMax: {
+        if (page.axisStartAtZero && page.balanceMax <= 0 && page.balanceMin < 0) return 0
+        return page.balanceMax + page.balancePadding
     }
 
     ScrollView {
@@ -479,7 +494,7 @@ Item {
                             labelFormat: "MMM yy"
                         }
                         axisY: ValueAxis {
-                            min: page.axisStartAtZero ? 0 : page.balanceAxisMin
+                            min: page.balanceAxisMin
                             max: page.balanceAxisMax
                             labelFormat: "%.0f"
                         }

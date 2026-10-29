@@ -15,7 +15,8 @@
               "entries": [
                 "Pie and donut charts: a click on a slice now shows its details. Each `PieSeries` sets `selectable: true`; without it Qt Graphs emits no `clicked` signal. The 2-level pies of Account Details are one `GraphsView` with two `PieSeries` again, and the ring and the slice of a click come from the position of the press, because the Qt Graphs 6.10 hit test ignores `holeSize`. The subcategory ring starts 0.03 outside the category ring, as intended, instead of under it (#57).",
                 "Overview, net worth chart: the hover lines on the layer borders are no longer drawn in the green of the theme. They have the colour of their layer, and so have the markers and the tooltip titles (#58).",
-                "Bar charts: the hover tooltip of every bar is shown in full. Before, the tooltip of a stacked segment was drawn under the segments above it, and the tooltip of the tallest bars was cut at the top of the chart. `HoverBar` shows a `ToolTip`, drawn in the overlay of the window (#59)."
+                "Bar charts: the hover tooltip of every bar is shown in full. Before, the tooltip of a stacked segment was drawn under the segments above it, and the tooltip of the tallest bars was cut at the top of the chart. `HoverBar` shows a `ToolTip`, drawn in the overlay of the window (#59).",
+                "Account Details, balance chart: the Y-axis \"Auto\" / \"From 0\" toggle now changes the axis. \"Auto\" fits the axis to the balances (10 % of the range on each side); before, it started at 0 for an account that is never negative, as \"From 0\" does. \"From 0\" includes 0: it starts the axis at 0 for a positive account and ends it at 0 for a negative account. An account that is always negative now shows its line with both settings (#65)."
               ]
             }
           ]
