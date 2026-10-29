@@ -63,6 +63,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   when the columns are wider than the card, with a visible scroll bar, and fill the card when
   it is wider. The column-width handles of the import review still drag in the scroll area
   (#60, #61).
+- Requirement check (`tools/check-requirements.sh` / `.ps1`): a `QT_VERSION` below 6.10 now
+  fails, as `CMakeLists.txt` requires (`qt_standard_project_setup(REQUIRES 6.10)`). Before, 6.8
+  and 6.9 passed the check, and the Docker build then stopped at configure. `README.md`,
+  `CI-CD.md` and `ci.yml` now say Qt 6.10+ (#81).
 
 ---
 

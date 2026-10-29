@@ -77,8 +77,8 @@ if ($LINK -in @('shared', 'static')) { Report OK 'LINK_MODE' $LINK } else { Repo
 if ($cfg.BUILD_TYPE -in @('Release', 'Debug', 'RelWithDebInfo', 'MinSizeRel')) { Report OK 'BUILD_TYPE' $cfg.BUILD_TYPE }
 else { Report FAIL 'BUILD_TYPE' "'$($cfg.BUILD_TYPE)' (expected Release, Debug, RelWithDebInfo or MinSizeRel)" }
 $qtOk = $QTV -match '^6\.(\d+)\.(\d+)$'
-if ($qtOk -and [int]$Matches[1] -ge 8) { Report OK 'QT_VERSION' $QTV }
-elseif ($qtOk) { Report FAIL 'QT_VERSION' "$QTV - the project needs Qt 6.8 or later (qt_standard_project_setup(REQUIRES 6.8))"; $qtOk = $false }
+if ($qtOk -and [int]$Matches[1] -ge 10) { Report OK 'QT_VERSION' $QTV }
+elseif ($qtOk) { Report FAIL 'QT_VERSION' "$QTV - the project needs Qt 6.10 or later (qt_standard_project_setup(REQUIRES 6.10) in CMakeLists.txt)"; $qtOk = $false }
 else { Report FAIL 'QT_VERSION' "'$QTV' (expected 6.x.y)" }
 
 # -- 2. Build machine (Docker) ------------------------------------------------

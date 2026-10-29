@@ -448,7 +448,7 @@ Linux kept the flat layout, so a version bump can break Windows alone and look
 like a Windows problem. `QT_VERSION` is therefore pinned to **6.10.3** until
 [aqtinstall #959](https://github.com/miurahr/aqtinstall/issues/959) (fixed by
 PR #1000) reaches a release; then it goes back to 6.11.x with a one-word edit.
-The project itself needs Qt 6.8+, so this is purely a tooling constraint — it
+The project itself needs Qt 6.10+, so this is purely a tooling constraint — it
 does not affect what the app can use, and developing locally against a newer Qt
 than CI builds with is fine.
 

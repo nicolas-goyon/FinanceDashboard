@@ -82,7 +82,7 @@ the old folder.
 
 | Tool | Version |
 |---|---|
-| Qt | 6.8+ (developed against **6.11**) — include the **Qt Graphs** and **Qt Quick** modules |
+| Qt | 6.10+ (developed against **6.11**) — include the **Qt Graphs** and **Qt Quick** modules |
 | CMake | 3.21+ (3.27+ and [Inno Setup](https://jrsoftware.org/isinfo.php) 6+ only if you want to build the Windows setup yourself) |
 | C++ compiler | MSVC 2022 (recommended on Windows) or MinGW 13+ |
 
