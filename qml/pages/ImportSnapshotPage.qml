@@ -938,6 +938,8 @@ Item {
 
                             PieSeries {
                                 id: categoryPie
+                                // Without it the renderer emits no clicked signal (default false).
+                                selectable: true
                                 pieSize: 0.75
                                 holeSize: 0.42
 

@@ -31,7 +31,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
 
 ## v0.2.3 (current)
 
-_No changes logged yet — add one with `python tools/version.py add <Section> "<text>"`._
+### Fixed
+- Pie and donut charts: a click on a slice now shows its details. Each `PieSeries` sets
+  `selectable: true`; without it Qt Graphs emits no `clicked` signal. The 2-level pies of
+  Account Details are one `GraphsView` with two `PieSeries` again, and the ring and the slice
+  of a click come from the position of the press, because the Qt Graphs 6.10 hit test ignores
+  `holeSize`. The subcategory ring starts 0.03 outside the category ring, as intended, instead
+  of under it (#57).
 
 ---
 
