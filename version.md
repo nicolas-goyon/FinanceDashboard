@@ -57,6 +57,12 @@ builds, source archives). Then CI opens a pull request that merges the release b
   saving EUR. A type, category or currency that is not in its list (removed, or unknown) is
   shown in its box as "<value> (kept)", and Save keeps it; an empty category shows "(none)"
   (#63).
+- Import review and account Transactions tables: every column can be reached at the default
+  window size (1280 px). Before, the RULE and KEEP columns of the import review and the Edit
+  button of the Transactions table were cut off. The header and the rows scroll horizontally
+  when the columns are wider than the card, with a visible scroll bar, and fill the card when
+  it is wider. The column-width handles of the import review still drag in the scroll area
+  (#60, #61).
 
 ---
 

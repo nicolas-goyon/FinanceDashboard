@@ -133,118 +133,154 @@ Item {
                     anchors.fill: parent
                     spacing: 0
 
-                    Rectangle {
+                    // The columns need more width than the card has at the default window
+                    // size (1280 px), so the header and the rows scroll horizontally (#61).
+                    // The rows fill the card when it is wider than the columns.
+                    ScrollView {
+                        id: txScroll
                         Layout.fillWidth: true
-                        Layout.preferredHeight: 28
-                        color: "#181825"
-                        radius: 4
-                        RowLayout {
-                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                            spacing: 8
-                            Text { Layout.preferredWidth: 90;  text: "DATE";        font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                            Text { Layout.preferredWidth: 260; text: "NAME";        font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                            // Narrow column — rows only show a view-icon here (see
-                            // descriptionPopup below); the fillWidth spacer after it takes up
-                            // the space the old fillWidth DESCRIPTION text column used to, so
-                            // DEBIT/CREDIT/… stay pinned to the right — same pattern as
-                            // ImportSnapshotPage.qml's transaction table.
-                            Text { Layout.preferredWidth: 44;  text: "DESC.";       font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                            Item { Layout.fillWidth: true }
-                            Text { Layout.preferredWidth: 90;  text: "DEBIT";       font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                            Text { Layout.preferredWidth: 90;  text: "CREDIT";      font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                            Text { Layout.preferredWidth: 100; text: "BALANCE";     font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                            Text { Layout.preferredWidth: 130; text: "CATEGORY";    font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                            Text { Layout.preferredWidth: 130; text: "SUBCATEGORY"; font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                            Text { Layout.preferredWidth: 60;  text: "";            font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                        }
-                    }
+                        // The layout gives the width, and the table scrolls in it. The
+                        // default preferred width is the implicit width, which comes from the
+                        // table width: that is a binding loop.
+                        Layout.preferredWidth: 0
+                        Layout.preferredHeight: txTable.implicitHeight
+                            + (txScroll.ScrollBar.horizontal.visible ? txScroll.ScrollBar.horizontal.height : 0)
+                        ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+                        // Always shown when the table is wider than the card: with AsNeeded, the
+                        // Basic style shows the bar only while the pointer is on it, and nothing
+                        // tells that the table scrolls.
+                        ScrollBar.horizontal.policy: txTable.columnsWidth > txScroll.availableWidth
+                            ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                        contentWidth: txTable.width
+                        contentHeight: txTable.implicitHeight
 
-                    EmptyState {
-                        visible: page.rows.length === 0
-                        Layout.topMargin: 10
-                        message: "No transactions saved for this account yet."
-                    }
+                        ColumnLayout {
+                            id: txTable
+                            // The width of the card, or the width of the columns when it is more:
+                            // the 9 columns (90 + 260 + 44 + 90 + 90 + 100 + 130 + 130 + 60 = 994),
+                            // 9 spacings of 8 between the 10 items of a row (with the spacer), and
+                            // the 10 + 10 margins of the row. Keep it equal to the widths below.
+                            readonly property real columnsWidth: 994 + 9 * 8 + 20
+                            // Delayed: the width changes the implicit height of this layout, that
+                            // height changes the layout of the card, and that layout gives
+                            // availableWidth. Without the delay, that is a binding loop.
+                            Binding on width { value: Math.max(txScroll.availableWidth, txTable.columnsWidth); delayed: true }
+                            spacing: 0
 
-                    Repeater {
-                        model: page.rows
-                        delegate: Rectangle {
-                            id: txRow
-                            required property var modelData
-                            required property int index
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 36
-                            color: index % 2 === 0 ? "transparent" : "#181825"
-
-                            RowLayout {
-                                anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                spacing: 8
-                                Text { Layout.preferredWidth: 90; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
-                                Text {
-                                    Layout.preferredWidth: 260
-                                    text: txRow.modelData.name.length > 0 ? txRow.modelData.name : "—"
-                                    font.pixelSize: 15
-                                    color: "#cdd6f4"
-                                    elide: Text.ElideRight
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 28
+                                color: "#181825"
+                                radius: 4
+                                RowLayout {
+                                    anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                    spacing: 8
+                                    Text { Layout.preferredWidth: 90;  text: "DATE";        font.pixelSize: 13; font.bold: true; color: "#6c7086" }
+                                    Text { Layout.preferredWidth: 260; text: "NAME";        font.pixelSize: 13; font.bold: true; color: "#6c7086" }
+                                    // Narrow column — rows only show a view-icon here (see
+                                    // descriptionPopup below); the fillWidth spacer after it takes up
+                                    // the space the old fillWidth DESCRIPTION text column used to, so
+                                    // DEBIT/CREDIT/… stay pinned to the right — same pattern as
+                                    // ImportSnapshotPage.qml's transaction table.
+                                    Text { Layout.preferredWidth: 44;  text: "DESC.";       font.pixelSize: 13; font.bold: true; color: "#6c7086" }
+                                    Item { Layout.fillWidth: true }
+                                    Text { Layout.preferredWidth: 90;  text: "DEBIT";       font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 90;  text: "CREDIT";      font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 100; text: "BALANCE";     font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 130; text: "CATEGORY";    font.pixelSize: 13; font.bold: true; color: "#6c7086" }
+                                    Text { Layout.preferredWidth: 130; text: "SUBCATEGORY"; font.pixelSize: 13; font.bold: true; color: "#6c7086" }
+                                    Text { Layout.preferredWidth: 60;  text: "";            font.pixelSize: 13; font.bold: true; color: "#6c7086" }
                                 }
-                                GhostButton {
-                                    Layout.preferredWidth: 44
-                                    text: "🔍"
-                                    onClicked: {
-                                        descriptionPopup.descriptionText = txRow.modelData.description
-                                        descriptionPopup.open()
+                            }
+
+                            EmptyState {
+                                visible: page.rows.length === 0
+                                Layout.topMargin: 10
+                                message: "No transactions saved for this account yet."
+                            }
+
+                            Repeater {
+                                model: page.rows
+                                delegate: Rectangle {
+                                    id: txRow
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 36
+                                    color: index % 2 === 0 ? "transparent" : "#181825"
+
+                                    RowLayout {
+                                        anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                        spacing: 8
+                                        Text { Layout.preferredWidth: 90; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
+                                        Text {
+                                            Layout.preferredWidth: 260
+                                            text: txRow.modelData.name.length > 0 ? txRow.modelData.name : "—"
+                                            font.pixelSize: 15
+                                            color: "#cdd6f4"
+                                            elide: Text.ElideRight
+                                        }
+                                        GhostButton {
+                                            Layout.preferredWidth: 44
+                                            text: "🔍"
+                                            onClicked: {
+                                                descriptionPopup.descriptionText = txRow.modelData.description
+                                                descriptionPopup.open()
+                                            }
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        Text { Layout.preferredWidth: 90;  text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
+                                        Text { Layout.preferredWidth: 90;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
+                                        Text { Layout.preferredWidth: 100; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+
+                                        // Category/subcategory badges — same "colored pill" language
+                                        // as the account-category badge on AccountsManagePage.qml,
+                                        // colors resolved via CategoryController (see that
+                                        // singleton's categoryColor()/subcategoryColor() convenience
+                                        // lookups — ARCHITECTURE.MD § Category Management).
+                                        Rectangle {
+                                            Layout.preferredWidth: 130
+                                            visible: txRow.modelData.category.length > 0
+                                            Layout.preferredHeight: 20
+                                            radius: 10
+                                            color: Qt.rgba(1, 1, 1, 0.08)
+                                            border.color: CategoryController.categoryColor(txRow.modelData.category) || "#6c7086"
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: txRow.modelData.category
+                                                font.pixelSize: 12
+                                                color: CategoryController.categoryColor(txRow.modelData.category) || "#6c7086"
+                                                elide: Text.ElideRight
+                                                width: Math.min(implicitWidth, 118)
+                                            }
+                                        }
+                                        Text { Layout.preferredWidth: 130; visible: txRow.modelData.category.length === 0; text: "—"; font.pixelSize: 14; color: "#6c7086" }
+
+                                        Rectangle {
+                                            Layout.preferredWidth: 130
+                                            visible: txRow.modelData.subcategory.length > 0
+                                            Layout.preferredHeight: 20
+                                            radius: 10
+                                            color: Qt.rgba(1, 1, 1, 0.08)
+                                            border.color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || "#6c7086"
+                                            Text {
+                                                anchors.centerIn: parent
+                                                text: txRow.modelData.subcategory
+                                                font.pixelSize: 12
+                                                color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || "#6c7086"
+                                                elide: Text.ElideRight
+                                                width: Math.min(implicitWidth, 118)
+                                            }
+                                        }
+                                        Text { Layout.preferredWidth: 130; visible: txRow.modelData.subcategory.length === 0; text: "—"; font.pixelSize: 14; color: "#6c7086" }
+
+                                        GhostButton {
+                                            Layout.preferredWidth: 60
+                                            text: "✎ Edit"
+                                            textColor: "#89b4fa"
+                                            onClicked: editDialog.openFor(txRow.modelData)
+                                        }
                                     }
-                                }
-                                Item { Layout.fillWidth: true }
-                                Text { Layout.preferredWidth: 90;  text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 90;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 100; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-
-                                // Category/subcategory badges — same "colored pill" language
-                                // as the account-category badge on AccountsManagePage.qml,
-                                // colors resolved via CategoryController (see that
-                                // singleton's categoryColor()/subcategoryColor() convenience
-                                // lookups — ARCHITECTURE.MD § Category Management).
-                                Rectangle {
-                                    Layout.preferredWidth: 130
-                                    visible: txRow.modelData.category.length > 0
-                                    Layout.preferredHeight: 20
-                                    radius: 10
-                                    color: Qt.rgba(1, 1, 1, 0.08)
-                                    border.color: CategoryController.categoryColor(txRow.modelData.category) || "#6c7086"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: txRow.modelData.category
-                                        font.pixelSize: 12
-                                        color: CategoryController.categoryColor(txRow.modelData.category) || "#6c7086"
-                                        elide: Text.ElideRight
-                                        width: Math.min(implicitWidth, 118)
-                                    }
-                                }
-                                Text { Layout.preferredWidth: 130; visible: txRow.modelData.category.length === 0; text: "—"; font.pixelSize: 14; color: "#6c7086" }
-
-                                Rectangle {
-                                    Layout.preferredWidth: 130
-                                    visible: txRow.modelData.subcategory.length > 0
-                                    Layout.preferredHeight: 20
-                                    radius: 10
-                                    color: Qt.rgba(1, 1, 1, 0.08)
-                                    border.color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || "#6c7086"
-                                    Text {
-                                        anchors.centerIn: parent
-                                        text: txRow.modelData.subcategory
-                                        font.pixelSize: 12
-                                        color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || "#6c7086"
-                                        elide: Text.ElideRight
-                                        width: Math.min(implicitWidth, 118)
-                                    }
-                                }
-                                Text { Layout.preferredWidth: 130; visible: txRow.modelData.subcategory.length === 0; text: "—"; font.pixelSize: 14; color: "#6c7086" }
-
-                                GhostButton {
-                                    Layout.preferredWidth: 60
-                                    text: "✎ Edit"
-                                    textColor: "#89b4fa"
-                                    onClicked: editDialog.openFor(txRow.modelData)
                                 }
                             }
                         }

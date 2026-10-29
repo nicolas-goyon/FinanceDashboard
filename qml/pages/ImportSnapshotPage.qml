@@ -544,233 +544,274 @@ Item {
                             }
                         }
 
-                        Rectangle {
+                        // The columns need more width than the card has at the default window
+                        // size (1280 px), so the header and the rows scroll horizontally (#60).
+                        // The rows fill the card when it is wider than the columns.
+                        ScrollView {
+                            id: txScroll
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 28
-                            color: "#181825"
-                            radius: 4
-                            RowLayout {
-                                anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                spacing: 8
+                            // The layout gives the width, and the table scrolls in it. The
+                            // default preferred width is the implicit width, which comes from the
+                            // table width: that is a binding loop.
+                            Layout.preferredWidth: 0
+                            Layout.preferredHeight: txTable.implicitHeight
+                                + (txScroll.ScrollBar.horizontal.visible ? txScroll.ScrollBar.horizontal.height : 0)
+                            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+                            // Always shown when the table is wider than the card: with AsNeeded, the
+                            // Basic style shows the bar only while the pointer is on it, and nothing
+                            // tells that the table scrolls.
+                            ScrollBar.horizontal.policy: txTable.columnsWidth > txScroll.availableWidth
+                                ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                            contentWidth: txTable.width
+                            contentHeight: txTable.implicitHeight
 
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.opDate
-                                    text: "OP. DATE"
-                                    minWidth: 60
-                                    onWidthChangeRequested: (w) => columnWidths.opDate = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.name
-                                    text: "NAME"
-                                    minWidth: 60
-                                    onWidthChangeRequested: (w) => columnWidths.name = w
-                                }
-                                // Narrow column — rows only show a view-icon here (see the
-                                // "Full description" Popup below), the fillWidth spacer after
-                                // it takes up the space the old fillWidth DESCRIPTION text
-                                // column used to, so DEBIT/CREDIT/… stay pinned to the right.
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.desc
-                                    text: "DESC."
-                                    minWidth: 32
-                                    onWidthChangeRequested: (w) => columnWidths.desc = w
-                                }
-                                Item { Layout.fillWidth: true }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.debit
-                                    text: "DEBIT"
-                                    horizontalAlignment: Text.AlignRight
-                                    minWidth: 50
-                                    onWidthChangeRequested: (w) => columnWidths.debit = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.credit
-                                    text: "CREDIT"
-                                    horizontalAlignment: Text.AlignRight
-                                    minWidth: 50
-                                    onWidthChangeRequested: (w) => columnWidths.credit = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.balance
-                                    text: "BALANCE"
-                                    horizontalAlignment: Text.AlignRight
-                                    minWidth: 60
-                                    onWidthChangeRequested: (w) => columnWidths.balance = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.category
-                                    text: "CATEGORY"
-                                    minWidth: 70
-                                    onWidthChangeRequested: (w) => columnWidths.category = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.subcategory
-                                    text: "SUBCATEGORY"
-                                    minWidth: 70
-                                    onWidthChangeRequested: (w) => columnWidths.subcategory = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.confidence
-                                    text: "CONFIDENCE"
-                                    horizontalAlignment: Text.AlignHCenter
-                                    minWidth: 60
-                                    onWidthChangeRequested: (w) => columnWidths.confidence = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.rule
-                                    text: "RULE"
-                                    horizontalAlignment: Text.AlignHCenter
-                                    minWidth: 40
-                                    onWidthChangeRequested: (w) => columnWidths.rule = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.keep
-                                    text: "KEEP"
-                                    horizontalAlignment: Text.AlignRight
-                                    minWidth: 40
-                                    onWidthChangeRequested: (w) => columnWidths.keep = w
-                                }
-                            }
-                        }
+                            ColumnLayout {
+                                id: txTable
+                                // The width of the card, or the width of the columns when it is more:
+                                // the 11 columns, 11 spacings of 8 between the 12 items of a row
+                                // (with the spacer), and the 10 + 10 margins of the row. It is
+                                // not read from the header RowLayout: its implicit width changes
+                                // with its width, and that is a binding loop.
+                                readonly property real columnsWidth: columnWidths.opDate + columnWidths.name
+                                    + columnWidths.desc + columnWidths.debit + columnWidths.credit
+                                    + columnWidths.balance + columnWidths.category + columnWidths.subcategory
+                                    + columnWidths.confidence + columnWidths.rule + columnWidths.keep
+                                    + 11 * 8 + 20
+                                // Delayed: the width changes the implicit height of this layout, that
+                                // height changes the layout of the card, and that layout gives
+                                // availableWidth. Without the delay, that is a binding loop.
+                                Binding on width { value: Math.max(txScroll.availableWidth, txTable.columnsWidth); delayed: true }
+                                spacing: 0
 
-                        Repeater {
-                            model: controller.transactionRows
-                            delegate: Rectangle {
-                                id: txRow
-                                required property var modelData
-                                required property int index
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 44
-                                color: index % 2 === 0 ? "transparent" : "#181825"
-                                opacity: modelData.included ? 1.0 : 0.4
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 28
+                                    color: "#181825"
+                                    radius: 4
+                                    RowLayout {
+                                        anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                        spacing: 8
 
-                                RowLayout {
-                                    anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                    spacing: 8
-
-                                    Text { Layout.preferredWidth: columnWidths.opDate; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
-                                    TextField {
-                                        id: nameField
-                                        objectName: "rowNameField" // see onPredictionsAboutToBeApplied
-                                        Layout.preferredWidth: columnWidths.name
-                                        Layout.preferredHeight: 32
-                                        text: txRow.modelData.name
-                                        font.pixelSize: 15
-                                        color: "#cdd6f4"
-                                        placeholderTextColor: "#45475a"
-                                        placeholderText: "(no name)"
-                                        // Same recipe as FormRow.qml's TextField — see
-                                        // ARCHITECTURE.MD § Shared Components.
-                                        background: Rectangle {
-                                            color: "#11111b"
-                                            radius: 4
-                                            border.color: nameField.activeFocus ? "#89b4fa" : "#313244"
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.opDate
+                                            text: "OP. DATE"
+                                            minWidth: 60
+                                            onWidthChangeRequested: (w) => columnWidths.opDate = w
                                         }
-                                        // Auto-extracted at parse time (see
-                                        // extractTransactionName() in
-                                        // SumeriaCcpCsvExtractionTemplate.cpp); editable here in
-                                        // case the extraction picked the wrong thing.
-                                        onEditingFinished: controller.setRowName(txRow.modelData.index, text)
-                                    }
-                                    // Full description is no longer shown inline — just an icon
-                                    // that opens descriptionPopup (see below) with the full,
-                                    // selectable/copyable text. Keeps the row from being
-                                    // dominated by often-long multi-line bank text now that NAME
-                                    // (above) carries the at-a-glance label.
-                                    GhostButton {
-                                        Layout.preferredWidth: columnWidths.desc
-                                        text: "🔍"
-                                        onClicked: {
-                                            descriptionPopup.descriptionText = txRow.modelData.description
-                                            descriptionPopup.open()
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.name
+                                            text: "NAME"
+                                            minWidth: 60
+                                            onWidthChangeRequested: (w) => columnWidths.name = w
+                                        }
+                                        // Narrow column — rows only show a view-icon here (see the
+                                        // "Full description" Popup below), the fillWidth spacer after
+                                        // it takes up the space the old fillWidth DESCRIPTION text
+                                        // column used to, so DEBIT/CREDIT/… stay pinned to the right.
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.desc
+                                            text: "DESC."
+                                            minWidth: 32
+                                            onWidthChangeRequested: (w) => columnWidths.desc = w
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.debit
+                                            text: "DEBIT"
+                                            horizontalAlignment: Text.AlignRight
+                                            minWidth: 50
+                                            onWidthChangeRequested: (w) => columnWidths.debit = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.credit
+                                            text: "CREDIT"
+                                            horizontalAlignment: Text.AlignRight
+                                            minWidth: 50
+                                            onWidthChangeRequested: (w) => columnWidths.credit = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.balance
+                                            text: "BALANCE"
+                                            horizontalAlignment: Text.AlignRight
+                                            minWidth: 60
+                                            onWidthChangeRequested: (w) => columnWidths.balance = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.category
+                                            text: "CATEGORY"
+                                            minWidth: 70
+                                            onWidthChangeRequested: (w) => columnWidths.category = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.subcategory
+                                            text: "SUBCATEGORY"
+                                            minWidth: 70
+                                            onWidthChangeRequested: (w) => columnWidths.subcategory = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.confidence
+                                            text: "CONFIDENCE"
+                                            horizontalAlignment: Text.AlignHCenter
+                                            minWidth: 60
+                                            onWidthChangeRequested: (w) => columnWidths.confidence = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.rule
+                                            text: "RULE"
+                                            horizontalAlignment: Text.AlignHCenter
+                                            minWidth: 40
+                                            onWidthChangeRequested: (w) => columnWidths.rule = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.keep
+                                            text: "KEEP"
+                                            horizontalAlignment: Text.AlignRight
+                                            minWidth: 40
+                                            onWidthChangeRequested: (w) => columnWidths.keep = w
                                         }
                                     }
-                                    Item { Layout.fillWidth: true }
-                                    Text { Layout.preferredWidth: columnWidths.debit;   text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: columnWidths.credit;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: columnWidths.balance; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                                }
 
-                                    ColorComboBox {
-                                        id: categoryBox
-                                        Layout.preferredWidth: columnWidths.category
-                                        Layout.preferredHeight: 36
-                                        items: CategoryController.categories
-                                        currentName: txRow.modelData.category
-                                        onNameActivated: (name) => controller.setRowCategory(txRow.modelData.index, name)
-                                    }
+                                Repeater {
+                                    model: controller.transactionRows
+                                    delegate: Rectangle {
+                                        id: txRow
+                                        required property var modelData
+                                        required property int index
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 44
+                                        color: index % 2 === 0 ? "transparent" : "#181825"
+                                        opacity: modelData.included ? 1.0 : 0.4
 
-                                    ColorComboBox {
-                                        Layout.preferredWidth: columnWidths.subcategory
-                                        Layout.preferredHeight: 36
-                                        readonly property var subItems: {
-                                            var cat = CategoryController.categories.find(function(c) { return c.name === txRow.modelData.category })
-                                            return cat ? cat.subcategories : []
+                                        RowLayout {
+                                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                            spacing: 8
+
+                                            Text { Layout.preferredWidth: columnWidths.opDate; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
+                                            TextField {
+                                                id: nameField
+                                                objectName: "rowNameField" // see onPredictionsAboutToBeApplied
+                                                Layout.preferredWidth: columnWidths.name
+                                                Layout.preferredHeight: 32
+                                                text: txRow.modelData.name
+                                                font.pixelSize: 15
+                                                color: "#cdd6f4"
+                                                placeholderTextColor: "#45475a"
+                                                placeholderText: "(no name)"
+                                                // Same recipe as FormRow.qml's TextField — see
+                                                // ARCHITECTURE.MD § Shared Components.
+                                                background: Rectangle {
+                                                    color: "#11111b"
+                                                    radius: 4
+                                                    border.color: nameField.activeFocus ? "#89b4fa" : "#313244"
+                                                }
+                                                // Auto-extracted at parse time (see
+                                                // extractTransactionName() in
+                                                // SumeriaCcpCsvExtractionTemplate.cpp); editable here in
+                                                // case the extraction picked the wrong thing.
+                                                onEditingFinished: controller.setRowName(txRow.modelData.index, text)
+                                            }
+                                            // Full description is no longer shown inline — just an icon
+                                            // that opens descriptionPopup (see below) with the full,
+                                            // selectable/copyable text. Keeps the row from being
+                                            // dominated by often-long multi-line bank text now that NAME
+                                            // (above) carries the at-a-glance label.
+                                            GhostButton {
+                                                Layout.preferredWidth: columnWidths.desc
+                                                text: "🔍"
+                                                onClicked: {
+                                                    descriptionPopup.descriptionText = txRow.modelData.description
+                                                    descriptionPopup.open()
+                                                }
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                            Text { Layout.preferredWidth: columnWidths.debit;   text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
+                                            Text { Layout.preferredWidth: columnWidths.credit;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
+                                            Text { Layout.preferredWidth: columnWidths.balance; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+
+                                            ColorComboBox {
+                                                id: categoryBox
+                                                Layout.preferredWidth: columnWidths.category
+                                                Layout.preferredHeight: 36
+                                                items: CategoryController.categories
+                                                currentName: txRow.modelData.category
+                                                onNameActivated: (name) => controller.setRowCategory(txRow.modelData.index, name)
+                                            }
+
+                                            ColorComboBox {
+                                                Layout.preferredWidth: columnWidths.subcategory
+                                                Layout.preferredHeight: 36
+                                                readonly property var subItems: {
+                                                    var cat = CategoryController.categories.find(function(c) { return c.name === txRow.modelData.category })
+                                                    return cat ? cat.subcategories : []
+                                                }
+                                                items: subItems
+                                                enabled: subItems.length > 0
+                                                currentName: txRow.modelData.subcategory
+                                                onNameActivated: (name) => controller.setRowSubcategory(txRow.modelData.index, name)
+                                            }
+
+                                            // Pre-formatted in C++ (Fmt::confidenceVariant()/
+                                            // confidenceText(), reached via the row map) — see the
+                                            // "Confidence display" comment at the top of this file.
+                                            // Hovering explains *why* the predictor picked this
+                                            // category, which is the difference between a number the
+                                            // user can act on and one they just have to trust.
+                                            StatusBadge {
+                                                Layout.preferredWidth: columnWidths.confidence
+                                                Layout.alignment: Qt.AlignHCenter
+                                                pillHeight: 24
+                                                variant: txRow.modelData.confidenceVariant
+                                                text: txRow.modelData.confidenceText
+
+                                                HoverHandler { id: confidenceHover }
+                                                ToolTip.text: txRow.modelData.predictionReason
+                                                ToolTip.visible: confidenceHover.hovered
+                                                                  && txRow.modelData.predictionReason !== ""
+                                                ToolTip.delay: 300
+                                            }
+
+                                            // "Always categorize labels like this one the same way."
+                                            // One click turns this row's normalized merchant key into
+                                            // a permanent Data::CategoryRule and re-scores every other
+                                            // row in the statement against it — the fastest-learning
+                                            // path in the system (see docs/category-prediction.md).
+                                            //
+                                            // Deliberately NOT `enabled: canTeach`: Item.enabled would
+                                            // also switch off the HoverHandler, so the "pick a category
+                                            // first" tooltip — the one explaining why it looks inert —
+                                            // would be the one thing the user couldn't see. It stays
+                                            // clickable and dimmed instead; rememberRowAsRule() already
+                                            // refuses and posts that same message to the status line.
+                                            GhostButton {
+                                                id: ruleButton
+                                                readonly property bool canTeach: txRow.modelData.category !== ""
+                                                                                  && txRow.modelData.merchantKey !== ""
+                                                Layout.preferredWidth: columnWidths.rule
+                                                text: "＋"
+                                                opacity: ruleButton.canTeach ? 1.0 : 0.35
+                                                onClicked: controller.rememberRowAsRule(txRow.modelData.index)
+
+                                                HoverHandler { id: ruleHover }
+                                                ToolTip.text: ruleButton.canTeach
+                                                    ? "Always categorize “" + txRow.modelData.merchantKey + "” as "
+                                                      + txRow.modelData.category
+                                                      + (txRow.modelData.subcategory !== ""
+                                                          ? " / " + txRow.modelData.subcategory : "")
+                                                    : (txRow.modelData.category === ""
+                                                       ? "Pick a category for this row first"
+                                                       // A label with only generic words has no key (#40).
+                                                       : "This label has no merchant name to build a rule from")
+                                                ToolTip.visible: ruleHover.hovered
+                                                ToolTip.delay: 300
+                                            }
+
+                                            CheckBox {
+                                                Layout.preferredWidth: columnWidths.keep
+                                                checked: txRow.modelData.included
+                                                onCheckedChanged: controller.setRowIncluded(txRow.modelData.index, checked)
+                                            }
                                         }
-                                        items: subItems
-                                        enabled: subItems.length > 0
-                                        currentName: txRow.modelData.subcategory
-                                        onNameActivated: (name) => controller.setRowSubcategory(txRow.modelData.index, name)
-                                    }
-
-                                    // Pre-formatted in C++ (Fmt::confidenceVariant()/
-                                    // confidenceText(), reached via the row map) — see the
-                                    // "Confidence display" comment at the top of this file.
-                                    // Hovering explains *why* the predictor picked this
-                                    // category, which is the difference between a number the
-                                    // user can act on and one they just have to trust.
-                                    StatusBadge {
-                                        Layout.preferredWidth: columnWidths.confidence
-                                        Layout.alignment: Qt.AlignHCenter
-                                        pillHeight: 24
-                                        variant: txRow.modelData.confidenceVariant
-                                        text: txRow.modelData.confidenceText
-
-                                        HoverHandler { id: confidenceHover }
-                                        ToolTip.text: txRow.modelData.predictionReason
-                                        ToolTip.visible: confidenceHover.hovered
-                                                          && txRow.modelData.predictionReason !== ""
-                                        ToolTip.delay: 300
-                                    }
-
-                                    // "Always categorize labels like this one the same way."
-                                    // One click turns this row's normalized merchant key into
-                                    // a permanent Data::CategoryRule and re-scores every other
-                                    // row in the statement against it — the fastest-learning
-                                    // path in the system (see docs/category-prediction.md).
-                                    //
-                                    // Deliberately NOT `enabled: canTeach`: Item.enabled would
-                                    // also switch off the HoverHandler, so the "pick a category
-                                    // first" tooltip — the one explaining why it looks inert —
-                                    // would be the one thing the user couldn't see. It stays
-                                    // clickable and dimmed instead; rememberRowAsRule() already
-                                    // refuses and posts that same message to the status line.
-                                    GhostButton {
-                                        id: ruleButton
-                                        readonly property bool canTeach: txRow.modelData.category !== ""
-                                                                          && txRow.modelData.merchantKey !== ""
-                                        Layout.preferredWidth: columnWidths.rule
-                                        text: "＋"
-                                        opacity: ruleButton.canTeach ? 1.0 : 0.35
-                                        onClicked: controller.rememberRowAsRule(txRow.modelData.index)
-
-                                        HoverHandler { id: ruleHover }
-                                        ToolTip.text: ruleButton.canTeach
-                                            ? "Always categorize “" + txRow.modelData.merchantKey + "” as "
-                                              + txRow.modelData.category
-                                              + (txRow.modelData.subcategory !== ""
-                                                  ? " / " + txRow.modelData.subcategory : "")
-                                            : (txRow.modelData.category === ""
-                                               ? "Pick a category for this row first"
-                                               // A label with only generic words has no key (#40).
-                                               : "This label has no merchant name to build a rule from")
-                                        ToolTip.visible: ruleHover.hovered
-                                        ToolTip.delay: 300
-                                    }
-
-                                    CheckBox {
-                                        Layout.preferredWidth: columnWidths.keep
-                                        checked: txRow.modelData.included
-                                        onCheckedChanged: controller.setRowIncluded(txRow.modelData.index, checked)
                                     }
                                 }
                             }
