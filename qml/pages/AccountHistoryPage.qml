@@ -225,11 +225,15 @@ Item {
             var cat = categories[i]
             var catSlice = categoryRing.append(cat.category, cat.totalRaw)
             catSlice.color = CategoryController.categoryColor(cat.category) || "#6c7086"
+            // Without it, the slice gets the outline colour of the theme (#71).
+            catSlice.borderColor = catSlice.color
             catSlice.labelVisible = true
             for (var j = 0; j < cat.subcategories.length; j++) {
                 var sub = cat.subcategories[j]
                 var subSlice = subcategoryRing.append(sub.subcategory, sub.totalRaw)
                 subSlice.color = CategoryController.subcategoryColor(cat.category, sub.subcategory) || "#6c7086"
+                // Without it, the slice gets the outline colour of the theme (#71).
+                subSlice.borderColor = subSlice.color
                 // Was missing — the outer ring showed no labels at all, only
                 // the inner category ring did (product feedback). The
                 // series' own angleSpanVisibleLimit (set in QML below) hides
