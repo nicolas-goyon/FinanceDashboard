@@ -230,6 +230,9 @@ Item {
             ? [page.currentTemplate.fileFilter, "All files (*)"]
             : ["All files (*)"]
         onAccepted: {
+            // The button is disabled with no template, but check again (#68).
+            if (!page.currentTemplate)
+                return
             controller.parseFile(selectedFile, page.currentTemplate.id)
             page.goToReview()
         }
@@ -297,6 +300,7 @@ Item {
                         text: "Choose file & Import"
                         variant: "primary"
                         Layout.preferredHeight: 32
+                        enabled: page.currentTemplate !== null
                         onClicked: fileDialog.open()
                     }
                 }

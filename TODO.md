@@ -43,8 +43,6 @@ here so the architecture doc stays a design record, not a task tracker).
 
 ## Bugs to fix
 
-- [ ] **Unguarded account lookups in Database Management dialogs** — `DatabaseManagementPage.qml`'s `clearTransactionsDialog.openFor()`/`deleteAccountDialog.openFor()` dereference `AccountController.accounts[idx].name` with no bounds/null guard, unlike `AccountHistoryPage.qml`/`AccountTransactionsPage.qml` which guard explicitly. Verify whether `ComboBox.currentIndex` auto-clamps when the backing array shrinks after a delete; if not, a second click before reselecting will throw.
-- [ ] **`ImportSnapshotPage.qml` file picker assumes a template is always selected** — `fileDialog.onAccepted` calls `controller.parseFile(selectedFile, page.currentTemplate.id)` with no null check. Harmless while exactly one import template exists, but the button that opens the dialog isn't disabled when `controller.templates.length === 0`, so this is a latent crash once a second template ships or the list can be empty.
 - [ ] **Unguarded chart-title string interpolation** — `CashFlowPage.qml` concatenates `controller.monthLabels[controller.selectedMonth]` directly into chart titles with no bounds check, unlike the rest of the app's defensive-display convention (e.g. `AccountHistoryPage.qml` ternary-guards `page.account !== null` before display). Low risk today (mock data populates synchronously) but worth aligning.
 
 ---

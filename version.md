@@ -78,6 +78,11 @@ builds, source archives). Then CI opens a pull request that merges the release b
   month count outside 1 to 1200, which closed it with no project before (`addProject()` now
   returns whether it added the project). After an edit, the loan-rate field shows the rate that
   applies, and it follows the rate when it changes (#75, #66).
+- Database Management: "Delete account" deletes the account that its dialog names. Before, it
+  deleted the account at the same position in the list, so another account when the list
+  changed while the dialog was open. The two clean-up dialogs keep the account id, and they
+  open only for a valid account (with no account, they threw a TypeError). Import: "Choose file
+  & Import" is disabled when no statement template exists (#67, #68).
 
 ### Docs
 - README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest
