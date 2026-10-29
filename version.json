@@ -1,6 +1,13 @@
 {
-  "current": "0.2.3",
+  "current": "0.2.4",
   "releases": [
+    {
+      "version": "0.2.4",
+      "date": null,
+      "title": null,
+      "summary": "",
+      "sections": []
+    },
     {
       "version": "0.2.3",
       "date": null,

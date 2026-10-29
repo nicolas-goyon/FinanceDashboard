@@ -29,7 +29,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
 
 ---
 
-## v0.2.3 (current)
+## v0.2.4 (current)
+
+_No changes logged yet — add one with `python tools/version.py add <Section> "<text>"`._
+
+---
+
+## v0.2.3 (release in progress)
 
 ### Changed
 - QML colours: every colour of the QML comes from a `Theme` singleton
