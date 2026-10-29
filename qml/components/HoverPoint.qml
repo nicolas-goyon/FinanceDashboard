@@ -21,6 +21,9 @@ Item {
     property string suffix: " €"
     property int    decimals: 0
     property bool   xIsTime: true      // pointValueX is ms since epoch
+    // Format of the date line (Qt date format). Monthly data shows the month;
+    // a chart of daily data sets a format with the day (#73).
+    property string dateFormat: "MMM yyyy"
     // For stacked charts: the layer's own values (tooltip shows these
     // instead of the cumulative boundary y)
     property var    overrideValues: null
@@ -101,7 +104,7 @@ Item {
             }
             Text {
                 visible: root.xIsTime
-                text: Qt.formatDate(new Date(root.pointValueX), "MMM yyyy")
+                text: Qt.formatDate(new Date(root.pointValueX), root.dateFormat)
                 font.pixelSize: 13
                 color: "#6c7086"
             }

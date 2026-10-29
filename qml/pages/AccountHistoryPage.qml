@@ -112,6 +112,11 @@ Item {
         var rawMax = isNaN(page.rawRangeMaxMs) ? page.maxTimeMs : page.rawRangeMaxMs
         return rawMax > page.axisRangeMinMs ? rawMax : page.axisRangeMinMs + 86400000
     }
+    // The balance is day by day. Up to about three months on the axis, its
+    // labels show the day; above, the month. Taken from the range shown, not
+    // from the preset: "From start" on a short history also shows days (#73).
+    readonly property string axisDateFormat:
+        page.axisRangeMaxMs - page.axisRangeMinMs <= 92 * 86400000 ? "dd MMM" : "MMM yy"
 
     function reload() {
         if (page.selectedAccountIndex >= 0) {
@@ -491,7 +496,7 @@ Item {
                         axisX: DateTimeAxis {
                             min: new Date(page.axisRangeMinMs)
                             max: new Date(page.axisRangeMaxMs)
-                            labelFormat: "MMM yy"
+                            labelFormat: page.axisDateFormat
                         }
                         axisY: ValueAxis {
                             min: page.balanceAxisMin
@@ -507,6 +512,7 @@ Item {
                             pointDelegate: Component {
                                 HoverPoint {
                                     seriesName: page.account !== null ? page.account.name : ""
+                                    dateFormat: "dd MMM yyyy"
                                     pointColor: "#89b4fa"
                                     suffix: " " + page.currencySymbol
                                 }
