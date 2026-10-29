@@ -32,6 +32,7 @@ qml/Main.qml          The window, the sidebar and the navigation (currentViewId)
 qml/pages/            One file for each page. Display only.
 qml/components/       Shared QML components (ChartCard, PillButton, FormDialog, HoverPoint, …).
 src/controllers/      One subfolder for each domain. One controller class for each page.
+src/controllers/ui/   QML singletons with no page, for example Fonts (the fixed-pitch font).
 src/db/               Database (connection, transactions, upgrades) and tables/ (one class per table).
 src/models/           Plain data structs (Account, Transaction, Category, …).
 src/import/           Statement templates (ImportTemplate, SumeriaCcpCsvExtractionTemplate).
@@ -294,9 +295,12 @@ reason.
   the theme colour. This applies to `color` and to `borderColor`.
 - A delegate gets the colour of its series as `pointColor`. A value that you give to
   `pointColor` does not stay.
-- In a `barDelegate`, show the tooltip with a `ToolTip` (QtQuick.Controls), not with a child
-  `Rectangle`. The bar delegates are siblings, the renderer resets their `z`, and the plot area
-  clips them. A `ToolTip` shows in the overlay of the window (`HoverBar.qml`).
+- In a `barDelegate` or a `pointDelegate`, show the tooltip with a `ToolTip`
+  (QtQuick.Controls), not with a child `Rectangle`. The delegates are siblings, the renderer
+  sets their `z` on each update, and the plot area clips them. A `ToolTip` shows in the overlay
+  of the window (`HoverBar.qml`, `HoverPoint.qml`).
+- Do not use `font.family: "monospace"`. Windows has no font with that name. Use
+  `Fonts.monospace`.
 - A `DateTimeAxis` or `ValueAxis` with min equal to max stopped the app with a native crash.
   Add padding when the range is empty (example: `maxTimeMs` in `AccountHistoryPage.qml`).
 - The `onCompleted` handler of a child runs before the handler of its parent. Fill a series from
