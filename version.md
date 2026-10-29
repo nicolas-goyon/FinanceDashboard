@@ -74,6 +74,11 @@ builds, source archives). Then CI opens a pull request that merges the release b
   gives the bash options next to the PowerShell ones, says that a static build is still the
   launcher, `app/` and `app/requirements.txt`, and lists the system libraries that a Linux
   build needs. The project layout describes the tests folder as it is (#104, #94).
+- ARCHITECTURE.MD is a standalone document: no `docs/` folder and no dead link (#102). It adds
+  a directory map, the steps to add a page, and the known Qt Graphs behaviour of this project
+  (from the deleted `docs/charting-gotchas.md`, updated with #57, #58 and #59). Its rules are
+  in ASD-STE100 (short sentences, one instruction each, no semicolons): `ste-lint.py` finds no
+  hard violation (19 before) (#105).
 
 ---
 
