@@ -555,7 +555,7 @@ Item {
 
                             Item {
                                 id: incomePieHost
-                                visible: page.breakdown.income && page.breakdown.income.length > 0
+                                visible: !!page.breakdown.income && page.breakdown.income.length > 0
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
 
@@ -606,7 +606,7 @@ Item {
                             Text {
                                 id: incomePieInfo
                                 Layout.alignment: Qt.AlignHCenter
-                                visible: page.breakdown.income && page.breakdown.income.length > 0
+                                visible: !!page.breakdown.income && page.breakdown.income.length > 0
                                 text: "Click a category (inner ring) or subcategory (outer ring) slice for details"
                                 font.pixelSize: 13
                                 color: "#6c7086"
@@ -633,7 +633,7 @@ Item {
 
                             Item {
                                 id: expensePieHost
-                                visible: page.breakdown.expenses && page.breakdown.expenses.length > 0
+                                visible: !!page.breakdown.expenses && page.breakdown.expenses.length > 0
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
 
@@ -684,7 +684,7 @@ Item {
                             Text {
                                 id: expensePieInfo
                                 Layout.alignment: Qt.AlignHCenter
-                                visible: page.breakdown.expenses && page.breakdown.expenses.length > 0
+                                visible: !!page.breakdown.expenses && page.breakdown.expenses.length > 0
                                 text: "Click a category (inner ring) or subcategory (outer ring) slice for details"
                                 font.pixelSize: 13
                                 color: "#6c7086"

@@ -16,6 +16,11 @@ Item {
 
     CashFlowController { id: controller }
 
+    // The label of the selected month, or "" when the index is outside the list (#69).
+    readonly property string selectedMonthLabel:
+        controller.selectedMonth >= 0 && controller.selectedMonth < controller.monthLabels.length
+            ? controller.monthLabels[controller.selectedMonth] : ""
+
     // The name and colour of spending category i (controller.categories).
     function categoryName(i) {
         return i < controller.categories.length ? controller.categories[i].name : ""
@@ -52,7 +57,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 420
-                title: "Money flow — " + controller.monthLabels[controller.selectedMonth]
+                title: "Money flow — " + page.selectedMonthLabel
                        + " (income → budget → spending & savings)"
 
                 MoneyFlow {
@@ -154,7 +159,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 360
-                    title: "Spending by category — " + controller.monthLabels[controller.selectedMonth]
+                    title: "Spending by category — " + page.selectedMonthLabel
                            + " — click a slice"
 
                     ColumnLayout {
@@ -211,7 +216,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 360
-                    title: "Biggest expenses — " + controller.monthLabels[controller.selectedMonth]
+                    title: "Biggest expenses — " + page.selectedMonthLabel
 
                     ColumnLayout {
                         anchors.fill: parent
