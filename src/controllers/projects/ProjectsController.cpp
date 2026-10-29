@@ -138,7 +138,7 @@ void ProjectsController::rebuildCards()
     emit projectsChanged();
 }
 
-void ProjectsController::addProject(const QString& name, double target,
+bool ProjectsController::addProject(const QString& name, double target,
                                     int monthsToTarget, double earmarked,
                                     double monthly)
 {
@@ -146,7 +146,7 @@ void ProjectsController::addProject(const QString& name, double target,
     // and a target date more than 100 years away, are refused too (#41).
     if (name.trimmed().isEmpty() || !std::isfinite(target) || target <= 0 || monthsToTarget < 1
         || monthsToTarget > kMaxMonths || !std::isfinite(earmarked) || !std::isfinite(monthly)) {
-        return;
+        return false;
     }
 
     const QDate today = QDate::currentDate();
@@ -162,6 +162,7 @@ void ProjectsController::addProject(const QString& name, double target,
     // Select the new project so the detail view shows it.
     m_currentProject = static_cast<int>(m_projects.size()) - 1;
     recomputeProject();
+    return true;
 }
 
 void ProjectsController::setCurrentProject(int index)
