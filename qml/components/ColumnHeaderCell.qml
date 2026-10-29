@@ -71,6 +71,9 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.SizeHorCursor
+            // The table is in a horizontal ScrollView (#60): without this, its
+            // Flickable takes the drag after a few pixels.
+            preventStealing: true
             property real lastX: 0
 
             onPressed: (mouse) => { lastX = mouse.x }
