@@ -43,7 +43,6 @@ here so the architecture doc stays a design record, not a task tracker).
 
 ## Bugs to fix
 
-- [ ] **Unguarded chart-title string interpolation** — `CashFlowPage.qml` concatenates `controller.monthLabels[controller.selectedMonth]` directly into chart titles with no bounds check, unlike the rest of the app's defensive-display convention (e.g. `AccountHistoryPage.qml` ternary-guards `page.account !== null` before display). Low risk today (mock data populates synchronously) but worth aligning.
 
 ---
 

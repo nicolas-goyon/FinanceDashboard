@@ -100,6 +100,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   red hover of the other remove buttons, instead of a bare text. Removing a hash asks first,
   because the import then no longer picks the account by itself; the dialog keeps the account
   id and the hash, so it removes that hash even if the list changes (#78).
+- Account Details no longer logs "Unable to assign [undefined] to bool" (8 times on an empty
+  database) when an account has no category breakdown: the visibility of the pies is always a
+  boolean (#76). The Cash Flow chart titles read the label of the selected month through a
+  guarded `selectedMonthLabel` (#69).
 
 ### Docs
 - README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest
