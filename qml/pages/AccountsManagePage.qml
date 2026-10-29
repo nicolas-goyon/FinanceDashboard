@@ -220,14 +220,16 @@ Item {
                                                     font.family: "monospace"
                                                     color: "#a6adc8"
                                                 }
-                                                Text {
+                                                // Asks first: without the hash, the import no
+                                                // longer finds this account by itself (#78).
+                                                GhostButton {
                                                     text: "×"
-                                                    font.pixelSize: 13
-                                                    font.bold: true
-                                                    color: "#f38ba8"
-                                                    TapHandler {
-                                                        onTapped: AccountController.removeHash(accRow.index, hashChip.index)
-                                                    }
+                                                    variant: "danger"
+                                                    bold: true
+                                                    horizontalPadding: 4
+                                                    Layout.preferredHeight: 18
+                                                    onClicked: removeHashDialog.openFor(accRow.modelData.id, accRow.modelData.name,
+                                                                                        hashChip.modelData.hash)
                                                 }
                                             }
                                         }
@@ -282,16 +284,15 @@ Item {
                                                     font.pixelSize: 11
                                                     color: "#a6adc8"
                                                 }
-                                                Text {
+                                                GhostButton {
                                                     text: "×"
-                                                    font.pixelSize: 13
-                                                    font.bold: true
-                                                    color: "#f38ba8"
-                                                    TapHandler {
-                                                        onTapped: {
-                                                            AccountController.removeBalanceCheckpoint(accRow.index, checkpointChip.index)
-                                                            page.checkpointsTick++
-                                                        }
+                                                    variant: "danger"
+                                                    bold: true
+                                                    horizontalPadding: 4
+                                                    Layout.preferredHeight: 18
+                                                    onClicked: {
+                                                        AccountController.removeBalanceCheckpoint(accRow.index, checkpointChip.index)
+                                                        page.checkpointsTick++
                                                     }
                                                 }
                                             }
@@ -475,6 +476,44 @@ Item {
         }
 
         onConfirmed: AccountController.removeAccount(deleteAccountDialog.accountIndex)
+    }
+
+    // ── Remove hash confirmation (#78) ────────────────────────────────────────
+    // Keeps the account id and the hash, not their positions: removeHash()
+    // takes indexes, and they are read again on confirm.
+    ConfirmDialog {
+        id: removeHashDialog
+        dialogTitle: "Remove hash?"
+        confirmText: "Remove"
+        width: 380
+
+        property int accountId: -1
+        property string hash: ""
+
+        function openFor(accountId, accountName, hash) {
+            removeHashDialog.accountId = accountId
+            removeHashDialog.hash = hash
+            message = "This removes the hash " + hash.substring(0, 10) + "… from “" + accountName + "”. "
+                + "The import then no longer picks this account by itself for the statements of "
+                + "this bank account. You can add the hash again with \"＋ Add hash\"."
+            open()
+        }
+
+        onConfirmed: {
+            var accounts = AccountController.accounts
+            for (var i = 0; i < accounts.length; i++) {
+                if (accounts[i].id !== removeHashDialog.accountId)
+                    continue
+                var hashes = accounts[i].hashes
+                for (var j = 0; j < hashes.length; j++) {
+                    if (hashes[j].hash === removeHashDialog.hash) {
+                        AccountController.removeHash(i, j)
+                        return
+                    }
+                }
+                return
+            }
+        }
     }
 
     // ── Add hash dialog ────────────────────────────────────────────────────────
