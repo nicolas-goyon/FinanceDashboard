@@ -82,7 +82,7 @@ Item {
                     + "none yet shows as \"not linked\" during import. No IBAN, BIC, or account number "
                     + "is stored on an account."
                 font.pixelSize: 14
-                color: "#6c7086"
+                color: Theme.overlay0
             }
 
             // ── Accounts ──────────────────────────────────────────────────────
@@ -119,12 +119,12 @@ Item {
                                     text: accRow.modelData.name
                                     font.pixelSize: 16
                                     font.bold: true
-                                    color: "#cdd6f4"
+                                    color: Theme.text
                                 }
                                 Text {
                                     text: accRow.modelData.type
                                     font.pixelSize: 13
-                                    color: "#6c7086"
+                                    color: Theme.overlay0
                                 }
                                 Rectangle {
                                     visible: accRow.modelData.category.length > 0
@@ -132,13 +132,13 @@ Item {
                                     Layout.preferredHeight: 20
                                     radius: 10
                                     color: Qt.rgba(1, 1, 1, 0.08)
-                                    border.color: AccountController.accountCategoryColor(accRow.modelData.category) || "#6c7086"
+                                    border.color: AccountController.accountCategoryColor(accRow.modelData.category) || Theme.overlay0
                                     Text {
                                         id: catBadgeText
                                         anchors.centerIn: parent
                                         text: accRow.modelData.category
                                         font.pixelSize: 12
-                                        color: AccountController.accountCategoryColor(accRow.modelData.category) || "#6c7086"
+                                        color: AccountController.accountCategoryColor(accRow.modelData.category) || Theme.overlay0
                                     }
                                 }
                                 StatusBadge {
@@ -156,7 +156,7 @@ Item {
                                 }
                                 GhostButton {
                                     text: "✎ Edit"
-                                    textColor: "#89b4fa"
+                                    textColor: Theme.blue
                                     onClicked: accountDialog.openForEdit(accRow.index)
                                 }
                                 GhostButton {
@@ -174,14 +174,14 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 4
                                 spacing: 20
-                                Text { text: accRow.modelData.currency; font.pixelSize: 12; color: "#6c7086" }
+                                Text { text: accRow.modelData.currency; font.pixelSize: 12; color: Theme.overlay0 }
                                 Text {
                                     visible: accRow.modelData.notes.length > 0
                                     Layout.fillWidth: true
                                     text: accRow.modelData.notes
                                     font.pixelSize: 12
                                     font.italic: true
-                                    color: "#45475a"
+                                    color: Theme.surface1
                                     elide: Text.ElideRight
                                 }
                             }
@@ -192,7 +192,7 @@ Item {
                                 Layout.leftMargin: 4
                                 spacing: 8
 
-                                Text { text: "Hashes:"; font.pixelSize: 12; color: "#6c7086" }
+                                Text { text: "Hashes:"; font.pixelSize: 12; color: Theme.overlay0 }
 
                                 Flow {
                                     Layout.fillWidth: true
@@ -207,8 +207,8 @@ Item {
                                             width: hashChipRow.implicitWidth + 16
                                             height: 22
                                             radius: 11
-                                            color: "#181825"
-                                            border.color: "#313244"
+                                            color: Theme.mantle
+                                            border.color: Theme.surface0
 
                                             RowLayout {
                                                 id: hashChipRow
@@ -217,17 +217,19 @@ Item {
                                                 Text {
                                                     text: hashChip.modelData.hash.substring(0, 10) + "… (" + hashChip.modelData.source + ")"
                                                     font.pixelSize: 11
-                                                    font.family: "monospace"
-                                                    color: "#a6adc8"
+                                                    font.family: Fonts.monospace
+                                                    color: Theme.subtext0
                                                 }
-                                                Text {
+                                                // Asks first: without the hash, the import no
+                                                // longer finds this account by itself (#78).
+                                                GhostButton {
                                                     text: "×"
-                                                    font.pixelSize: 13
-                                                    font.bold: true
-                                                    color: "#f38ba8"
-                                                    TapHandler {
-                                                        onTapped: AccountController.removeHash(accRow.index, hashChip.index)
-                                                    }
+                                                    variant: "danger"
+                                                    bold: true
+                                                    horizontalPadding: 4
+                                                    Layout.preferredHeight: 18
+                                                    onClicked: removeHashDialog.openFor(accRow.modelData.id, accRow.modelData.name,
+                                                                                        hashChip.modelData.hash)
                                                 }
                                             }
                                         }
@@ -236,7 +238,7 @@ Item {
 
                                 GhostButton {
                                     text: "＋ Add hash"
-                                    textColor: "#a6e3a1"
+                                    textColor: Theme.green
                                     onClicked: addHashDialog.openFor(accRow.index)
                                 }
                             }
@@ -251,14 +253,17 @@ Item {
                                 Layout.leftMargin: 4
                                 spacing: 8
 
-                                Text { text: "Balance checkpoints:"; font.pixelSize: 12; color: "#6c7086" }
+                                Text { text: "Balance checkpoints:"; font.pixelSize: 12; color: Theme.overlay0 }
 
                                 Flow {
                                     Layout.fillWidth: true
                                     spacing: 6
 
                                     Repeater {
-                                        model: (page.checkpointsTick, AccountController.balanceCheckpoints(accRow.index))
+                                        // Reads checkpointsTick so that the list is read again after a
+                                        // change: balanceCheckpoints() has no notify signal.
+                                        model: page.checkpointsTick >= 0
+                                            ? AccountController.balanceCheckpoints(accRow.index) : []
                                         delegate: Rectangle {
                                             id: checkpointChip
                                             required property var modelData
@@ -266,8 +271,8 @@ Item {
                                             width: checkpointChipRow.implicitWidth + 16
                                             height: 22
                                             radius: 11
-                                            color: "#181825"
-                                            border.color: "#313244"
+                                            color: Theme.mantle
+                                            border.color: Theme.surface0
 
                                             RowLayout {
                                                 id: checkpointChipRow
@@ -277,18 +282,17 @@ Item {
                                                     text: checkpointChip.modelData.dateText + " · " + checkpointChip.modelData.balanceText
                                                         + (checkpointChip.modelData.note.length > 0 ? " (" + checkpointChip.modelData.note + ")" : "")
                                                     font.pixelSize: 11
-                                                    color: "#a6adc8"
+                                                    color: Theme.subtext0
                                                 }
-                                                Text {
+                                                GhostButton {
                                                     text: "×"
-                                                    font.pixelSize: 13
-                                                    font.bold: true
-                                                    color: "#f38ba8"
-                                                    TapHandler {
-                                                        onTapped: {
-                                                            AccountController.removeBalanceCheckpoint(accRow.index, checkpointChip.index)
-                                                            page.checkpointsTick++
-                                                        }
+                                                    variant: "danger"
+                                                    bold: true
+                                                    horizontalPadding: 4
+                                                    Layout.preferredHeight: 18
+                                                    onClicked: {
+                                                        AccountController.removeBalanceCheckpoint(accRow.index, checkpointChip.index)
+                                                        page.checkpointsTick++
                                                     }
                                                 }
                                             }
@@ -298,12 +302,12 @@ Item {
 
                                 GhostButton {
                                     text: "＋ Add checkpoint"
-                                    textColor: "#f9e2af"
+                                    textColor: Theme.yellow
                                     onClicked: addCheckpointDialog.openFor(accRow.index)
                                 }
                             }
 
-                            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.preferredHeight: 1; color: "#313244" }
+                            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.preferredHeight: 1; color: Theme.surface0 }
                         }
                     }
                 }
@@ -321,6 +325,16 @@ Item {
         width: 440
 
         property int editIndex: -1
+        // The stored values of the edited account. A value that is not in its
+        // list (a removed type or category, an unknown currency) gives the
+        // ComboBox index -1: the box shows the value, and Save keeps it (#63).
+        property string keptType: ""
+        property string keptCategory: ""
+        property string keptCurrency: ""
+
+        function keptText(value) {
+            return value.length > 0 ? value + " (kept)" : "(none)"
+        }
 
         readonly property var currencyOptions: [
             { code: "EUR", label: "EUR €" },
@@ -337,11 +351,14 @@ Item {
             for (var i = 0; i < currencyOptions.length; ++i)
                 if (currencyOptions[i].code === code)
                     return i
-            return 0
+            return -1
         }
 
         function openForNew() {
             editIndex = -1
+            keptType = ""
+            keptCategory = ""
+            keptCurrency = ""
             accNameRow.text = ""
             // -1 when there is no type, after "Reset Database" (#62).
             accTypeBox.currentIndex = AccountController.accountTypes.length > 0 ? 0 : -1
@@ -354,6 +371,9 @@ Item {
         function openForEdit(idx) {
             var acc = AccountController.accounts[idx]
             editIndex = idx
+            keptType = acc.type
+            keptCategory = acc.category
+            keptCurrency = acc.currency
             accNameRow.text = acc.name
             // -1 when the type of the account is not in the list (no type, or
             // a removed one): Save then keeps it, instead of the first type.
@@ -368,12 +388,13 @@ Item {
         FormRow { id: accNameRow; label: "Name"; labelWidth: 70; placeholderText: "e.g. Livret Jeune" }
         RowLayout {
             spacing: 10
-            Text { Layout.preferredWidth: 70; text: "Type"; font.pixelSize: 15; color: "#6c7086" }
+            Text { Layout.preferredWidth: 70; text: "Type"; font.pixelSize: 15; color: Theme.overlay0 }
             ComboBox {
                 id: accTypeBox
                 Layout.fillWidth: true
                 model: AccountController.accountTypes
                 textRole: "name"
+                displayText: currentIndex >= 0 ? currentText : accountDialog.keptText(accountDialog.keptType)
             }
         }
         // After "Reset Database" the list of types is empty (#62).
@@ -384,26 +405,28 @@ Item {
             text: "There is no account type. The account is saved without a type. To add types, go to "
                 + "Account Management → \"Account types & categories\"."
             font.pixelSize: 13
-            color: "#f9e2af"
+            color: Theme.yellow
         }
         RowLayout {
             spacing: 10
-            Text { Layout.preferredWidth: 70; text: "Category"; font.pixelSize: 15; color: "#6c7086" }
+            Text { Layout.preferredWidth: 70; text: "Category"; font.pixelSize: 15; color: Theme.overlay0 }
             ComboBox {
                 id: accCategoryBox
                 Layout.fillWidth: true
                 model: AccountController.accountCategories
                 textRole: "name"
+                displayText: currentIndex >= 0 ? currentText : accountDialog.keptText(accountDialog.keptCategory)
             }
         }
         RowLayout {
             spacing: 10
-            Text { Layout.preferredWidth: 70; text: "Currency"; font.pixelSize: 15; color: "#6c7086" }
+            Text { Layout.preferredWidth: 70; text: "Currency"; font.pixelSize: 15; color: Theme.overlay0 }
             ComboBox {
                 id: accCurrencyBox
                 Layout.preferredWidth: 140
                 model: accountDialog.currencyOptions
                 textRole: "label"
+                displayText: currentIndex >= 0 ? currentText : accountDialog.keptText(accountDialog.keptCurrency)
             }
         }
         FormRow { id: accNotesRow; label: "Notes"; labelWidth: 70; placeholderText: "optional" }
@@ -424,7 +447,9 @@ Item {
             var category = ci >= 0 && ci < categories.length ? categories[ci].name
                                                              : (current ? current.category : "")
             var type = ti >= 0 && ti < types.length ? types[ti].name : (current ? current.type : "")
-            var currency = accountDialog.currencyOptions[accCurrencyBox.currentIndex].code
+            var cu = accCurrencyBox.currentIndex
+            var currency = cu >= 0 && cu < accountDialog.currencyOptions.length
+                ? accountDialog.currencyOptions[cu].code : (current ? current.currency : "EUR")
             if (editIndex < 0) {
                 AccountController.addAccount(trimmed, type, category, currency, accNotesRow.text.trim())
             } else {
@@ -453,6 +478,44 @@ Item {
         onConfirmed: AccountController.removeAccount(deleteAccountDialog.accountIndex)
     }
 
+    // ── Remove hash confirmation (#78) ────────────────────────────────────────
+    // Keeps the account id and the hash, not their positions: removeHash()
+    // takes indexes, and they are read again on confirm.
+    ConfirmDialog {
+        id: removeHashDialog
+        dialogTitle: "Remove hash?"
+        confirmText: "Remove"
+        width: 380
+
+        property int accountId: -1
+        property string hash: ""
+
+        function openFor(accountId, accountName, hash) {
+            removeHashDialog.accountId = accountId
+            removeHashDialog.hash = hash
+            message = "This removes the hash " + hash.substring(0, 10) + "… from “" + accountName + "”. "
+                + "The import then no longer picks this account by itself for the statements of "
+                + "this bank account. You can add the hash again with \"＋ Add hash\"."
+            open()
+        }
+
+        onConfirmed: {
+            var accounts = AccountController.accounts
+            for (var i = 0; i < accounts.length; i++) {
+                if (accounts[i].id !== removeHashDialog.accountId)
+                    continue
+                var hashes = accounts[i].hashes
+                for (var j = 0; j < hashes.length; j++) {
+                    if (hashes[j].hash === removeHashDialog.hash) {
+                        AccountController.removeHash(i, j)
+                        return
+                    }
+                }
+                return
+            }
+        }
+    }
+
     // ── Add hash dialog ────────────────────────────────────────────────────────
     FormDialog {
         id: addHashDialog
@@ -472,7 +535,7 @@ Item {
                 + "belongs to one account only. Most accounts don't need this — link an account straight from "
                 + "the import review screen instead (\"Link this account\")."
             font.pixelSize: 13
-            color: "#6c7086"
+            color: Theme.overlay0
         }
         // Not a FormRow — this dialog has no label column, just a full-width
         // field, so it uses the same TextField recipe directly.
@@ -480,11 +543,11 @@ Item {
             id: hashField
             Layout.fillWidth: true
             placeholderText: "64 hexadecimal characters"
-            placeholderTextColor: "#45475a"
-            font.family: "monospace"
-            color: "#cdd6f4"
+            placeholderTextColor: Theme.surface1
+            font.family: Fonts.monospace
+            color: Theme.text
             font.pixelSize: 14
-            background: Rectangle { color: "#11111b"; radius: 4; border.color: hashField.activeFocus ? "#89b4fa" : "#313244" }
+            background: Rectangle { color: Theme.crust; radius: 4; border.color: hashField.activeFocus ? Theme.blue : Theme.surface0 }
         }
 
         onSaveClicked: {
@@ -526,7 +589,7 @@ Item {
                 + "account opening hasn't been imported (see the import review screen's "
                 + "reconciliation check)."
             font.pixelSize: 13
-            color: "#6c7086"
+            color: Theme.overlay0
         }
         FormRow { id: checkpointDateRow; label: "Date"; labelWidth: 70; placeholderText: "yyyy-MM-dd" }
         FormRow { id: checkpointBalanceRow; label: "Balance"; labelWidth: 70; placeholderText: "e.g. 1250.00" }

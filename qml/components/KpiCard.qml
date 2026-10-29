@@ -8,9 +8,9 @@ Rectangle {
     property string label: ""
     property string value: ""
     property string sub: ""
-    property color valueColor: "#cdd6f4"
+    property color valueColor: Theme.text
 
-    color: "#1e1e2e"
+    color: Theme.base
     radius: 8
     implicitHeight: col.implicitHeight + 20
 
@@ -25,7 +25,7 @@ Rectangle {
             text: root.label.toUpperCase()
             font.pixelSize: 13
             font.bold: true
-            color: "#6c7086"
+            color: Theme.overlay0
         }
         Text {
             text: root.value
@@ -37,7 +37,7 @@ Rectangle {
             visible: root.sub.length > 0
             text: root.sub
             font.pixelSize: 13
-            color: "#6c7086"
+            color: Theme.overlay0
         }
     }
 }

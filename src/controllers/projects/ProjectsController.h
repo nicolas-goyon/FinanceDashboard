@@ -47,7 +47,9 @@ public:
     void setCurrentProject(int index);
 
     // Create a new project (mock — not persisted). monthsToTarget from today.
-    Q_INVOKABLE void addProject(const QString& name, double target,
+    // Returns false, and adds nothing, for an empty name, a target that is not
+    // more than 0, or a month count outside 1..kMaxMonths (#75).
+    Q_INVOKABLE bool addProject(const QString& name, double target,
                                 int monthsToTarget, double earmarked,
                                 double monthly);
 

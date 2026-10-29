@@ -66,8 +66,8 @@ case "${BUILD_TYPE}" in Release|Debug|RelWithDebInfo|MinSizeRel) report OK BUILD
     *) report FAIL BUILD_TYPE "'${BUILD_TYPE}' (expected Release, Debug, RelWithDebInfo or MinSizeRel)" ;; esac
 QT_OK=0
 if [[ "${QTV}" =~ ^6\.([0-9]+)\.[0-9]+$ ]]; then
-    if (( BASH_REMATCH[1] >= 8 )); then report OK QT_VERSION "${QTV}"; QT_OK=1
-    else report FAIL QT_VERSION "${QTV} - the project needs Qt 6.8 or later (qt_standard_project_setup(REQUIRES 6.8))"; fi
+    if (( BASH_REMATCH[1] >= 10 )); then report OK QT_VERSION "${QTV}"; QT_OK=1
+    else report FAIL QT_VERSION "${QTV} - the project needs Qt 6.10 or later (qt_standard_project_setup(REQUIRES 6.10) in CMakeLists.txt)"; fi
 else report FAIL QT_VERSION "'${QTV}' (expected 6.x.y)"; fi
 
 # ── 2. Build machine (Docker) ────────────────────────────────────────────────

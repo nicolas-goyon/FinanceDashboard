@@ -12,7 +12,22 @@ import FinanceDashboard
 // expenses table    [MOCK DATA — CashFlowController]
 
 Item {
+    id: page
+
     CashFlowController { id: controller }
+
+    // The label of the selected month, or "" when the index is outside the list (#69).
+    readonly property string selectedMonthLabel:
+        controller.selectedMonth >= 0 && controller.selectedMonth < controller.monthLabels.length
+            ? controller.monthLabels[controller.selectedMonth] : ""
+
+    // The name and colour of spending category i (controller.categories).
+    function categoryName(i) {
+        return i < controller.categories.length ? controller.categories[i].name : ""
+    }
+    function categoryColor(i) {
+        return i < controller.categories.length ? controller.categories[i].color : Theme.overlay0
+    }
 
     ScrollView {
         anchors.fill: parent
@@ -28,7 +43,7 @@ Item {
                 title: "Cash Flow"
                 mock: true
 
-                Text { text: "Month:"; font.pixelSize: 15; color: "#6c7086" }
+                Text { text: "Month:"; font.pixelSize: 15; color: Theme.overlay0 }
                 ComboBox {
                     id: monthSelector
                     Layout.preferredWidth: 120
@@ -42,7 +57,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 420
-                title: "Money flow — " + controller.monthLabels[controller.selectedMonth]
+                title: "Money flow — " + page.selectedMonthLabel
                        + " (income → budget → spending & savings)"
 
                 MoneyFlow {
@@ -78,12 +93,12 @@ Item {
                         }
                         BarSet {
                             label: "Income"
-                            color: "#a6e3a1"
+                            color: Theme.green
                             Component.onCompleted: values = controller.incomeValues
                         }
                         BarSet {
                             label: "Expenses"
-                            color: "#f38ba8"
+                            color: Theme.red
                             Component.onCompleted: values = controller.expenseValues
                         }
                     }
@@ -116,7 +131,7 @@ Item {
 
                     LineSeries {
                         name: "3-month avg"
-                        color: "#89b4fa"
+                        color: Theme.blue
                         width: 2
 
                         Component.onCompleted: {
@@ -128,7 +143,7 @@ Item {
                         pointDelegate: Component {
                             HoverPoint {
                                 seriesName: "3-month avg"
-                                pointColor: "#89b4fa"
+                                pointColor: Theme.blue
                             }
                         }
                     }
@@ -144,7 +159,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 360
-                    title: "Spending by category — " + controller.monthLabels[controller.selectedMonth]
+                    title: "Spending by category — " + page.selectedMonthLabel
                            + " — click a slice"
 
                     ColumnLayout {
@@ -158,6 +173,8 @@ Item {
 
                             PieSeries {
                                 id: categoryDonut
+                                // Without it the renderer emits no clicked signal (default false).
+                                selectable: true
                                 pieSize: 0.75
                                 holeSize: 0.42
 
@@ -168,6 +185,8 @@ Item {
                                     for (var i = 0; i < s.length; i++) {
                                         var slice = append(s[i].label, s[i].value)
                                         slice.color = s[i].color
+                                        // Without it, the slice gets the outline colour of the theme (#71).
+                                        slice.borderColor = slice.color
                                         slice.labelVisible = true
                                     }
                                 }
@@ -190,7 +209,7 @@ Item {
                             Layout.alignment: Qt.AlignHCenter
                             text: "Click a slice for details"
                             font.pixelSize: 14
-                            color: "#6c7086"
+                            color: Theme.overlay0
                         }
                     }
                 }
@@ -199,7 +218,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 360
-                    title: "Biggest expenses — " + controller.monthLabels[controller.selectedMonth]
+                    title: "Biggest expenses — " + page.selectedMonthLabel
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -216,7 +235,7 @@ Item {
                                 // Zebra parity matches every other striped list
                                 // in the app (odd rows tinted) — this one used
                                 // to be inverted, the only page that was.
-                                color: index % 2 === 0 ? "transparent" : "#181825"
+                                color: index % 2 === 0 ? "transparent" : Theme.mantle
                                 radius: 4
 
                                 RowLayout {
@@ -228,11 +247,11 @@ Item {
                                         Layout.fillWidth: true
                                         text: expenseRow.modelData.label
                                         font.pixelSize: 15
-                                        color: "#cdd6f4"
+                                        color: Theme.text
                                         elide: Text.ElideRight
                                     }
-                                    Text { text: expenseRow.modelData.category; font.pixelSize: 14; color: "#6c7086" }
-                                    Text { text: expenseRow.modelData.amount; font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
+                                    Text { text: expenseRow.modelData.category; font.pixelSize: 14; color: Theme.overlay0 }
+                                    Text { text: expenseRow.modelData.amount; font.pixelSize: 15; font.bold: true; color: Theme.text }
                                 }
                             }
                         }
@@ -257,8 +276,11 @@ Item {
                         labelFormat: "%.0f"
                     }
 
-                    // BarSets are static — a Repeater cannot populate a BarSeries.
-                    // Labels/colors mirror CashFlowController's category table.
+                    // BarSets are static: a Repeater cannot fill a BarSeries, and the
+                    // QtGraphsExamples bar charts declare each BarSet. There is one
+                    // BarSet for each of the CashFlowController::kCategories (6)
+                    // categories. Set i takes its label, colour and values from
+                    // category i of the controller, so they cannot disagree (#72).
                     BarSeries {
                         barsType: BarSeries.BarsType.Stacked
                         barDelegate: Component { HoverBar {} }
@@ -267,12 +289,12 @@ Item {
                             Component.onCompleted: categories = controller.monthLabels
                         }
 
-                        BarSet { label: "Rent";      color: "#f38ba8"; Component.onCompleted: values = controller.categoryValues(0) }
-                        BarSet { label: "Groceries"; color: "#a6e3a1"; Component.onCompleted: values = controller.categoryValues(1) }
-                        BarSet { label: "Transport"; color: "#89b4fa"; Component.onCompleted: values = controller.categoryValues(2) }
-                        BarSet { label: "Utilities"; color: "#fab387"; Component.onCompleted: values = controller.categoryValues(3) }
-                        BarSet { label: "Leisure";   color: "#f9e2af"; Component.onCompleted: values = controller.categoryValues(4) }
-                        BarSet { label: "Other";     color: "#cba6f7"; Component.onCompleted: values = controller.categoryValues(5) }
+                        BarSet { label: page.categoryName(0); color: page.categoryColor(0); Component.onCompleted: values = controller.categoryValues(0) }
+                        BarSet { label: page.categoryName(1); color: page.categoryColor(1); Component.onCompleted: values = controller.categoryValues(1) }
+                        BarSet { label: page.categoryName(2); color: page.categoryColor(2); Component.onCompleted: values = controller.categoryValues(2) }
+                        BarSet { label: page.categoryName(3); color: page.categoryColor(3); Component.onCompleted: values = controller.categoryValues(3) }
+                        BarSet { label: page.categoryName(4); color: page.categoryColor(4); Component.onCompleted: values = controller.categoryValues(4) }
+                        BarSet { label: page.categoryName(5); color: page.categoryColor(5); Component.onCompleted: values = controller.categoryValues(5) }
                     }
                 }
             }

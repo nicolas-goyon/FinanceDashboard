@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -59,6 +61,11 @@ Item {
 
     property int matchedAccountIndex: -1
     property int selectedAccountIndex: -1
+    // The id of the picked account. The indexes above are positions in
+    // AccountController.accounts; this page stays loaded while another page
+    // adds or removes accounts (#64), so the indexes are read again from the
+    // ids when the list changes (see the Connections below).
+    property int selectedAccountId: -1
     // The account that has the hash of this statement from before #50 (an
     // 8-character BIC): Save replaces it.
     property int legacyAccountIndex: -1
@@ -81,8 +88,34 @@ Item {
 
     function goToReview() {
         readMatches()
-        selectedAccountIndex = matchedAccountIndex
+        selectAccountIndex(matchedAccountIndex)
         page.step = 1
+    }
+
+    function selectAccountIndex(index) {
+        selectedAccountIndex = index
+        selectedAccountId = index >= 0 && index < AccountController.accounts.length
+            ? AccountController.accounts[index].id : -1
+    }
+
+    Connections {
+        target: AccountController
+        function onAccountsChanged() {
+            if (page.step !== 1)
+                return
+            page.readMatches()
+            var accounts = AccountController.accounts
+            var index = -1
+            for (var i = 0; i < accounts.length; i++) {
+                if (accounts[i].id === page.selectedAccountId) {
+                    index = i
+                    break
+                }
+            }
+            // A removed account is not picked again: Save stays disabled
+            // until the user picks one.
+            page.selectAccountIndex(index)
+        }
     }
 
     // ── Save flow — reconciliation gate + brief disable + report step ────────
@@ -197,6 +230,9 @@ Item {
             ? [page.currentTemplate.fileFilter, "All files (*)"]
             : ["All files (*)"]
         onAccepted: {
+            // The button is disabled with no template, but check again (#68).
+            if (!page.currentTemplate)
+                return
             controller.parseFile(selectedFile, page.currentTemplate.id)
             page.goToReview()
         }
@@ -238,7 +274,7 @@ Item {
 
                     RowLayout {
                         spacing: 10
-                        Text { Layout.preferredWidth: 90; text: "Template"; font.pixelSize: 15; color: "#6c7086" }
+                        Text { Layout.preferredWidth: 90; text: "Template"; font.pixelSize: 15; color: Theme.overlay0 }
                         ComboBox {
                             id: templateBox
                             Layout.fillWidth: true
@@ -256,7 +292,7 @@ Item {
                             + "More bank/PDF templates will be added over time — each gets its own parser "
                             + "(see ARCHITECTURE.MD § Statement Import)."
                         font.pixelSize: 13
-                        color: "#6c7086"
+                        color: Theme.overlay0
                     }
 
                     PillButton {
@@ -264,6 +300,7 @@ Item {
                         text: "Choose file & Import"
                         variant: "primary"
                         Layout.preferredHeight: 32
+                        enabled: page.currentTemplate !== null
                         onClicked: fileDialog.open()
                     }
                 }
@@ -289,7 +326,7 @@ Item {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             text: "The file could not be parsed. Open the log below for details."
-                            color: "#f38ba8"
+                            color: Theme.red
                             font.pixelSize: 15
                         }
                         RowLayout {
@@ -323,24 +360,24 @@ Item {
                             rowSpacing: 6
                             Layout.fillWidth: true
 
-                            Text { text: "Holder";      font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Account";     font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "IBAN";        font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Period";      font.pixelSize: 13; color: "#6c7086" }
+                            Text { text: "Holder";      font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Account";     font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "IBAN";        font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Period";      font.pixelSize: 13; color: Theme.overlay0 }
 
-                            Text { text: controller.statementInfo.holderName;    font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: controller.statementInfo.accountName;   font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: controller.statementInfo.iban;          font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: controller.statementInfo.periodFromText + " → " + controller.statementInfo.periodToText; font.pixelSize: 15; color: "#cdd6f4" }
+                            Text { text: controller.statementInfo.holderName;    font.pixelSize: 15; color: Theme.text }
+                            Text { text: controller.statementInfo.accountName;   font.pixelSize: 15; color: Theme.text }
+                            Text { text: controller.statementInfo.iban;          font.pixelSize: 15; color: Theme.text }
+                            Text { text: controller.statementInfo.periodFromText + " → " + controller.statementInfo.periodToText; font.pixelSize: 15; color: Theme.text }
 
-                            Text { text: "Balance start"; font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Balance end";   font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Rows parsed";   font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Issues";        font.pixelSize: 13; color: "#6c7086" }
+                            Text { text: "Balance start"; font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Balance end";   font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Rows parsed";   font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Issues";        font.pixelSize: 13; color: Theme.overlay0 }
 
-                            Text { text: controller.statementInfo.balanceStartText + " (" + controller.statementInfo.balanceStartDateText + ")"; font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: controller.statementInfo.balanceEndText + " (" + controller.statementInfo.balanceEndDateText + ")"; font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: controller.statementInfo.transactionCount; font.pixelSize: 15; color: "#cdd6f4" }
+                            Text { text: controller.statementInfo.balanceStartText + " (" + controller.statementInfo.balanceStartDateText + ")"; font.pixelSize: 15; color: Theme.text }
+                            Text { text: controller.statementInfo.balanceEndText + " (" + controller.statementInfo.balanceEndDateText + ")"; font.pixelSize: 15; color: Theme.text }
+                            Text { text: controller.statementInfo.transactionCount; font.pixelSize: 15; color: Theme.text }
                             StatusBadge {
                                 pillHeight: 22
                                 variant: controller.errorCount > 0 ? "danger" : (controller.warningCount > 0 ? "warning" : "success")
@@ -356,35 +393,35 @@ Item {
                         // ARCHITECTURE.MD). Shown here so the match is auditable.
                         RowLayout {
                             spacing: 24
-                            Text { text: "BIC:"; font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: controller.statementInfo.bic; font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: "Account hash:"; font.pixelSize: 13; color: "#6c7086" }
+                            Text { text: "BIC:"; font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: controller.statementInfo.bic; font.pixelSize: 15; color: Theme.text }
+                            Text { text: "Account hash:"; font.pixelSize: 13; color: Theme.overlay0 }
                             Text {
                                 text: controller.statementInfo.accountHash
                                 font.pixelSize: 14
-                                font.family: "monospace"
-                                color: "#89b4fa"
+                                font.family: Fonts.monospace
+                                color: Theme.blue
                             }
                         }
 
-                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#313244" }
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.surface0 }
 
                         RowLayout {
                             spacing: 10
-                            Text { text: "Target account"; font.pixelSize: 15; color: "#6c7086" }
+                            Text { text: "Target account"; font.pixelSize: 15; color: Theme.overlay0 }
                             ComboBox {
                                 id: accountBox
                                 Layout.preferredWidth: 260
                                 model: AccountController.accounts
                                 textRole: "name"
                                 currentIndex: page.selectedAccountIndex
-                                onActivated: page.selectedAccountIndex = currentIndex
+                                onActivated: page.selectAccountIndex(currentIndex)
                             }
                             Text {
                                 visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex === page.selectedAccountIndex
                                 text: "✓ matched by account hash"
                                 font.pixelSize: 13
-                                color: "#a6e3a1"
+                                color: Theme.green
                             }
                             // A hash belongs to one account (#47): Save (or
                             // "Link this account") moves it to the picked one.
@@ -392,7 +429,7 @@ Item {
                                 visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex !== page.selectedAccountIndex
                                 text: "⚠ the account hash is on \"" + page.matchedAccountName + "\": Save moves it to this account"
                                 font.pixelSize: 13
-                                color: "#f9e2af"
+                                color: Theme.yellow
                             }
                             // The old form of the hash (#50) on a third account.
                             Text {
@@ -401,13 +438,13 @@ Item {
                                 text: "⚠ the old account hash (8-character BIC) is on \"" + page.legacyAccountName
                                       + "\": Save moves it to this account"
                                 font.pixelSize: 13
-                                color: "#f9e2af"
+                                color: Theme.yellow
                             }
                             Text {
                                 visible: page.matchedAccountIndex < 0
                                 text: "⚠ no automatic match — please pick the account"
                                 font.pixelSize: 13
-                                color: "#f9e2af"
+                                color: Theme.yellow
                             }
                         }
 
@@ -509,237 +546,278 @@ Item {
                                 text: controller.predicting ? "The app calculates the category suggestions…"
                                                             : controller.predictionInfo.summary
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                             }
                         }
 
-                        Rectangle {
+                        // The columns need more width than the card has at the default window
+                        // size (1280 px), so the header and the rows scroll horizontally (#60).
+                        // The rows fill the card when it is wider than the columns.
+                        ScrollView {
+                            id: txScroll
                             Layout.fillWidth: true
-                            Layout.preferredHeight: 28
-                            color: "#181825"
-                            radius: 4
-                            RowLayout {
-                                anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                spacing: 8
+                            // The layout gives the width, and the table scrolls in it. The
+                            // default preferred width is the implicit width, which comes from the
+                            // table width: that is a binding loop.
+                            Layout.preferredWidth: 0
+                            Layout.preferredHeight: txTable.implicitHeight
+                                + (txScroll.ScrollBar.horizontal.visible ? txScroll.ScrollBar.horizontal.height : 0)
+                            ScrollBar.vertical.policy: ScrollBar.AlwaysOff
+                            // Always shown when the table is wider than the card: with AsNeeded, the
+                            // Basic style shows the bar only while the pointer is on it, and nothing
+                            // tells that the table scrolls.
+                            ScrollBar.horizontal.policy: txTable.columnsWidth > txScroll.availableWidth
+                                ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+                            contentWidth: txTable.width
+                            contentHeight: txTable.implicitHeight
 
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.opDate
-                                    text: "OP. DATE"
-                                    minWidth: 60
-                                    onWidthChangeRequested: (w) => columnWidths.opDate = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.name
-                                    text: "NAME"
-                                    minWidth: 60
-                                    onWidthChangeRequested: (w) => columnWidths.name = w
-                                }
-                                // Narrow column — rows only show a view-icon here (see the
-                                // "Full description" Popup below), the fillWidth spacer after
-                                // it takes up the space the old fillWidth DESCRIPTION text
-                                // column used to, so DEBIT/CREDIT/… stay pinned to the right.
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.desc
-                                    text: "DESC."
-                                    minWidth: 32
-                                    onWidthChangeRequested: (w) => columnWidths.desc = w
-                                }
-                                Item { Layout.fillWidth: true }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.debit
-                                    text: "DEBIT"
-                                    horizontalAlignment: Text.AlignRight
-                                    minWidth: 50
-                                    onWidthChangeRequested: (w) => columnWidths.debit = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.credit
-                                    text: "CREDIT"
-                                    horizontalAlignment: Text.AlignRight
-                                    minWidth: 50
-                                    onWidthChangeRequested: (w) => columnWidths.credit = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.balance
-                                    text: "BALANCE"
-                                    horizontalAlignment: Text.AlignRight
-                                    minWidth: 60
-                                    onWidthChangeRequested: (w) => columnWidths.balance = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.category
-                                    text: "CATEGORY"
-                                    minWidth: 70
-                                    onWidthChangeRequested: (w) => columnWidths.category = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.subcategory
-                                    text: "SUBCATEGORY"
-                                    minWidth: 70
-                                    onWidthChangeRequested: (w) => columnWidths.subcategory = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.confidence
-                                    text: "CONFIDENCE"
-                                    horizontalAlignment: Text.AlignHCenter
-                                    minWidth: 60
-                                    onWidthChangeRequested: (w) => columnWidths.confidence = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.rule
-                                    text: "RULE"
-                                    horizontalAlignment: Text.AlignHCenter
-                                    minWidth: 40
-                                    onWidthChangeRequested: (w) => columnWidths.rule = w
-                                }
-                                ColumnHeaderCell {
-                                    Layout.preferredWidth: columnWidths.keep
-                                    text: "KEEP"
-                                    horizontalAlignment: Text.AlignRight
-                                    minWidth: 40
-                                    onWidthChangeRequested: (w) => columnWidths.keep = w
-                                }
-                            }
-                        }
+                            ColumnLayout {
+                                id: txTable
+                                // The width of the card, or the width of the columns when it is more:
+                                // the 11 columns, 11 spacings of 8 between the 12 items of a row
+                                // (with the spacer), and the 10 + 10 margins of the row. It is
+                                // not read from the header RowLayout: its implicit width changes
+                                // with its width, and that is a binding loop.
+                                readonly property real columnsWidth: columnWidths.opDate + columnWidths.name
+                                    + columnWidths.desc + columnWidths.debit + columnWidths.credit
+                                    + columnWidths.balance + columnWidths.category + columnWidths.subcategory
+                                    + columnWidths.confidence + columnWidths.rule + columnWidths.keep
+                                    + 11 * 8 + 20
+                                // Delayed: the width changes the implicit height of this layout, that
+                                // height changes the layout of the card, and that layout gives
+                                // availableWidth. Without the delay, that is a binding loop.
+                                Binding on width { value: Math.max(txScroll.availableWidth, txTable.columnsWidth); delayed: true }
+                                spacing: 0
 
-                        Repeater {
-                            model: controller.transactionRows
-                            delegate: Rectangle {
-                                id: txRow
-                                required property var modelData
-                                required property int index
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 44
-                                color: index % 2 === 0 ? "transparent" : "#181825"
-                                opacity: modelData.included ? 1.0 : 0.4
+                                Rectangle {
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 28
+                                    color: Theme.mantle
+                                    radius: 4
+                                    RowLayout {
+                                        anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                        spacing: 8
 
-                                RowLayout {
-                                    anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                    spacing: 8
-
-                                    Text { Layout.preferredWidth: columnWidths.opDate; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
-                                    TextField {
-                                        id: nameField
-                                        objectName: "rowNameField" // see onPredictionsAboutToBeApplied
-                                        Layout.preferredWidth: columnWidths.name
-                                        Layout.preferredHeight: 32
-                                        text: txRow.modelData.name
-                                        font.pixelSize: 15
-                                        color: "#cdd6f4"
-                                        placeholderTextColor: "#45475a"
-                                        placeholderText: "(no name)"
-                                        // Same recipe as FormRow.qml's TextField — see
-                                        // ARCHITECTURE.MD § Shared Components.
-                                        background: Rectangle {
-                                            color: "#11111b"
-                                            radius: 4
-                                            border.color: nameField.activeFocus ? "#89b4fa" : "#313244"
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.opDate
+                                            text: "OP. DATE"
+                                            minWidth: 60
+                                            onWidthChangeRequested: (w) => columnWidths.opDate = w
                                         }
-                                        // Auto-extracted at parse time (see
-                                        // extractTransactionName() in
-                                        // SumeriaCcpCsvExtractionTemplate.cpp); editable here in
-                                        // case the extraction picked the wrong thing.
-                                        onEditingFinished: controller.setRowName(txRow.modelData.index, text)
-                                    }
-                                    // Full description is no longer shown inline — just an icon
-                                    // that opens descriptionPopup (see below) with the full,
-                                    // selectable/copyable text. Keeps the row from being
-                                    // dominated by often-long multi-line bank text now that NAME
-                                    // (above) carries the at-a-glance label.
-                                    GhostButton {
-                                        Layout.preferredWidth: columnWidths.desc
-                                        text: "🔍"
-                                        onClicked: {
-                                            descriptionPopup.descriptionText = txRow.modelData.description
-                                            descriptionPopup.open()
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.name
+                                            text: "NAME"
+                                            minWidth: 60
+                                            onWidthChangeRequested: (w) => columnWidths.name = w
+                                        }
+                                        // Narrow column — rows only show a view-icon here (see the
+                                        // "Full description" Popup below), the fillWidth spacer after
+                                        // it takes up the space the old fillWidth DESCRIPTION text
+                                        // column used to, so DEBIT/CREDIT/… stay pinned to the right.
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.desc
+                                            text: "DESC."
+                                            minWidth: 32
+                                            onWidthChangeRequested: (w) => columnWidths.desc = w
+                                        }
+                                        Item { Layout.fillWidth: true }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.debit
+                                            text: "DEBIT"
+                                            horizontalAlignment: Text.AlignRight
+                                            minWidth: 50
+                                            onWidthChangeRequested: (w) => columnWidths.debit = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.credit
+                                            text: "CREDIT"
+                                            horizontalAlignment: Text.AlignRight
+                                            minWidth: 50
+                                            onWidthChangeRequested: (w) => columnWidths.credit = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.balance
+                                            text: "BALANCE"
+                                            horizontalAlignment: Text.AlignRight
+                                            minWidth: 60
+                                            onWidthChangeRequested: (w) => columnWidths.balance = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.category
+                                            text: "CATEGORY"
+                                            minWidth: 70
+                                            onWidthChangeRequested: (w) => columnWidths.category = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.subcategory
+                                            text: "SUBCATEGORY"
+                                            minWidth: 70
+                                            onWidthChangeRequested: (w) => columnWidths.subcategory = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.confidence
+                                            text: "CONFIDENCE"
+                                            horizontalAlignment: Text.AlignHCenter
+                                            minWidth: 60
+                                            onWidthChangeRequested: (w) => columnWidths.confidence = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.rule
+                                            text: "RULE"
+                                            horizontalAlignment: Text.AlignHCenter
+                                            minWidth: 40
+                                            onWidthChangeRequested: (w) => columnWidths.rule = w
+                                        }
+                                        ColumnHeaderCell {
+                                            Layout.preferredWidth: columnWidths.keep
+                                            text: "KEEP"
+                                            horizontalAlignment: Text.AlignRight
+                                            minWidth: 40
+                                            onWidthChangeRequested: (w) => columnWidths.keep = w
                                         }
                                     }
-                                    Item { Layout.fillWidth: true }
-                                    Text { Layout.preferredWidth: columnWidths.debit;   text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: columnWidths.credit;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: columnWidths.balance; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                                }
 
-                                    ColorComboBox {
-                                        id: categoryBox
-                                        Layout.preferredWidth: columnWidths.category
-                                        Layout.preferredHeight: 36
-                                        items: CategoryController.categories
-                                        currentName: txRow.modelData.category
-                                        onNameActivated: (name) => controller.setRowCategory(txRow.modelData.index, name)
-                                    }
+                                Repeater {
+                                    model: controller.transactionRows
+                                    delegate: Rectangle {
+                                        id: txRow
+                                        required property var modelData
+                                        required property int index
+                                        Layout.fillWidth: true
+                                        Layout.preferredHeight: 44
+                                        color: index % 2 === 0 ? "transparent" : Theme.mantle
+                                        opacity: modelData.included ? 1.0 : 0.4
 
-                                    ColorComboBox {
-                                        Layout.preferredWidth: columnWidths.subcategory
-                                        Layout.preferredHeight: 36
-                                        readonly property var subItems: {
-                                            var cat = CategoryController.categories.find(function(c) { return c.name === txRow.modelData.category })
-                                            return cat ? cat.subcategories : []
+                                        RowLayout {
+                                            anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                            spacing: 8
+
+                                            Text { Layout.preferredWidth: columnWidths.opDate; text: txRow.modelData.operationDate; font.pixelSize: 14; color: Theme.overlay0 }
+                                            TextField {
+                                                id: nameField
+                                                objectName: "rowNameField" // see onPredictionsAboutToBeApplied
+                                                Layout.preferredWidth: columnWidths.name
+                                                Layout.preferredHeight: 32
+                                                text: txRow.modelData.name
+                                                font.pixelSize: 15
+                                                color: Theme.text
+                                                placeholderTextColor: Theme.surface1
+                                                placeholderText: "(no name)"
+                                                // Same recipe as FormRow.qml's TextField — see
+                                                // ARCHITECTURE.MD § Shared Components.
+                                                background: Rectangle {
+                                                    color: Theme.crust
+                                                    radius: 4
+                                                    border.color: nameField.activeFocus ? Theme.blue : Theme.surface0
+                                                }
+                                                // Auto-extracted at parse time (see
+                                                // extractTransactionName() in
+                                                // SumeriaCcpCsvExtractionTemplate.cpp); editable here in
+                                                // case the extraction picked the wrong thing.
+                                                onEditingFinished: controller.setRowName(txRow.modelData.index, text)
+                                            }
+                                            // Full description is no longer shown inline — just an icon
+                                            // that opens descriptionPopup (see below) with the full,
+                                            // selectable/copyable text. Keeps the row from being
+                                            // dominated by often-long multi-line bank text now that NAME
+                                            // (above) carries the at-a-glance label.
+                                            GhostButton {
+                                                Layout.preferredWidth: columnWidths.desc
+                                                text: "🔍"
+                                                onClicked: {
+                                                    descriptionPopup.descriptionText = txRow.modelData.description
+                                                    descriptionPopup.open()
+                                                }
+                                            }
+                                            Item { Layout.fillWidth: true }
+                                            Text { Layout.preferredWidth: columnWidths.debit;   text: txRow.modelData.debitText;  font.pixelSize: 15; color: Theme.red; horizontalAlignment: Text.AlignRight }
+                                            Text { Layout.preferredWidth: columnWidths.credit;  text: txRow.modelData.creditText; font.pixelSize: 15; color: Theme.green; horizontalAlignment: Text.AlignRight }
+                                            Text { Layout.preferredWidth: columnWidths.balance; text: txRow.modelData.balanceText; font.pixelSize: 14; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+
+                                            ColorComboBox {
+                                                id: categoryBox
+                                                Layout.preferredWidth: columnWidths.category
+                                                Layout.preferredHeight: 36
+                                                items: CategoryController.categories
+                                                currentName: txRow.modelData.category
+                                                onNameActivated: (name) => controller.setRowCategory(txRow.modelData.index, name)
+                                            }
+
+                                            ColorComboBox {
+                                                Layout.preferredWidth: columnWidths.subcategory
+                                                Layout.preferredHeight: 36
+                                                readonly property var subItems: {
+                                                    var cat = CategoryController.categories.find(function(c) { return c.name === txRow.modelData.category })
+                                                    return cat ? cat.subcategories : []
+                                                }
+                                                items: subItems
+                                                enabled: subItems.length > 0
+                                                currentName: txRow.modelData.subcategory
+                                                onNameActivated: (name) => controller.setRowSubcategory(txRow.modelData.index, name)
+                                            }
+
+                                            // Pre-formatted in C++ (Fmt::confidenceVariant()/
+                                            // confidenceText(), reached via the row map) — see the
+                                            // "Confidence display" comment at the top of this file.
+                                            // Hovering explains *why* the predictor picked this
+                                            // category, which is the difference between a number the
+                                            // user can act on and one they just have to trust.
+                                            StatusBadge {
+                                                Layout.preferredWidth: columnWidths.confidence
+                                                Layout.alignment: Qt.AlignHCenter
+                                                pillHeight: 24
+                                                variant: txRow.modelData.confidenceVariant
+                                                text: txRow.modelData.confidenceText
+
+                                                HoverHandler { id: confidenceHover }
+                                                ToolTip.text: txRow.modelData.predictionReason
+                                                ToolTip.visible: confidenceHover.hovered
+                                                                  && txRow.modelData.predictionReason !== ""
+                                                ToolTip.delay: 300
+                                            }
+
+                                            // "Always categorize labels like this one the same way."
+                                            // One click turns this row's normalized merchant key into
+                                            // a permanent Data::CategoryRule and re-scores every other
+                                            // row in the statement against it — the fastest-learning
+                                            // path in the system (see docs/category-prediction.md).
+                                            //
+                                            // Deliberately NOT `enabled: canTeach`: Item.enabled would
+                                            // also switch off the HoverHandler, so the "pick a category
+                                            // first" tooltip — the one explaining why it looks inert —
+                                            // would be the one thing the user couldn't see. It stays
+                                            // clickable and dimmed instead; rememberRowAsRule() already
+                                            // refuses and posts that same message to the status line.
+                                            GhostButton {
+                                                id: ruleButton
+                                                readonly property bool canTeach: txRow.modelData.category !== ""
+                                                                                  && txRow.modelData.merchantKey !== ""
+                                                Layout.preferredWidth: columnWidths.rule
+                                                text: "＋"
+                                                opacity: ruleButton.canTeach ? 1.0 : 0.35
+                                                onClicked: controller.rememberRowAsRule(txRow.modelData.index)
+
+                                                HoverHandler { id: ruleHover }
+                                                ToolTip.text: ruleButton.canTeach
+                                                    ? "Always categorize “" + txRow.modelData.merchantKey + "” as "
+                                                      + txRow.modelData.category
+                                                      + (txRow.modelData.subcategory !== ""
+                                                          ? " / " + txRow.modelData.subcategory : "")
+                                                    : (txRow.modelData.category === ""
+                                                       ? "Pick a category for this row first"
+                                                       // A label with only generic words has no key (#40).
+                                                       : "This label has no merchant name to build a rule from")
+                                                ToolTip.visible: ruleHover.hovered
+                                                ToolTip.delay: 300
+                                            }
+
+                                            CheckBox {
+                                                Layout.preferredWidth: columnWidths.keep
+                                                checked: txRow.modelData.included
+                                                onCheckedChanged: controller.setRowIncluded(txRow.modelData.index, checked)
+                                            }
                                         }
-                                        items: subItems
-                                        enabled: subItems.length > 0
-                                        currentName: txRow.modelData.subcategory
-                                        onNameActivated: (name) => controller.setRowSubcategory(txRow.modelData.index, name)
-                                    }
-
-                                    // Pre-formatted in C++ (Fmt::confidenceVariant()/
-                                    // confidenceText(), reached via the row map) — see the
-                                    // "Confidence display" comment at the top of this file.
-                                    // Hovering explains *why* the predictor picked this
-                                    // category, which is the difference between a number the
-                                    // user can act on and one they just have to trust.
-                                    StatusBadge {
-                                        Layout.preferredWidth: columnWidths.confidence
-                                        Layout.alignment: Qt.AlignHCenter
-                                        pillHeight: 24
-                                        variant: txRow.modelData.confidenceVariant
-                                        text: txRow.modelData.confidenceText
-
-                                        HoverHandler { id: confidenceHover }
-                                        ToolTip.text: txRow.modelData.predictionReason
-                                        ToolTip.visible: confidenceHover.hovered
-                                                          && txRow.modelData.predictionReason !== ""
-                                        ToolTip.delay: 300
-                                    }
-
-                                    // "Always categorize labels like this one the same way."
-                                    // One click turns this row's normalized merchant key into
-                                    // a permanent Data::CategoryRule and re-scores every other
-                                    // row in the statement against it — the fastest-learning
-                                    // path in the system (see docs/category-prediction.md).
-                                    //
-                                    // Deliberately NOT `enabled: canTeach`: Item.enabled would
-                                    // also switch off the HoverHandler, so the "pick a category
-                                    // first" tooltip — the one explaining why it looks inert —
-                                    // would be the one thing the user couldn't see. It stays
-                                    // clickable and dimmed instead; rememberRowAsRule() already
-                                    // refuses and posts that same message to the status line.
-                                    GhostButton {
-                                        id: ruleButton
-                                        readonly property bool canTeach: txRow.modelData.category !== ""
-                                                                          && txRow.modelData.merchantKey !== ""
-                                        Layout.preferredWidth: columnWidths.rule
-                                        text: "＋"
-                                        opacity: ruleButton.canTeach ? 1.0 : 0.35
-                                        onClicked: controller.rememberRowAsRule(txRow.modelData.index)
-
-                                        HoverHandler { id: ruleHover }
-                                        ToolTip.text: ruleButton.canTeach
-                                            ? "Always categorize “" + txRow.modelData.merchantKey + "” as "
-                                              + txRow.modelData.category
-                                              + (txRow.modelData.subcategory !== ""
-                                                  ? " / " + txRow.modelData.subcategory : "")
-                                            : (txRow.modelData.category === ""
-                                               ? "Pick a category for this row first"
-                                               // A label with only generic words has no key (#40).
-                                               : "This label has no merchant name to build a rule from")
-                                        ToolTip.visible: ruleHover.hovered
-                                        ToolTip.delay: 300
-                                    }
-
-                                    CheckBox {
-                                        Layout.preferredWidth: columnWidths.keep
-                                        checked: txRow.modelData.included
-                                        onCheckedChanged: controller.setRowIncluded(txRow.modelData.index, checked)
                                     }
                                 }
                             }
@@ -803,15 +881,15 @@ Item {
                             rowSpacing: 6
                             Layout.fillWidth: true
 
-                            Text { text: "Transactions saved"; font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Total income";       font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Total expenses";     font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Net change";         font.pixelSize: 13; color: "#6c7086" }
+                            Text { text: "Transactions saved"; font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Total income";       font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Total expenses";     font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Net change";         font.pixelSize: 13; color: Theme.overlay0 }
 
-                            Text { text: reportStep.report.transactionCount !== undefined ? reportStep.report.transactionCount : 0; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
-                            Text { text: reportStep.report.totalIncomeText ? reportStep.report.totalIncomeText : "—"; font.pixelSize: 18; font.bold: true; color: "#a6e3a1" }
-                            Text { text: reportStep.report.totalExpenseText ? reportStep.report.totalExpenseText : "—"; font.pixelSize: 18; font.bold: true; color: "#f38ba8" }
-                            Text { text: reportStep.report.netChangeText ? reportStep.report.netChangeText : "—"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
+                            Text { text: reportStep.report.transactionCount !== undefined ? reportStep.report.transactionCount : 0; font.pixelSize: 18; font.bold: true; color: Theme.text }
+                            Text { text: reportStep.report.totalIncomeText ? reportStep.report.totalIncomeText : "—"; font.pixelSize: 18; font.bold: true; color: Theme.green }
+                            Text { text: reportStep.report.totalExpenseText ? reportStep.report.totalExpenseText : "—"; font.pixelSize: 18; font.bold: true; color: Theme.red }
+                            Text { text: reportStep.report.netChangeText ? reportStep.report.netChangeText : "—"; font.pixelSize: 18; font.bold: true; color: Theme.text }
                         }
 
                         // Rows that this account already had (a re-import, or a
@@ -824,7 +902,7 @@ Item {
                             text: (reportStep.report.alreadySavedCount || 0)
                                 + " transaction(s) of this statement were already saved, so they were not added again."
                             font.pixelSize: 13
-                            color: "#f9e2af"
+                            color: Theme.yellow
                         }
 
                         // Of those, rows with the bank reference and the amount of
@@ -841,8 +919,8 @@ Item {
                                 + " transactions, the bank reuses its references: see <a href=\""
                                 + (reportStep.report.reusedReferenceUrl || "") + "\">this issue</a>."
                             font.pixelSize: 13
-                            color: "#fab387"
-                            linkColor: "#89b4fa"
+                            color: Theme.peach
+                            linkColor: Theme.blue
                             onLinkActivated: function(link) { Qt.openUrlExternally(link) }
                         }
                     }
@@ -878,7 +956,7 @@ Item {
                                     + (reportStep.reconciliation.startSourceDateText || "—") + ") — diff "
                                     + (reportStep.reconciliation.startDiffText || "—")
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                             }
                         }
 
@@ -898,7 +976,7 @@ Item {
                                     + " vs. declared " + (reportStep.reconciliation.endDeclaredText || "—")
                                     + " — diff " + (reportStep.reconciliation.endDiffText || "—")
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                             }
                         }
                     }
@@ -938,6 +1016,8 @@ Item {
 
                             PieSeries {
                                 id: categoryPie
+                                // Without it the renderer emits no clicked signal (default false).
+                                selectable: true
                                 pieSize: 0.75
                                 holeSize: 0.42
 
@@ -950,7 +1030,9 @@ Item {
                                         if (magnitude <= 0)
                                             continue
                                         var slice = append(cats[i].category, magnitude)
-                                        slice.color = CategoryController.categoryColor(cats[i].category) || "#6c7086"
+                                        slice.color = CategoryController.categoryColor(cats[i].category) || Theme.overlay0
+                                        // Without it, the slice gets the outline colour of the theme (#71).
+                                        slice.borderColor = slice.color
                                         slice.labelVisible = true
                                     }
                                 }
@@ -974,14 +1056,14 @@ Item {
                             visible: reportStep.byCategory.length > 0
                             text: "Click a slice for details"
                             font.pixelSize: 14
-                            color: "#6c7086"
+                            color: Theme.overlay0
                         }
 
                         Rectangle {
                             visible: reportStep.byCategory.length > 0
                             Layout.fillWidth: true
                             Layout.preferredHeight: 1
-                            color: "#313244"
+                            color: Theme.surface0
                         }
 
                         Repeater {
@@ -999,20 +1081,20 @@ Item {
                                         Layout.preferredHeight: 22
                                         radius: 11
                                         color: Qt.rgba(1, 1, 1, 0.08)
-                                        border.color: CategoryController.categoryColor(catRow.modelData.category) || "#6c7086"
+                                        border.color: CategoryController.categoryColor(catRow.modelData.category) || Theme.overlay0
                                         Text {
                                             id: catBadge
                                             anchors.centerIn: parent
                                             text: catRow.modelData.category
                                             font.pixelSize: 13
-                                            color: CategoryController.categoryColor(catRow.modelData.category) || "#6c7086"
+                                            color: CategoryController.categoryColor(catRow.modelData.category) || Theme.overlay0
                                         }
                                     }
                                     Text {
                                         text: catRow.modelData.totalText
                                         font.pixelSize: 15
                                         font.bold: true
-                                        color: catRow.modelData.totalRaw >= 0 ? "#a6e3a1" : "#f38ba8"
+                                        color: catRow.modelData.totalRaw >= 0 ? Theme.green : Theme.red
                                     }
                                 }
 
@@ -1029,8 +1111,8 @@ Item {
                                             width: subChipRow.implicitWidth + 14
                                             height: 20
                                             radius: 10
-                                            color: "#181825"
-                                            border.color: CategoryController.subcategoryColor(catRow.modelData.category, subChip.modelData.subcategory) || "#313244"
+                                            color: Theme.mantle
+                                            border.color: CategoryController.subcategoryColor(catRow.modelData.category, subChip.modelData.subcategory) || Theme.surface0
 
                                             RowLayout {
                                                 id: subChipRow
@@ -1039,7 +1121,7 @@ Item {
                                                 Text {
                                                     text: subChip.modelData.subcategory + " · " + subChip.modelData.totalText
                                                     font.pixelSize: 11
-                                                    color: "#a6adc8"
+                                                    color: Theme.subtext0
                                                 }
                                             }
                                         }
@@ -1058,7 +1140,13 @@ Item {
                         onClicked: { controller.reset(); page.step = 0 }
                     }
                     Item { Layout.fillWidth: true }
-                    PillButton { text: "Done"; variant: "neutral"; onClicked: page.closeRequested() }
+                    // The page stays loaded after it closes (Main.qml, #64): reset it,
+                    // so that the next import starts at step 1.
+                    PillButton {
+                        text: "Done"
+                        variant: "neutral"
+                        onClicked: { controller.reset(); page.step = 0; page.closeRequested() }
+                    }
                 }
             }
 
@@ -1076,8 +1164,8 @@ Item {
         modal: true
 
         background: Rectangle {
-            color: "#181825"
-            border.color: "#45475a"
+            color: Theme.mantle
+            border.color: Theme.surface1
             radius: 8
         }
 
@@ -1086,12 +1174,12 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
-                Text { text: "Import log"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
+                Text { text: "Import log"; font.pixelSize: 18; font.bold: true; color: Theme.text }
                 Item { Layout.fillWidth: true }
                 Text {
                     text: controller.errorCount + " error(s) · " + controller.warningCount + " warning(s)"
                     font.pixelSize: 14
-                    color: "#6c7086"
+                    color: Theme.overlay0
                 }
             }
 
@@ -1133,13 +1221,13 @@ Item {
                                 Text {
                                     text: "L" + logRow.modelData.line
                                     font.pixelSize: 13
-                                    color: "#6c7086"
+                                    color: Theme.overlay0
                                 }
                                 Text {
                                     Layout.fillWidth: true
                                     text: logRow.modelData.message
                                     font.pixelSize: 15
-                                    color: "#cdd6f4"
+                                    color: Theme.text
                                     wrapMode: Text.WordWrap
                                 }
                             }
@@ -1149,8 +1237,8 @@ Item {
                                 Layout.leftMargin: 70
                                 text: logRow.modelData.rawLine
                                 font.pixelSize: 13
-                                font.family: "monospace"
-                                color: "#45475a"
+                                font.family: Fonts.monospace
+                                color: Theme.surface1
                                 wrapMode: Text.WordWrap
                             }
                         }
@@ -1183,15 +1271,15 @@ Item {
         property string descriptionText: ""
 
         background: Rectangle {
-            color: "#181825"
-            border.color: "#45475a"
+            color: Theme.mantle
+            border.color: Theme.surface1
             radius: 8
         }
 
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text { text: "Full description"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
+            Text { text: "Full description"; font.pixelSize: 18; font.bold: true; color: Theme.text }
 
             ScrollView {
                 Layout.fillWidth: true
@@ -1206,9 +1294,9 @@ Item {
                     persistentSelection: true
                     wrapMode: TextEdit.WordWrap
                     font.pixelSize: 15
-                    color: "#cdd6f4"
-                    selectionColor: "#89b4fa"
-                    selectedTextColor: "#11111b"
+                    color: Theme.text
+                    selectionColor: Theme.blue
+                    selectedTextColor: Theme.crust
                 }
             }
 
@@ -1242,15 +1330,15 @@ Item {
         property var check: ({})
 
         background: Rectangle {
-            color: "#181825"
-            border.color: "#f38ba8"
+            color: Theme.mantle
+            border.color: Theme.red
             radius: 8
         }
 
         contentItem: ColumnLayout {
             spacing: 12
 
-            Text { text: "Balance doesn't add up"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
+            Text { text: "Balance doesn't add up"; font.pixelSize: 18; font.bold: true; color: Theme.text }
 
             Text {
                 Layout.fillWidth: true
@@ -1261,7 +1349,7 @@ Item {
                     + "adds up to " + (reconciliationDialog.check.endComputedText || "—")
                     + " — a difference of " + (reconciliationDialog.check.endDiffText || "—") + "."
                 font.pixelSize: 14
-                color: "#cdd6f4"
+                color: Theme.text
             }
 
             Text {
@@ -1271,7 +1359,7 @@ Item {
                     + "Review the KEEP column, or add a matching adjustment transaction (category "
                     + "\"Reconciliation Adjustment\") to close the gap."
                 font.pixelSize: 13
-                color: "#6c7086"
+                color: Theme.overlay0
             }
 
             RowLayout {

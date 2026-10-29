@@ -75,7 +75,7 @@ env:
   # Fixed upstream in aqtinstall PR #1000, unreleased as of 2026-09-14:
   #   https://github.com/miurahr/aqtinstall/issues/959
   # When aqtinstall > 3.3.0 ships, this is a one-word change back to 6.11.x —
-  # nothing else in the pipeline or the project cares (the app needs Qt 6.8+).
+  # nothing else in the pipeline or the project cares (the app needs Qt 6.10+).
   QT_VERSION: 6.10.3
   # qtgraphs is what the app uses; qtquick3d and qtshadertools are what qtgraphs
   # needs. Qt's binary Graphs module is built with both the 2D and the 3D feature

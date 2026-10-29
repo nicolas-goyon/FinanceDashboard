@@ -29,6 +29,116 @@ builds, source archives). Then CI opens a pull request that merges the release b
 
 ---
 
+## v0.2.3 — 2026-10-29 — User interface
+
+User interface release. The charts give their values: pie slices are clickable, the bar and
+point tooltips are shown in full, the day appears on the daily balance chart, and the theme
+outlines are gone. The tables of the import review and of the transactions scroll at the
+default window size. A review survives a visit to another page, and the account dialogs keep
+their values and delete the right account. Projects reads French numbers. ARCHITECTURE.MD and
+README.md are rewritten, every QML colour comes from one Theme, and qmllint reports no warning.
+
+### Changed
+- QML colours: every colour of the QML comes from a `Theme` singleton
+  (`qml/components/Theme.qml`, `Theme.<name>`): the 14 colours of the Catppuccin Mocha palette
+  under their palette names, 10 colours outside the palette named by their use, and 3 area
+  fills. The 448 hex literals of the pages and components are gone. The app looks the same: the
+  colour values do not change (#79).
+
+### Fixed
+- Pie and donut charts: a click on a slice now shows its details. Each `PieSeries` sets
+  `selectable: true`; without it Qt Graphs emits no `clicked` signal. The 2-level pies of
+  Account Details are one `GraphsView` with two `PieSeries` again, and the ring and the slice
+  of a click come from the position of the press, because the Qt Graphs 6.10 hit test ignores
+  `holeSize`. The subcategory ring starts 0.03 outside the category ring, as intended, instead
+  of under it (#57).
+- Overview, net worth chart: the hover lines on the layer borders are no longer drawn in the
+  green of the theme. They have the colour of their layer, and so have the markers and the
+  tooltip titles (#58).
+- Bar charts: the hover tooltip of every bar is shown in full. Before, the tooltip of a stacked
+  segment was drawn under the segments above it, and the tooltip of the tallest bars was cut at
+  the top of the chart. `HoverBar` shows a `ToolTip`, drawn in the overlay of the window (#59).
+- Account Details, balance chart: the Y-axis "Auto" / "From 0" toggle now changes the axis.
+  "Auto" fits the axis to the balances (10 % of the range on each side); before, it started at
+  0 for an account that is never negative, as "From 0" does. "From 0" includes 0: it starts the
+  axis at 0 for a positive account and ends it at 0 for a negative account. An account that is
+  always negative now shows its line with both settings (#65).
+- Import Transactions: a visit to another page during a review no longer loses it. The page is
+  loaded the first time it is shown and is then kept; "Done" on the import report starts the
+  next import at step 1. The target account is kept by its id, so an account added or removed
+  on another page meanwhile does not change the account that Save writes to (#64).
+- Manage Accounts, account dialog: an edit keeps a currency that is not in the list, instead of
+  saving EUR. A type, category or currency that is not in its list (removed, or unknown) is
+  shown in its box as "<value> (kept)", and Save keeps it; an empty category shows "(none)"
+  (#63).
+- Import review and account Transactions tables: every column can be reached at the default
+  window size (1280 px). Before, the RULE and KEEP columns of the import review and the Edit
+  button of the Transactions table were cut off. The header and the rows scroll horizontally
+  when the columns are wider than the card, with a visible scroll bar, and fill the card when
+  it is wider. The column-width handles of the import review still drag in the scroll area
+  (#60, #61).
+- Requirement check (`tools/check-requirements.sh` / `.ps1`): a `QT_VERSION` below 6.10 now
+  fails, as `CMakeLists.txt` requires (`qt_standard_project_setup(REQUIRES 6.10)`). Before, 6.8
+  and 6.9 passed the check, and the Docker build then stopped at configure. `README.md`,
+  `CI-CD.md` and `ci.yml` now say Qt 6.10+ (#81).
+- qmllint: the project target (`FinanceDashboard_qmllint`) reports no warning (21 before).
+  `ImportSnapshotPage.qml` and `InvestmentsPage.qml` declare `pragma ComponentBehavior: Bound`,
+  the sidebar delegate of `Main.qml` reads its `modelData` through its id and sizes its line
+  with `Layout.preferredHeight`, and the checkpoint list of Manage Accounts no longer uses a
+  comma expression (#70).
+- Projects: the number fields read French input ("3,5", "40 000") and refuse anything else with
+  a message. Before, "3,5" was read as 3, "40 000" as 40 and "40k" as 40, without a message.
+  The New project dialog stays open and tells which value is wrong, also for a target of 0 or a
+  month count outside 1 to 1200, which closed it with no project before (`addProject()` now
+  returns whether it added the project). After an edit, the loan-rate field shows the rate that
+  applies, and it follows the rate when it changes (#75, #66).
+- Database Management: "Delete account" deletes the account that its dialog names. Before, it
+  deleted the account at the same position in the list, so another account when the list
+  changed while the dialog was open. The two clean-up dialogs keep the account id, and they
+  open only for a valid account (with no account, they threw a TypeError). Import: "Choose file
+  & Import" is disabled when no statement template exists (#67, #68).
+- Account Details, balance chart: the axis shows the day ("02 Oct") when the range shown is
+  about three months or less, and the month ("Oct 26") above. Before, every tick of a 7-day or
+  1-month range read the same month. The tooltips of this chart show the day too ("02 Oct
+  2026"): `HoverPoint` has a `dateFormat` property, and the monthly charts keep "MMM yyyy"
+  (#73).
+- Line and area charts: the hover tooltip of a point is drawn over the markers of the other
+  points and series. Before, a marker created after the point (on Overview, the Savings and
+  Trading markers above a Checking point) was drawn over its tooltip. `HoverPoint` shows a
+  `ToolTip`, drawn in the overlay of the window, as `HoverBar` does (#74).
+- Cash Flow, "Category spending across months": each bar set takes its label and colour from
+  the category of `CashFlowController` that gives its values, instead of names and colours
+  written in the QML. A change of the order of the categories in C++ can no longer mislabel the
+  bars and their tooltips (#72).
+- Manage Accounts: the "×" of a hash and of a balance checkpoint is a `GhostButton` with the
+  red hover of the other remove buttons, instead of a bare text. Removing a hash asks first,
+  because the import then no longer picks the account by itself; the dialog keeps the account
+  id and the hash, so it removes that hash even if the list changes (#78).
+- Account Details no longer logs "Unable to assign [undefined] to bool" (8 times on an empty
+  database) when an account has no category breakdown: the visibility of the pies is always a
+  boolean (#76). The Cash Flow chart titles read the label of the selected month through a
+  guarded `selectedMonthLabel` (#69).
+- Bar and pie charts: no mint outline around each bar and slice. The bars of `HoverBar` and the
+  pie slices get an outline of their own colour, instead of the outline colour of the default
+  theme (#71).
+- Hashes and import logs use the fixed-pitch font of the system (`Fonts.monospace`, from
+  `QFontDatabase::FixedFont`), instead of `font.family: "monospace"`, a family that Windows
+  does not have, so it could show them in a proportional font (#77).
+
+### Docs
+- README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest
+  -C Release` with the Visual Studio generator), with a Linux test example. The Docker section
+  gives the bash options next to the PowerShell ones, says that a static build is still the
+  launcher, `app/` and `app/requirements.txt`, and lists the system libraries that a Linux
+  build needs. The project layout describes the tests folder as it is (#104, #94).
+- ARCHITECTURE.MD is a standalone document: no `docs/` folder and no dead link (#102). It adds
+  a directory map, the steps to add a page, and the known Qt Graphs behaviour of this project
+  (from the deleted `docs/charting-gotchas.md`, updated with #57, #58 and #59). Its rules are
+  in ASD-STE100 (short sentences, one instruction each, no semicolons): `ste-lint.py` finds no
+  hard violation (19 before) (#105).
+
+---
+
 ## v0.2.2 — 2026-10-27 — Import and calculations
 
 Import and calculations release. Amounts are rounded to the cent, and the reconciliation adds

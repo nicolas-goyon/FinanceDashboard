@@ -60,14 +60,11 @@ Item {
     //   two "Income by category" / "Expenses by category" nested pie charts.
     property var breakdown: ({})
 
-    // Y-axis scale toggle for the balance chart (product request: "a way to
-    // change the balance over time to change the scale of it"). "Auto" keeps
-    // the existing tight-fit behavior (balanceAxisMin/Max below, padded ±10%,
-    // capped at 0 for accounts that never go negative). "From 0" pins the
-    // axis minimum to 0 so growth reads against a fixed zero baseline —
-    // trading off clipping the line if the balance dips negative for an
-    // easier "how big is the change" read. Doesn't touch balanceAxisMin
-    // itself; only the GraphsView's axisY.min binding switches on it.
+    // Y-axis scale toggle for the balance chart. "Auto" fits the axis to the
+    // balances: from the minimum to the maximum, plus 10 % of that range on
+    // each side. "From 0" also includes 0: the axis starts at 0 for a positive
+    // account, and ends at 0 for a negative account (#65). See balanceAxisMin
+    // and balanceAxisMax.
     property bool axisStartAtZero: false
 
     // X-axis time-range presets for the balance chart — "7d"/"1m"/"6m"/"1y"/
@@ -115,6 +112,11 @@ Item {
         var rawMax = isNaN(page.rawRangeMaxMs) ? page.maxTimeMs : page.rawRangeMaxMs
         return rawMax > page.axisRangeMinMs ? rawMax : page.axisRangeMinMs + 86400000
     }
+    // The balance is day by day. Up to about three months on the axis, its
+    // labels show the day; above, the month. Taken from the range shown, not
+    // from the preset: "From start" on a short history also shows days (#73).
+    readonly property string axisDateFormat:
+        page.axisRangeMaxMs - page.axisRangeMinMs <= 92 * 86400000 ? "dd MMM" : "MMM yy"
 
     function reload() {
         if (page.selectedAccountIndex >= 0) {
@@ -149,6 +151,51 @@ Item {
         buildCategoryRings(expenseCategoryPie, expenseSubcategoryPie, page.breakdown.expenses ? page.breakdown.expenses : [])
     }
 
+    // Shows the details of the slice under the last press of a 2-level pie.
+    // The clicked signal does not tell which ring was hit: in Qt Graphs 6.10,
+    // PieRenderer::isPointInSlice() ignores holeSize, so a click on the
+    // category ring can come from a subcategory slice, and a click in a hole
+    // from any slice. This function finds the ring from the distance to the
+    // centre and the slice from the angle, with the same geometry as the
+    // renderer: the pie fills the plot area, its radius is
+    // min(width, height) / 2 × pieSize, its hole radius is that radius ×
+    // holeSize, and 0 degrees is at 12 o'clock, clockwise.
+    function showRingSliceInfo(view, categoryRing, subcategoryRing, info) {
+        var area = view.plotArea
+        var half = Math.min(area.width, area.height) / 2
+        if (half <= 0)
+            return
+        var dx = view.lastPress.x - (area.x + area.width * categoryRing.horizontalPosition)
+        var dy = view.lastPress.y - (area.y + area.height * categoryRing.verticalPosition)
+        var distance = Math.sqrt(dx * dx + dy * dy) / half
+        var angle = Math.atan2(dy, dx) * 180 / Math.PI + 90
+        if (angle < 0)
+            angle += 360
+
+        var ring = null
+        var kind = ""
+        if (distance >= categoryRing.pieSize * categoryRing.holeSize && distance <= categoryRing.pieSize) {
+            ring = categoryRing
+            kind = "Category"
+        } else if (distance >= subcategoryRing.pieSize * subcategoryRing.holeSize
+                   && distance <= subcategoryRing.pieSize) {
+            ring = subcategoryRing
+            kind = "Subcategory"
+        }
+        if (!ring)
+            return
+
+        for (var i = 0; i < ring.count; i++) {
+            var slice = ring.at(i)
+            if (angle >= slice.startAngle && angle <= slice.startAngle + slice.angleSpan) {
+                info.text = kind + " — " + slice.label + "  —  "
+                    + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
+                    + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
+                return
+            }
+        }
+    }
+
     // Builds one 2-level pie as *two independently-sized, concentric
     // PieSeries* sharing the same GraphsView — categoryRing (inner, smaller
     // pieSize/holeSize) and subcategoryRing (outer, larger pieSize/holeSize
@@ -177,12 +224,16 @@ Item {
         for (var i = 0; i < categories.length; i++) {
             var cat = categories[i]
             var catSlice = categoryRing.append(cat.category, cat.totalRaw)
-            catSlice.color = CategoryController.categoryColor(cat.category) || "#6c7086"
+            catSlice.color = CategoryController.categoryColor(cat.category) || Theme.overlay0
+            // Without it, the slice gets the outline colour of the theme (#71).
+            catSlice.borderColor = catSlice.color
             catSlice.labelVisible = true
             for (var j = 0; j < cat.subcategories.length; j++) {
                 var sub = cat.subcategories[j]
                 var subSlice = subcategoryRing.append(sub.subcategory, sub.totalRaw)
-                subSlice.color = CategoryController.subcategoryColor(cat.category, sub.subcategory) || "#6c7086"
+                subSlice.color = CategoryController.subcategoryColor(cat.category, sub.subcategory) || Theme.overlay0
+                // Without it, the slice gets the outline colour of the theme (#71).
+                subSlice.borderColor = subSlice.color
                 // Was missing — the outer ring showed no labels at all, only
                 // the inner category ring did (product feedback). The
                 // series' own angleSpanVisibleLimit (set in QML below) hides
@@ -209,17 +260,35 @@ Item {
     readonly property double minTimeMs: page.history.length > 0 ? page.history[0].timeMs : 0
     readonly property double maxTimeMsRaw: page.history.length > 0 ? page.history[page.history.length - 1].timeMs : 86400000
     readonly property double maxTimeMs: page.maxTimeMsRaw > page.minTimeMs ? page.maxTimeMsRaw : page.minTimeMs + 86400000
-    readonly property double balanceAxisMin: {
+    readonly property double balanceMin: {
         if (page.history.length === 0) return 0
         var m = page.history[0].balance
         for (var i = 1; i < page.history.length; i++) m = Math.min(m, page.history[i].balance)
-        return Math.min(m * 1.1, 0)
+        return m
     }
-    readonly property double balanceAxisMax: {
-        if (page.history.length === 0) return 1
+    readonly property double balanceMax: {
+        if (page.history.length === 0) return 0
         var m = page.history[0].balance
         for (var i = 1; i < page.history.length; i++) m = Math.max(m, page.history[i].balance)
-        return m > 0 ? m * 1.1 : 1
+        return m
+    }
+    // 10 % of the range. When all balances are equal, 10 % of the balance,
+    // and at least 1, so that the axis min is always below its max.
+    readonly property double balancePadding: {
+        var range = page.balanceMax - page.balanceMin
+        if (range > 0) return range * 0.1
+        return Math.max(Math.abs(page.balanceMax) * 0.1, 1)
+    }
+    // "From 0": a balance that is never negative starts at 0; a balance that
+    // is never positive (and not always 0) ends at 0; a balance on both
+    // sides of 0 already includes it.
+    readonly property double balanceAxisMin: {
+        if (page.axisStartAtZero && page.balanceMin >= 0) return 0
+        return page.balanceMin - page.balancePadding
+    }
+    readonly property double balanceAxisMax: {
+        if (page.axisStartAtZero && page.balanceMax <= 0 && page.balanceMin < 0) return 0
+        return page.balanceMax + page.balancePadding
     }
 
     ScrollView {
@@ -250,7 +319,7 @@ Item {
                 visible: AccountController.accounts.length === 0
                 text: "No accounts yet — add one from Account Management → Manage Accounts."
                 font.pixelSize: 15
-                color: "#f38ba8"
+                color: Theme.red
             }
 
             ColumnLayout {
@@ -324,7 +393,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 6
-                            Text { text: "RANGE"; font.pixelSize: 12; font.bold: true; color: "#6c7086" }
+                            Text { text: "RANGE"; font.pixelSize: 12; font.bold: true; color: Theme.overlay0 }
                             Item { Layout.fillWidth: true }
                             PillButton {
                                 text: "7D"; fontSize: 12; horizontalPadding: 10; implicitHeight: 24
@@ -365,7 +434,7 @@ Item {
                             visible: page.chartRange === "custom"
                             spacing: 6
                             Item { Layout.fillWidth: true }
-                            Text { text: "From"; font.pixelSize: 12; color: "#6c7086" }
+                            Text { text: "From"; font.pixelSize: 12; color: Theme.overlay0 }
                             TextField {
                                 Layout.preferredWidth: 110
                                 implicitHeight: 24
@@ -374,7 +443,7 @@ Item {
                                 text: page.customStartIso
                                 onEditingFinished: page.customStartIso = text.trim()
                             }
-                            Text { text: "to"; font.pixelSize: 12; color: "#6c7086" }
+                            Text { text: "to"; font.pixelSize: 12; color: Theme.overlay0 }
                             TextField {
                                 Layout.preferredWidth: 110
                                 implicitHeight: 24
@@ -388,7 +457,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 6
-                            Text { text: "Y AXIS"; font.pixelSize: 12; font.bold: true; color: "#6c7086" }
+                            Text { text: "Y AXIS"; font.pixelSize: 12; font.bold: true; color: Theme.overlay0 }
                             Item { Layout.fillWidth: true }
                             PillButton {
                                 text: "Auto"
@@ -415,26 +484,26 @@ Item {
                         theme: GraphsTheme {
                             colorScheme: GraphsTheme.ColorScheme.Dark
                             plotAreaBackgroundVisible: true
-                            plotAreaBackgroundColor: "#181825"
+                            plotAreaBackgroundColor: Theme.mantle
                             backgroundVisible: false
                             gridVisible: true
-                            grid.mainColor: "#313244"
-                            grid.subColor: "#313244"
-                            axisX.mainColor: "#313244"
-                            axisX.labelTextColor: "#6c7086"
-                            axisY.mainColor: "#313244"
-                            axisY.labelTextColor: "#6c7086"
-                            labelTextColor: "#6c7086"
+                            grid.mainColor: Theme.surface0
+                            grid.subColor: Theme.surface0
+                            axisX.mainColor: Theme.surface0
+                            axisX.labelTextColor: Theme.overlay0
+                            axisY.mainColor: Theme.surface0
+                            axisY.labelTextColor: Theme.overlay0
+                            labelTextColor: Theme.overlay0
                             labelFont.pixelSize: 12
                         }
 
                         axisX: DateTimeAxis {
                             min: new Date(page.axisRangeMinMs)
                             max: new Date(page.axisRangeMaxMs)
-                            labelFormat: "MMM yy"
+                            labelFormat: page.axisDateFormat
                         }
                         axisY: ValueAxis {
-                            min: page.axisStartAtZero ? 0 : page.balanceAxisMin
+                            min: page.balanceAxisMin
                             max: page.balanceAxisMax
                             labelFormat: "%.0f"
                         }
@@ -442,12 +511,13 @@ Item {
                         LineSeries {
                             id: balanceSeries
                             name: page.account !== null ? page.account.name : ""
-                            color: "#89b4fa"
+                            color: Theme.blue
                             width: 2
                             pointDelegate: Component {
                                 HoverPoint {
                                     seriesName: page.account !== null ? page.account.name : ""
-                                    pointColor: "#89b4fa"
+                                    dateFormat: "dd MMM yyyy"
+                                    pointColor: Theme.blue
                                     suffix: " " + page.currencySymbol
                                 }
                             }
@@ -465,17 +535,10 @@ Item {
                 // Income and expense are derived per-transaction from
                 // credit/debit (not a category-level tag — see
                 // AccountController::accountCategoryBreakdown()'s doc comment),
-                // so the same category can appear in both pies. Each pie is
-                // *two separate, stacked `GraphsView`s* (one `PieSeries` each —
-                // categoryRing inner, subcategoryRing outer), not two
-                // `PieSeries` sharing one `GraphsView`. That single-view
-                // version had both rings' `onClicked` go dead — every other
-                // pie in this app (Import report, Cash Flow) is one
-                // `PieSeries` per `GraphsView`, the only configuration Qt
-                // Graphs actually demonstrates anywhere, so this keeps each
-                // ring in its own isolated, individually-proven-clickable
-                // view instead of guessing at how two series interact inside
-                // one. See docs/charting-gotchas.md.
+                // so the same category can appear in both pies. Each pie is one
+                // GraphsView with two PieSeries: the category ring (inner) and
+                // the subcategory ring (outer). Both series are selectable; the
+                // slice that shows its details comes from showRingSliceInfo().
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 16
@@ -494,71 +557,52 @@ Item {
                                 message: "No income transactions for this account yet."
                             }
 
-                            // Plain Item host, not a Layout — the two GraphsViews
-                            // inside are stacked via anchors.fill: parent (exactly
-                            // overlapping), which anchors on a direct Layout child
-                            // can't do (see the "direct anchored child of a plain
-                            // Item" convention used everywhere else on this page).
                             Item {
                                 id: incomePieHost
-                                visible: page.breakdown.income && page.breakdown.income.length > 0
+                                visible: !!page.breakdown.income && page.breakdown.income.length > 0
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
 
-                                // Inner ring — categories. Own GraphsView, carries
-                                // the shared plot-area background for both rings.
                                 GraphsView {
+                                    id: incomePieView
+                                    // Position of the last press, in this view's coordinates.
+                                    property point lastPress
                                     anchors.fill: parent
                                     theme: GraphsTheme {
                                         colorScheme: GraphsTheme.ColorScheme.Dark
                                         plotAreaBackgroundVisible: true
-                                        plotAreaBackgroundColor: "#181825"
+                                        plotAreaBackgroundColor: Theme.mantle
                                         backgroundVisible: false
-                                        labelTextColor: "#cdd6f4"
+                                        labelTextColor: Theme.text
                                         labelFont.pixelSize: 13
                                     }
+
+                                    // The press comes before the release that emits clicked.
+                                    TapHandler {
+                                        onPressedChanged: if (pressed) incomePieView.lastPress = point.position
+                                    }
+
+                                    // Inner ring: categories.
                                     PieSeries {
                                         id: incomeCategoryPie
+                                        selectable: true
                                         pieSize: 0.55
                                         holeSize: 0.28
-                                        onClicked: (slice) => {
-                                            incomePieInfo.text = "Category — " + slice.label + "  —  "
-                                                + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
-                                        }
+                                        onClicked: page.showRingSliceInfo(incomePieView, incomeCategoryPie,
+                                                                          incomeSubcategoryPie, incomePieInfo)
                                     }
-                                }
 
-                                // Outer ring — subcategories, starts right where
-                                // the category ring ends (holeSize 0.58 vs. its
-                                // pieSize 0.55 — a thin 0.03 gap for separation).
-                                // Own GraphsView stacked exactly on top; no
-                                // plot-area background of its own (the inner
-                                // view's is directly behind it) so it doesn't
-                                // paint a second opaque layer over the first.
-                                GraphsView {
-                                    anchors.fill: parent
-                                    theme: GraphsTheme {
-                                        colorScheme: GraphsTheme.ColorScheme.Dark
-                                        plotAreaBackgroundVisible: false
-                                        backgroundVisible: false
-                                        labelTextColor: "#cdd6f4"
-                                        labelFont.pixelSize: 11
-                                    }
+                                    // Outer ring: subcategories. Its inner edge is at
+                                    // 0.92 × 0.63 = 0.58, 0.03 outside the category ring (0.55).
                                     PieSeries {
                                         id: incomeSubcategoryPie
+                                        selectable: true
                                         pieSize: 0.92
-                                        holeSize: 0.58
-                                        // Hides labels on the thinnest slices so many
-                                        // subcategories don't pile their label arms
-                                        // on top of each other (Qt 6.10+ property,
-                                        // verified on doc.qt.io before using it).
+                                        holeSize: 0.63
+                                        // Hides the labels of the thinnest slices (Qt 6.10 property).
                                         angleSpanVisibleLimit: 10
-                                        onClicked: (slice) => {
-                                            incomePieInfo.text = "Subcategory — " + slice.label + "  —  "
-                                                + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
-                                        }
+                                        onClicked: page.showRingSliceInfo(incomePieView, incomeCategoryPie,
+                                                                          incomeSubcategoryPie, incomePieInfo)
                                     }
                                 }
                             }
@@ -566,10 +610,10 @@ Item {
                             Text {
                                 id: incomePieInfo
                                 Layout.alignment: Qt.AlignHCenter
-                                visible: page.breakdown.income && page.breakdown.income.length > 0
+                                visible: !!page.breakdown.income && page.breakdown.income.length > 0
                                 text: "Click a category (inner ring) or subcategory (outer ring) slice for details"
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                                 wrapMode: Text.WordWrap
                                 Layout.maximumWidth: parent.width
                                 horizontalAlignment: Text.AlignHCenter
@@ -593,53 +637,50 @@ Item {
 
                             Item {
                                 id: expensePieHost
-                                visible: page.breakdown.expenses && page.breakdown.expenses.length > 0
+                                visible: !!page.breakdown.expenses && page.breakdown.expenses.length > 0
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
 
-                                // Inner ring — categories.
                                 GraphsView {
+                                    id: expensePieView
+                                    // Position of the last press, in this view's coordinates.
+                                    property point lastPress
                                     anchors.fill: parent
                                     theme: GraphsTheme {
                                         colorScheme: GraphsTheme.ColorScheme.Dark
                                         plotAreaBackgroundVisible: true
-                                        plotAreaBackgroundColor: "#181825"
+                                        plotAreaBackgroundColor: Theme.mantle
                                         backgroundVisible: false
-                                        labelTextColor: "#cdd6f4"
+                                        labelTextColor: Theme.text
                                         labelFont.pixelSize: 13
                                     }
+
+                                    // The press comes before the release that emits clicked.
+                                    TapHandler {
+                                        onPressedChanged: if (pressed) expensePieView.lastPress = point.position
+                                    }
+
+                                    // Inner ring: categories.
                                     PieSeries {
                                         id: expenseCategoryPie
+                                        selectable: true
                                         pieSize: 0.55
                                         holeSize: 0.28
-                                        onClicked: (slice) => {
-                                            expensePieInfo.text = "Category — " + slice.label + "  —  "
-                                                + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
-                                        }
+                                        onClicked: page.showRingSliceInfo(expensePieView, expenseCategoryPie,
+                                                                          expenseSubcategoryPie, expensePieInfo)
                                     }
-                                }
 
-                                // Outer ring — subcategories.
-                                GraphsView {
-                                    anchors.fill: parent
-                                    theme: GraphsTheme {
-                                        colorScheme: GraphsTheme.ColorScheme.Dark
-                                        plotAreaBackgroundVisible: false
-                                        backgroundVisible: false
-                                        labelTextColor: "#cdd6f4"
-                                        labelFont.pixelSize: 11
-                                    }
+                                    // Outer ring: subcategories. Its inner edge is at
+                                    // 0.92 × 0.63 = 0.58, 0.03 outside the category ring (0.55).
                                     PieSeries {
                                         id: expenseSubcategoryPie
+                                        selectable: true
                                         pieSize: 0.92
-                                        holeSize: 0.58
+                                        holeSize: 0.63
+                                        // Hides the labels of the thinnest slices (Qt 6.10 property).
                                         angleSpanVisibleLimit: 10
-                                        onClicked: (slice) => {
-                                            expensePieInfo.text = "Subcategory — " + slice.label + "  —  "
-                                                + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
-                                                + " " + page.currencySymbol + "  (" + Math.round(slice.percentage * 100) + " %)"
-                                        }
+                                        onClicked: page.showRingSliceInfo(expensePieView, expenseCategoryPie,
+                                                                          expenseSubcategoryPie, expensePieInfo)
                                     }
                                 }
                             }
@@ -647,10 +688,10 @@ Item {
                             Text {
                                 id: expensePieInfo
                                 Layout.alignment: Qt.AlignHCenter
-                                visible: page.breakdown.expenses && page.breakdown.expenses.length > 0
+                                visible: !!page.breakdown.expenses && page.breakdown.expenses.length > 0
                                 text: "Click a category (inner ring) or subcategory (outer ring) slice for details"
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                                 wrapMode: Text.WordWrap
                                 Layout.maximumWidth: parent.width
                                 horizontalAlignment: Text.AlignHCenter
@@ -699,19 +740,19 @@ Item {
                             Rectangle {
                                 Layout.preferredWidth: txCol.rowWidth
                                 Layout.preferredHeight: 28
-                                color: "#181825"
+                                color: Theme.mantle
                                 radius: 4
                                 RowLayout {
                                     anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                     spacing: 8
-                                    Text { Layout.preferredWidth: 90;  text: "DATE";        font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                                    Text { Layout.preferredWidth: 300; text: "NAME";        font.pixelSize: 13; font.bold: true; color: "#6c7086" }
+                                    Text { Layout.preferredWidth: 90;  text: "DATE";        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 300; text: "NAME";        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
                                     Item { Layout.preferredWidth: 16 }
-                                    Text { Layout.preferredWidth: 90;  text: "DEBIT";       font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 90;  text: "CREDIT";      font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 100; text: "BALANCE";     font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 130; text: "CATEGORY";    font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                                    Text { Layout.preferredWidth: 130; text: "SUBCATEGORY"; font.pixelSize: 13; font.bold: true; color: "#6c7086" }
+                                    Text { Layout.preferredWidth: 90;  text: "DEBIT";       font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 90;  text: "CREDIT";      font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 100; text: "BALANCE";     font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 130; text: "CATEGORY";    font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 130; text: "SUBCATEGORY"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
                                 }
                             }
 
@@ -730,23 +771,23 @@ Item {
                                     required property int index
                                     Layout.preferredWidth: txCol.rowWidth
                                     Layout.preferredHeight: 36
-                                    color: index % 2 === 0 ? "transparent" : "#181825"
+                                    color: index % 2 === 0 ? "transparent" : Theme.mantle
 
                                     RowLayout {
                                         anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                         spacing: 8
-                                        Text { Layout.preferredWidth: 90; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
+                                        Text { Layout.preferredWidth: 90; text: txRow.modelData.operationDate; font.pixelSize: 14; color: Theme.overlay0 }
                                         Text {
                                             Layout.preferredWidth: 300
                                             text: txRow.modelData.name.length > 0 ? txRow.modelData.name : "—"
                                             font.pixelSize: 15
-                                            color: "#cdd6f4"
+                                            color: Theme.text
                                             elide: Text.ElideRight
                                         }
                                         Item { Layout.preferredWidth: 16 }
-                                        Text { Layout.preferredWidth: 90;  text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
-                                        Text { Layout.preferredWidth: 90;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
-                                        Text { Layout.preferredWidth: 100; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                                        Text { Layout.preferredWidth: 90;  text: txRow.modelData.debitText;  font.pixelSize: 15; color: Theme.red; horizontalAlignment: Text.AlignRight }
+                                        Text { Layout.preferredWidth: 90;  text: txRow.modelData.creditText; font.pixelSize: 15; color: Theme.green; horizontalAlignment: Text.AlignRight }
+                                        Text { Layout.preferredWidth: 100; text: txRow.modelData.balanceText; font.pixelSize: 14; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
 
                                         Rectangle {
                                             Layout.preferredWidth: 130
@@ -754,17 +795,17 @@ Item {
                                             Layout.preferredHeight: 20
                                             radius: 10
                                             color: Qt.rgba(1, 1, 1, 0.08)
-                                            border.color: CategoryController.categoryColor(txRow.modelData.category) || "#6c7086"
+                                            border.color: CategoryController.categoryColor(txRow.modelData.category) || Theme.overlay0
                                             Text {
                                                 anchors.centerIn: parent
                                                 text: txRow.modelData.category
                                                 font.pixelSize: 12
-                                                color: CategoryController.categoryColor(txRow.modelData.category) || "#6c7086"
+                                                color: CategoryController.categoryColor(txRow.modelData.category) || Theme.overlay0
                                                 elide: Text.ElideRight
                                                 width: Math.min(implicitWidth, 118)
                                             }
                                         }
-                                        Text { Layout.preferredWidth: 130; visible: txRow.modelData.category.length === 0; text: "—"; font.pixelSize: 14; color: "#6c7086" }
+                                        Text { Layout.preferredWidth: 130; visible: txRow.modelData.category.length === 0; text: "—"; font.pixelSize: 14; color: Theme.overlay0 }
 
                                         Rectangle {
                                             Layout.preferredWidth: 130
@@ -772,17 +813,17 @@ Item {
                                             Layout.preferredHeight: 20
                                             radius: 10
                                             color: Qt.rgba(1, 1, 1, 0.08)
-                                            border.color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || "#6c7086"
+                                            border.color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || Theme.overlay0
                                             Text {
                                                 anchors.centerIn: parent
                                                 text: txRow.modelData.subcategory
                                                 font.pixelSize: 12
-                                                color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || "#6c7086"
+                                                color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || Theme.overlay0
                                                 elide: Text.ElideRight
                                                 width: Math.min(implicitWidth, 118)
                                             }
                                         }
-                                        Text { Layout.preferredWidth: 130; visible: txRow.modelData.subcategory.length === 0; text: "—"; font.pixelSize: 14; color: "#6c7086" }
+                                        Text { Layout.preferredWidth: 130; visible: txRow.modelData.subcategory.length === 0; text: "—"; font.pixelSize: 14; color: Theme.overlay0 }
                                     }
                                 }
                             }

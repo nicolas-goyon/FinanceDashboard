@@ -111,61 +111,65 @@ Item {
 
                     AreaSeries {
                         name: "Checking"
-                        color: "#6e89b4fa"
-                        borderColor: "#89b4fa"
+                        color: Theme.blueArea
+                        borderColor: Theme.blue
                         borderWidth: 1.5
                         upperSeries: checkingBound
                     }
                     AreaSeries {
                         name: "Savings"
-                        color: "#6ea6e3a1"
-                        borderColor: "#a6e3a1"
+                        color: Theme.greenArea
+                        borderColor: Theme.green
                         borderWidth: 1.5
                         upperSeries: savingsBound
                         lowerSeries: checkingBound
                     }
                     AreaSeries {
                         name: "Trading"
-                        color: "#6ecba6f7"
-                        borderColor: "#cba6f7"
+                        color: Theme.mauveArea
+                        borderColor: Theme.mauve
                         borderWidth: 1.5
                         upperSeries: tradingBound
                         lowerSeries: savingsBound
                     }
 
-                    // ── Invisible hover-carrier lines on each layer boundary ──
-                    // (AreaSeries has no pointDelegate; these transparent lines
-                    // put hoverable marker dots at the top of each layer and the
-                    // tooltip shows the layer's OWN value.)
+                    // ── Hover-carrier lines on each layer boundary ──
+                    // AreaSeries has no pointDelegate. These lines put hoverable
+                    // marker dots at the top of each layer, and the tooltip shows
+                    // the layer's own value. Each line has the border colour and
+                    // width of its layer, so it covers that border exactly. Do not
+                    // set "transparent": Qt Graphs replaces a colour with alpha 0
+                    // by the theme colour. The series colour is also the
+                    // pointColor of each HoverPoint.
                     LineSeries {
                         id: hoverChecking
-                        color: "transparent"
+                        color: Theme.blue
+                        width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
                                 seriesName: "Checking"
-                                pointColor: "#89b4fa"
                                 overrideValues: page.checkingOwn
                             }
                         }
                     }
                     LineSeries {
                         id: hoverSavings
-                        color: "transparent"
+                        color: Theme.green
+                        width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
                                 seriesName: "Savings"
-                                pointColor: "#a6e3a1"
                                 overrideValues: page.savingsOwn
                             }
                         }
                     }
                     LineSeries {
                         id: hoverTrading
-                        color: "transparent"
+                        color: Theme.mauve
+                        width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
                                 seriesName: "Trading"
-                                pointColor: "#cba6f7"
                                 overrideValues: page.tradingOwn
                             }
                         }
@@ -194,6 +198,8 @@ Item {
                             theme: GraphsTheme { colorScheme: GraphsTheme.ColorScheme.Dark }
 
                             PieSeries {
+                                // Without it the renderer emits no clicked signal (default false).
+                                selectable: true
                                 pieSize: 0.75
                                 holeSize: 0.42
 
@@ -202,6 +208,8 @@ Item {
                                     for (var i = 0; i < a.length; i++) {
                                         var slice = append(a[i].label, a[i].value)
                                         slice.color = a[i].color
+                                        // Without it, the slice gets the outline colour of the theme (#71).
+                                        slice.borderColor = slice.color
                                         slice.labelVisible = true
                                     }
                                 }
@@ -217,7 +225,7 @@ Item {
                             Layout.alignment: Qt.AlignHCenter
                             text: "Click a slice for details"
                             font.pixelSize: 14
-                            color: "#6c7086"
+                            color: Theme.overlay0
                         }
                     }
                 }
@@ -246,12 +254,12 @@ Item {
                             }
                             BarSet {
                                 label: "Gain"
-                                color: "#a6e3a1"
+                                color: Theme.green
                                 Component.onCompleted: values = controller.netGains
                             }
                             BarSet {
                                 label: "Loss"
-                                color: "#f38ba8"
+                                color: Theme.red
                                 Component.onCompleted: values = controller.netLosses
                             }
                         }

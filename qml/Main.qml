@@ -42,7 +42,7 @@ ApplicationWindow {
     // main.cpp sets it from the identity of the build (QtQuick Application
     // singleton: https://doc.qt.io/qt-6/qml-qtquick-application.html).
     title: Application.displayName
-    color: "#11111b"
+    color: Theme.crust
 
     property string currentViewId: "overview"
 
@@ -231,7 +231,7 @@ ApplicationWindow {
         id: sidebar
         anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
         width: 240
-        color: "#181825"
+        color: Theme.mantle
 
         Flickable {
             anchors.fill: parent
@@ -248,7 +248,7 @@ ApplicationWindow {
                     Layout.margins: 16
                     Layout.bottomMargin: 4
                     text: "FINANCE DASHBOARD"
-                    color: "#6c7086"
+                    color: Theme.overlay0
                     font { pixelSize: 14; bold: true }
                 }
 
@@ -261,6 +261,7 @@ ApplicationWindow {
                     // see `categories` above and ARCHITECTURE.MD § Sidebar
                     // Navigation).
                     delegate: ColumnLayout {
+                        id: sidebarEntry
                         required property var modelData
                         Layout.fillWidth: true
                         spacing: 0
@@ -269,31 +270,31 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.topMargin: 12
                             Layout.bottomMargin: 4
-                            visible: modelData.sectionLabel !== undefined
+                            visible: sidebarEntry.modelData.sectionLabel !== undefined
                             spacing: 4
 
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 16
                                 Layout.rightMargin: 16
-                                height: 1
-                                color: "#313244"
+                                Layout.preferredHeight: 1
+                                color: Theme.surface0
                             }
                             Text {
                                 Layout.leftMargin: 16
-                                text: modelData.sectionLabel !== undefined ? modelData.sectionLabel : ""
-                                color: "#6c7086"
+                                text: sidebarEntry.modelData.sectionLabel !== undefined ? sidebarEntry.modelData.sectionLabel : ""
+                                color: Theme.overlay0
                                 font { pixelSize: 11; bold: true; letterSpacing: 1 }
                             }
                         }
 
                         SidebarCategory {
                             Layout.fillWidth: true
-                            categoryLabel: modelData.label
-                            actions: modelData.actions
-                            current: root.isCategoryActive(modelData)
+                            categoryLabel: sidebarEntry.modelData.label
+                            actions: sidebarEntry.modelData.actions
+                            current: root.isCategoryActive(sidebarEntry.modelData)
                             currentActionId: root.currentViewId
-                            onSelected: root.currentViewId = modelData.id
+                            onSelected: root.currentViewId = sidebarEntry.modelData.id
                             onActionTriggered: (actionId) => {
                                 // Only actions with a real page behind them
                                 // change the view; every other action on the
@@ -326,7 +327,7 @@ ApplicationWindow {
     Rectangle {
         id: sidebarDivider
         anchors { top: parent.top; bottom: parent.bottom; left: sidebar.right }
-        width: 1; color: "#313244"
+        width: 1; color: Theme.surface0
     }
 
     // ── Update banner (#117) ─────────────────────────────────────────────────
@@ -342,7 +343,7 @@ ApplicationWindow {
         anchors { top: parent.top; left: sidebarDivider.right; right: parent.right }
         height: UpdateController.bannerVisible && root.currentViewId !== "updates" ? 40 : 0
         visible: height > 0
-        color: UpdateController.installState === "failed" ? "#4c2032" : "#1e3a5f"
+        color: UpdateController.installState === "failed" ? Theme.dangerBannerBg : Theme.primaryBg
 
         RowLayout {
             anchors { fill: parent; leftMargin: 20; rightMargin: 12 }
@@ -358,7 +359,7 @@ ApplicationWindow {
                         ? UpdateController.installText + " " + Math.round(UpdateController.installProgress * 100) + " %"
                         : UpdateController.installText
                 font.pixelSize: 14
-                color: "#cdd6f4"
+                color: Theme.text
             }
             PillButton {
                 visible: UpdateController.installState === "idle" && UpdateController.installsItself
@@ -427,15 +428,28 @@ ApplicationWindow {
     }
 
     // ── Overlay — Import Transactions (see SidebarCategory.actionTriggered
-    //    handling above). Lazily loaded/unloaded via Loader.active. ────────────
+    //    handling above). Loaded the first time it is shown, then kept: the
+    //    review of a statement survives a visit to another page, for example
+    //    to add a missing category (#64). "Done" on the report resets it. ────
     Loader {
+        id: importPageLoader
+        property bool kept: false
         anchors {
             top: updateBanner.bottom; bottom: parent.bottom
             left: sidebarDivider.right; right: parent.right
         }
-        active: root.currentViewId === "importTransactions"
-        visible: active
+        active: kept || root.currentViewId === "importTransactions"
+        visible: root.currentViewId === "importTransactions"
         sourceComponent: importPageComponent
+    }
+    // Sets `kept` after the view change, not in onLoaded: onLoaded runs while
+    // `active` is evaluated, and changing `kept` there is a binding loop.
+    Connections {
+        target: root
+        function onCurrentViewIdChanged() {
+            if (root.currentViewId === "importTransactions")
+                importPageLoader.kept = true
+        }
     }
 
     Component {
@@ -572,7 +586,7 @@ ApplicationWindow {
         padding: 20
         modal: true
 
-        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
+        background: Rectangle { color: Theme.mantle; border.color: Theme.surface1; radius: 8 }
 
         contentItem: ColumnLayout {
             spacing: 14
@@ -581,14 +595,14 @@ ApplicationWindow {
                 text: "Database upgraded"
                 font.pixelSize: 19
                 font.bold: true
-                color: "#cdd6f4"
+                color: Theme.text
             }
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: root.databaseNotice
                 font.pixelSize: 14
-                color: "#a6adc8"
+                color: Theme.subtext0
             }
             RowLayout {
                 Layout.topMargin: 6

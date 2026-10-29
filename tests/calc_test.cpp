@@ -166,10 +166,14 @@ void CalcTest::projectWithATinyContributionStaysInRange()
              qPrintable(controller.saveVsBorrowText()));
 
     // Not a number, an infinity, or a target date after 100 years: refused.
-    controller.addProject(QStringLiteral("Infinite"), std::numeric_limits<double>::infinity(), 6, 0.0, 10.0);
-    controller.addProject(QStringLiteral("Far"), 1000.0, 1201, 0.0, 10.0);
-    controller.addProject(QStringLiteral("NaN"), 1000.0, 6, std::numeric_limits<double>::quiet_NaN(), 10.0);
+    // addProject() returns false, so the dialog stays open and tells why (#75).
+    QVERIFY(!controller.addProject(QStringLiteral("Infinite"), std::numeric_limits<double>::infinity(), 6, 0.0, 10.0));
+    QVERIFY(!controller.addProject(QStringLiteral("Far"), 1000.0, 1201, 0.0, 10.0));
+    QVERIFY(!controller.addProject(QStringLiteral("NaN"), 1000.0, 6, std::numeric_limits<double>::quiet_NaN(), 10.0));
+    QVERIFY(!controller.addProject(QStringLiteral("Zero"), 0.0, 6, 0.0, 10.0));
+    QVERIFY(!controller.addProject(QStringLiteral("  "), 1000.0, 6, 0.0, 10.0));
     QCOMPARE(controller.projectNames().size(), before + 2);
+    QVERIFY(controller.addProject(QStringLiteral("Ok"), 1000.0, 6, 0.0, 10.0));
 }
 
 void CalcTest::moneyFlowTotalsMatchWithAnOverspend()

@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 
 // pointDelegate for LineSeries — small marker dot + tooltip on hover.
 // Dynamic properties injected by Qt Graphs (declared with the documented
@@ -21,6 +22,9 @@ Item {
     property string suffix: " €"
     property int    decimals: 0
     property bool   xIsTime: true      // pointValueX is ms since epoch
+    // Format of the date line (Qt date format). Monthly data shows the month;
+    // a chart of daily data sets a format with the day (#73).
+    property string dateFormat: "MMM yyyy"
     // For stacked charts: the layer's own values (tooltip shows these
     // instead of the cumulative boundary y)
     property var    overrideValues: null
@@ -44,52 +48,38 @@ Item {
         width: hh.hovered ? 13 : 8
         height: width
         radius: width / 2
-        color: "#1e1e2e"
+        color: Theme.base
         border.color: root.pointColor
         border.width: 2
     }
 
     HoverHandler { id: hh }
 
-    // Tooltip — positioned with plain x/y (not anchors.bottom/horizontalCenter)
-    // so it can flip below the point and clamp horizontally instead of
-    // always centering above, which cropped it against the chart's edges for
-    // any point near the top or a side (product feedback). `root.parent` is
-    // Qt Graphs' own delegate-host item, sized to the plot area, so its
-    // width/height are the actual bounds to stay inside.
-    Rectangle {
+    // A ToolTip is a Popup: it is drawn in the overlay of the window. A child
+    // Rectangle was drawn under the markers of the points and series created
+    // after this one: each point delegate is a sibling, and the renderer sets
+    // their z on each update (PointRenderer, setZ(series->zValue())), so a z
+    // on the delegate does not stay (#74, as #59 for the bars). The popup
+    // stays inside the window, so it is not cut at the edges of the chart.
+    ToolTip {
         id: tooltip
         visible: hh.hovered
-        z: 1000
-        width: tipCol.implicitWidth + 16
-        height: tipCol.implicitHeight + 10
-        radius: 4
-        color: "#181825"
-        border.color: "#45475a"
+        x: (root.width - width) / 2
+        y: -height - 2
+        padding: 0
+        topPadding: 5
+        bottomPadding: 5
+        leftPadding: 8
+        rightPadding: 8
 
-        // Flip below the point when there isn't room above within the chart.
-        readonly property bool showBelow: root.y < tooltip.height + 6
-        y: tooltip.showBelow ? (root.height + 2) : -(tooltip.height + 2)
-
-        // Centered on the point by default, clamped so it never extends past
-        // root.parent's left/right edges (root.x/root.parent.width are in
-        // root.parent's coordinate space; tooltip.x is relative to root, so
-        // the clamp bounds are offset by -root.x).
-        readonly property real centeredX: (root.width - tooltip.width) / 2
-        x: {
-            // Fall back to plain centering if root.parent isn't a
-            // sensible/sized item to clamp against (defensive — Qt Graphs'
-            // exact delegate-host item isn't documented).
-            if (root.parent === null || root.parent.width <= 0) return tooltip.centeredX
-            var minX = -root.x
-            var maxX = root.parent.width - root.x - tooltip.width
-            if (maxX < minX) return tooltip.centeredX // parent narrower than the tooltip itself
-            return Math.max(minX, Math.min(tooltip.centeredX, maxX))
+        background: Rectangle {
+            radius: 4
+            color: Theme.mantle
+            border.color: Theme.surface1
         }
 
-        Column {
+        contentItem: Column {
             id: tipCol
-            anchors.centerIn: parent
             spacing: 1
 
             Text {
@@ -101,16 +91,16 @@ Item {
             }
             Text {
                 visible: root.xIsTime
-                text: Qt.formatDate(new Date(root.pointValueX), "MMM yyyy")
+                text: Qt.formatDate(new Date(root.pointValueX), root.dateFormat)
                 font.pixelSize: 13
-                color: "#6c7086"
+                color: Theme.overlay0
             }
             Text {
                 text: root.displayValue.toLocaleString(Qt.locale("fr-FR"), 'f', root.decimals)
                       + root.suffix
                 font.pixelSize: 15
                 font.bold: true
-                color: "#cdd6f4"
+                color: Theme.text
             }
         }
     }

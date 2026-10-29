@@ -8,9 +8,9 @@ Rectangle {
     property string title: ""
     default property alias content: contentHost.data
 
-    color: "#1e1e2e"
+    color: Theme.base
     radius: 8
-    border.color: "#313244"
+    border.color: Theme.surface0
     implicitHeight: 340
 
     ColumnLayout {
@@ -22,7 +22,7 @@ Rectangle {
             text: root.title
             font.pixelSize: 16
             font.bold: true
-            color: "#cdd6f4"
+            color: Theme.text
         }
 
         Item {

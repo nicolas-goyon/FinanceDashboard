@@ -59,14 +59,14 @@ Item {
                         text: Application.displayName + " — version " + UpdateController.currentVersion
                         font.pixelSize: 16
                         font.bold: true
-                        color: "#cdd6f4"
+                        color: Theme.text
                     }
 
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 12
 
-                        Text { text: "Channel"; font.pixelSize: 14; color: "#a6adc8" }
+                        Text { text: "Channel"; font.pixelSize: 14; color: Theme.subtext0 }
                         ComboBox {
                             id: channelBox
                             visible: UpdateController.testApp
@@ -81,7 +81,7 @@ Item {
                             visible: !UpdateController.testApp
                             text: "Stable (the releases)"
                             font.pixelSize: 14
-                            color: "#cdd6f4"
+                            color: Theme.text
                         }
                         Item { Layout.fillWidth: true }
                     }
@@ -93,7 +93,7 @@ Item {
                         Layout.fillWidth: true
                         text: "Check for a new version when the app starts"
                         font.pixelSize: 14
-                        palette.windowText: "#cdd6f4"
+                        palette.windowText: Theme.text
                         leftPadding: 0
                         checked: UpdateController.checkAtStart
                         onToggled: UpdateController.checkAtStart = checked
@@ -117,7 +117,7 @@ Item {
                             textFormat: Text.PlainText
                             text: UpdateController.statusText
                             font.pixelSize: 13
-                            color: UpdateController.statusIsError ? "#f38ba8" : "#a6adc8"
+                            color: UpdateController.statusIsError ? Theme.red : Theme.subtext0
                         }
                     }
 
@@ -127,7 +127,7 @@ Item {
                         spacing: 8
                         visible: UpdateController.updateAvailable || UpdateController.installState !== "idle"
 
-                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#313244" }
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.surface0 }
 
                         // The setup and the AppImage update themselves.
                         RowLayout {
@@ -169,13 +169,13 @@ Item {
                                 Layout.preferredWidth: 200
                                 Layout.preferredHeight: 6
                                 radius: 3
-                                color: "#313244"
+                                color: Theme.surface0
 
                                 Rectangle {
                                     width: parent.width * UpdateController.installProgress
                                     height: parent.height
                                     radius: 3
-                                    color: "#89b4fa"
+                                    color: Theme.blue
                                 }
                             }
                             Text {
@@ -184,7 +184,7 @@ Item {
                                 textFormat: Text.PlainText
                                 text: UpdateController.installText
                                 font.pixelSize: 13
-                                color: UpdateController.installState === "failed" ? "#f38ba8" : "#a6adc8"
+                                color: UpdateController.installState === "failed" ? Theme.red : Theme.subtext0
                             }
                         }
 
@@ -200,7 +200,7 @@ Item {
                                 textFormat: Text.PlainText
                                 text: UpdateController.manualSteps
                                 font.pixelSize: 13
-                                color: "#cdd6f4"
+                                color: Theme.text
                             }
                             GhostButton {
                                 visible: UpdateController.releases.length > 0
@@ -218,7 +218,7 @@ Item {
                             + "sends nothing else, and your data never leaves this computer. \"Install\" "
                             + "downloads the new version from GitHub and checks its SHA-256 first."
                         font.pixelSize: 12
-                        color: "#6c7086"
+                        color: Theme.overlay0
                     }
                 }
             }
@@ -260,7 +260,7 @@ Item {
                                     text: versionRow.modelData.version
                                     font.pixelSize: 15
                                     font.bold: true
-                                    color: "#cdd6f4"
+                                    color: Theme.text
                                 }
                                 StatusBadge {
                                     visible: versionRow.modelData.relation !== ""
@@ -273,7 +273,7 @@ Item {
                                 Text {
                                     text: versionRow.modelData.date
                                     font.pixelSize: 13
-                                    color: "#6c7086"
+                                    color: Theme.overlay0
                                 }
                                 Item { Layout.fillWidth: true }
                                 GhostButton {
@@ -294,11 +294,11 @@ Item {
                                 textFormat: Text.MarkdownText
                                 text: versionRow.modelData.notes
                                 font.pixelSize: 13
-                                color: "#a6adc8"
+                                color: Theme.subtext0
                                 onLinkActivated: link => UpdateController.openPage(link)
                             }
 
-                            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#313244" }
+                            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.surface0 }
                         }
                     }
                 }

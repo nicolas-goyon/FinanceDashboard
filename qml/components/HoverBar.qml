@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls
 
 // barDelegate for BarSeries — replaces the default bar rectangle and adds a
 // tooltip on hover. Dynamic properties injected by Qt Graphs (documented
@@ -19,26 +20,34 @@ Rectangle {
     property int    decimals: 0
 
     color: hh.hovered ? Qt.lighter(barColor, 1.2) : barColor
-    border.color: barBorderColor
+    // The fill colour, not barBorderColor: without a borderColors list on the
+    // series, that is the outline colour of the theme on every bar (#71).
+    border.color: bar.color
     border.width: barBorderWidth
 
     HoverHandler { id: hh }
 
-    Rectangle {
+    // A ToolTip is a Popup: it is drawn in the overlay of the window. A plain
+    // child Rectangle was drawn under the bars created after this one (each
+    // bar is a sibling, and the renderer resets their z), and the plot area
+    // clipped it at the top (#59).
+    ToolTip {
         visible: hh.hovered && bar.barValue !== 0
-        z: 100
-        anchors.horizontalCenter: parent.horizontalCenter
-        anchors.bottom: parent.top
-        anchors.bottomMargin: 4
-        width: tipCol.implicitWidth + 16
-        height: tipCol.implicitHeight + 10
-        radius: 4
-        color: "#181825"
-        border.color: "#45475a"
+        x: (bar.width - width) / 2
+        y: -height - 4
+        padding: 0
+        topPadding: 5
+        bottomPadding: 5
+        leftPadding: 8
+        rightPadding: 8
 
-        Column {
-            id: tipCol
-            anchors.centerIn: parent
+        background: Rectangle {
+            radius: 4
+            color: Theme.mantle
+            border.color: Theme.surface1
+        }
+
+        contentItem: Column {
             spacing: 1
 
             Text {
@@ -53,7 +62,7 @@ Rectangle {
                       + bar.suffix
                 font.pixelSize: 15
                 font.bold: true
-                color: "#cdd6f4"
+                color: Theme.text
             }
         }
     }
