@@ -29,7 +29,7 @@ Item {
                 + "types & categories\" to edit the type/category lists accounts are classified by. "
                 + "Expand this category in the sidebar (the arrow) to see both."
             font.pixelSize: 15
-            color: "#6c7086"
+            color: Theme.overlay0
         }
     }
 }

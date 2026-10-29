@@ -25,7 +25,7 @@ Popup {
 
     signal saveClicked()
 
-    background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
+    background: Rectangle { color: Theme.mantle; border.color: Theme.surface1; radius: 8 }
 
     contentItem: ColumnLayout {
         spacing: 14
@@ -34,7 +34,7 @@ Popup {
             text: root.dialogTitle
             font.pixelSize: 19
             font.bold: true
-            color: "#cdd6f4"
+            color: Theme.text
         }
 
         ColumnLayout {

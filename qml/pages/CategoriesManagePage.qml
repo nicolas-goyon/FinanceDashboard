@@ -30,7 +30,7 @@ Item {
 
     signal closeRequested()
 
-    readonly property color defaultNewColor: "#89b4fa"
+    readonly property color defaultNewColor: Theme.blue
 
     ScrollView {
         anchors.fill: parent
@@ -66,7 +66,7 @@ Item {
                     + "(statement import). Colors are just for legends/swatches — no charts read "
                     + "them yet."
                 font.pixelSize: 14
-                color: "#6c7086"
+                color: Theme.overlay0
             }
 
             // ── Category list ────────────────────────────────────────────────
@@ -102,30 +102,30 @@ Item {
                                 Rectangle {
                                     Layout.preferredWidth: 18; Layout.preferredHeight: 18; radius: 9
                                     color: catRow.modelData.color
-                                    border.color: "#313244"
+                                    border.color: Theme.surface0
                                 }
                                 Text {
                                     text: catRow.modelData.name
                                     font.pixelSize: 16
                                     font.bold: true
-                                    color: "#cdd6f4"
+                                    color: Theme.text
                                 }
                                 Text {
                                     text: "(" + catRow.modelData.subcategories.length + " subcategor"
                                         + (catRow.modelData.subcategories.length === 1 ? "y" : "ies") + ")"
                                     font.pixelSize: 13
-                                    color: "#6c7086"
+                                    color: Theme.overlay0
                                 }
                                 Item { Layout.fillWidth: true }
 
                                 GhostButton {
                                     text: "✎ Edit"
-                                    textColor: "#89b4fa"
+                                    textColor: Theme.blue
                                     onClicked: categoryDialog.openFor(catRow.index, catRow.modelData.name, catRow.modelData.color)
                                 }
                                 GhostButton {
                                     text: "＋ Subcategory"
-                                    textColor: "#a6e3a1"
+                                    textColor: Theme.green
                                     onClicked: subcategoryDialog.openFor(
                                         catRow.index, -1, "",
                                         CategoryController.suggestSubcategoryColor(catRow.index))
@@ -154,17 +154,17 @@ Item {
                                     Rectangle {
                                         Layout.preferredWidth: 14; Layout.preferredHeight: 14; radius: 7
                                         color: subRow.modelData.color
-                                        border.color: "#313244"
+                                        border.color: Theme.surface0
                                     }
                                     Text {
                                         Layout.fillWidth: true
                                         text: subRow.modelData.name
                                         font.pixelSize: 15
-                                        color: "#a6adc8"
+                                        color: Theme.subtext0
                                     }
                                     GhostButton {
                                         text: "✎ Edit"
-                                        textColor: "#89b4fa"
+                                        textColor: Theme.blue
                                         fontSize: 12
                                         onClicked: subcategoryDialog.openFor(catRow.index, subRow.index, subRow.modelData.name, subRow.modelData.color)
                                     }
@@ -179,7 +179,7 @@ Item {
                                 }
                             }
 
-                            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.preferredHeight: 1; color: "#313244" }
+                            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.preferredHeight: 1; color: Theme.surface0 }
                         }
                     }
                 }
@@ -208,7 +208,7 @@ Item {
 
         ColumnLayout {
             spacing: 8
-            Text { text: "Color"; font.pixelSize: 15; color: "#6c7086" }
+            Text { text: "Color"; font.pixelSize: 15; color: Theme.overlay0 }
             ColorPickerRow { id: colorRow; dialogTitle: "Choose category color" }
         }
 
@@ -247,7 +247,7 @@ Item {
 
         ColumnLayout {
             spacing: 8
-            Text { text: "Color"; font.pixelSize: 15; color: "#6c7086" }
+            Text { text: "Color"; font.pixelSize: 15; color: Theme.overlay0 }
             ColorPickerRow { id: subColorRow; dialogTitle: "Choose subcategory color" }
         }
 

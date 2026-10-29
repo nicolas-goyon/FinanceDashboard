@@ -43,8 +43,8 @@ Rectangle {
 
         background: Rectangle {
             radius: 4
-            color: "#181825"
-            border.color: "#45475a"
+            color: Theme.mantle
+            border.color: Theme.surface1
         }
 
         contentItem: Column {
@@ -62,7 +62,7 @@ Rectangle {
                       + bar.suffix
                 font.pixelSize: 15
                 font.bold: true
-                color: "#cdd6f4"
+                color: Theme.text
             }
         }
     }

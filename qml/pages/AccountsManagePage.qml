@@ -82,7 +82,7 @@ Item {
                     + "none yet shows as \"not linked\" during import. No IBAN, BIC, or account number "
                     + "is stored on an account."
                 font.pixelSize: 14
-                color: "#6c7086"
+                color: Theme.overlay0
             }
 
             // ── Accounts ──────────────────────────────────────────────────────
@@ -119,12 +119,12 @@ Item {
                                     text: accRow.modelData.name
                                     font.pixelSize: 16
                                     font.bold: true
-                                    color: "#cdd6f4"
+                                    color: Theme.text
                                 }
                                 Text {
                                     text: accRow.modelData.type
                                     font.pixelSize: 13
-                                    color: "#6c7086"
+                                    color: Theme.overlay0
                                 }
                                 Rectangle {
                                     visible: accRow.modelData.category.length > 0
@@ -132,13 +132,13 @@ Item {
                                     Layout.preferredHeight: 20
                                     radius: 10
                                     color: Qt.rgba(1, 1, 1, 0.08)
-                                    border.color: AccountController.accountCategoryColor(accRow.modelData.category) || "#6c7086"
+                                    border.color: AccountController.accountCategoryColor(accRow.modelData.category) || Theme.overlay0
                                     Text {
                                         id: catBadgeText
                                         anchors.centerIn: parent
                                         text: accRow.modelData.category
                                         font.pixelSize: 12
-                                        color: AccountController.accountCategoryColor(accRow.modelData.category) || "#6c7086"
+                                        color: AccountController.accountCategoryColor(accRow.modelData.category) || Theme.overlay0
                                     }
                                 }
                                 StatusBadge {
@@ -156,7 +156,7 @@ Item {
                                 }
                                 GhostButton {
                                     text: "✎ Edit"
-                                    textColor: "#89b4fa"
+                                    textColor: Theme.blue
                                     onClicked: accountDialog.openForEdit(accRow.index)
                                 }
                                 GhostButton {
@@ -174,14 +174,14 @@ Item {
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 4
                                 spacing: 20
-                                Text { text: accRow.modelData.currency; font.pixelSize: 12; color: "#6c7086" }
+                                Text { text: accRow.modelData.currency; font.pixelSize: 12; color: Theme.overlay0 }
                                 Text {
                                     visible: accRow.modelData.notes.length > 0
                                     Layout.fillWidth: true
                                     text: accRow.modelData.notes
                                     font.pixelSize: 12
                                     font.italic: true
-                                    color: "#45475a"
+                                    color: Theme.surface1
                                     elide: Text.ElideRight
                                 }
                             }
@@ -192,7 +192,7 @@ Item {
                                 Layout.leftMargin: 4
                                 spacing: 8
 
-                                Text { text: "Hashes:"; font.pixelSize: 12; color: "#6c7086" }
+                                Text { text: "Hashes:"; font.pixelSize: 12; color: Theme.overlay0 }
 
                                 Flow {
                                     Layout.fillWidth: true
@@ -207,8 +207,8 @@ Item {
                                             width: hashChipRow.implicitWidth + 16
                                             height: 22
                                             radius: 11
-                                            color: "#181825"
-                                            border.color: "#313244"
+                                            color: Theme.mantle
+                                            border.color: Theme.surface0
 
                                             RowLayout {
                                                 id: hashChipRow
@@ -218,7 +218,7 @@ Item {
                                                     text: hashChip.modelData.hash.substring(0, 10) + "… (" + hashChip.modelData.source + ")"
                                                     font.pixelSize: 11
                                                     font.family: Fonts.monospace
-                                                    color: "#a6adc8"
+                                                    color: Theme.subtext0
                                                 }
                                                 // Asks first: without the hash, the import no
                                                 // longer finds this account by itself (#78).
@@ -238,7 +238,7 @@ Item {
 
                                 GhostButton {
                                     text: "＋ Add hash"
-                                    textColor: "#a6e3a1"
+                                    textColor: Theme.green
                                     onClicked: addHashDialog.openFor(accRow.index)
                                 }
                             }
@@ -253,7 +253,7 @@ Item {
                                 Layout.leftMargin: 4
                                 spacing: 8
 
-                                Text { text: "Balance checkpoints:"; font.pixelSize: 12; color: "#6c7086" }
+                                Text { text: "Balance checkpoints:"; font.pixelSize: 12; color: Theme.overlay0 }
 
                                 Flow {
                                     Layout.fillWidth: true
@@ -271,8 +271,8 @@ Item {
                                             width: checkpointChipRow.implicitWidth + 16
                                             height: 22
                                             radius: 11
-                                            color: "#181825"
-                                            border.color: "#313244"
+                                            color: Theme.mantle
+                                            border.color: Theme.surface0
 
                                             RowLayout {
                                                 id: checkpointChipRow
@@ -282,7 +282,7 @@ Item {
                                                     text: checkpointChip.modelData.dateText + " · " + checkpointChip.modelData.balanceText
                                                         + (checkpointChip.modelData.note.length > 0 ? " (" + checkpointChip.modelData.note + ")" : "")
                                                     font.pixelSize: 11
-                                                    color: "#a6adc8"
+                                                    color: Theme.subtext0
                                                 }
                                                 GhostButton {
                                                     text: "×"
@@ -302,12 +302,12 @@ Item {
 
                                 GhostButton {
                                     text: "＋ Add checkpoint"
-                                    textColor: "#f9e2af"
+                                    textColor: Theme.yellow
                                     onClicked: addCheckpointDialog.openFor(accRow.index)
                                 }
                             }
 
-                            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.preferredHeight: 1; color: "#313244" }
+                            Rectangle { Layout.fillWidth: true; Layout.topMargin: 4; Layout.preferredHeight: 1; color: Theme.surface0 }
                         }
                     }
                 }
@@ -388,7 +388,7 @@ Item {
         FormRow { id: accNameRow; label: "Name"; labelWidth: 70; placeholderText: "e.g. Livret Jeune" }
         RowLayout {
             spacing: 10
-            Text { Layout.preferredWidth: 70; text: "Type"; font.pixelSize: 15; color: "#6c7086" }
+            Text { Layout.preferredWidth: 70; text: "Type"; font.pixelSize: 15; color: Theme.overlay0 }
             ComboBox {
                 id: accTypeBox
                 Layout.fillWidth: true
@@ -405,11 +405,11 @@ Item {
             text: "There is no account type. The account is saved without a type. To add types, go to "
                 + "Account Management → \"Account types & categories\"."
             font.pixelSize: 13
-            color: "#f9e2af"
+            color: Theme.yellow
         }
         RowLayout {
             spacing: 10
-            Text { Layout.preferredWidth: 70; text: "Category"; font.pixelSize: 15; color: "#6c7086" }
+            Text { Layout.preferredWidth: 70; text: "Category"; font.pixelSize: 15; color: Theme.overlay0 }
             ComboBox {
                 id: accCategoryBox
                 Layout.fillWidth: true
@@ -420,7 +420,7 @@ Item {
         }
         RowLayout {
             spacing: 10
-            Text { Layout.preferredWidth: 70; text: "Currency"; font.pixelSize: 15; color: "#6c7086" }
+            Text { Layout.preferredWidth: 70; text: "Currency"; font.pixelSize: 15; color: Theme.overlay0 }
             ComboBox {
                 id: accCurrencyBox
                 Layout.preferredWidth: 140
@@ -535,7 +535,7 @@ Item {
                 + "belongs to one account only. Most accounts don't need this — link an account straight from "
                 + "the import review screen instead (\"Link this account\")."
             font.pixelSize: 13
-            color: "#6c7086"
+            color: Theme.overlay0
         }
         // Not a FormRow — this dialog has no label column, just a full-width
         // field, so it uses the same TextField recipe directly.
@@ -543,11 +543,11 @@ Item {
             id: hashField
             Layout.fillWidth: true
             placeholderText: "64 hexadecimal characters"
-            placeholderTextColor: "#45475a"
+            placeholderTextColor: Theme.surface1
             font.family: Fonts.monospace
-            color: "#cdd6f4"
+            color: Theme.text
             font.pixelSize: 14
-            background: Rectangle { color: "#11111b"; radius: 4; border.color: hashField.activeFocus ? "#89b4fa" : "#313244" }
+            background: Rectangle { color: Theme.crust; radius: 4; border.color: hashField.activeFocus ? Theme.blue : Theme.surface0 }
         }
 
         onSaveClicked: {
@@ -589,7 +589,7 @@ Item {
                 + "account opening hasn't been imported (see the import review screen's "
                 + "reconciliation check)."
             font.pixelSize: 13
-            color: "#6c7086"
+            color: Theme.overlay0
         }
         FormRow { id: checkpointDateRow; label: "Date"; labelWidth: 70; placeholderText: "yyyy-MM-dd" }
         FormRow { id: checkpointBalanceRow; label: "Balance"; labelWidth: 70; placeholderText: "e.g. 1250.00" }

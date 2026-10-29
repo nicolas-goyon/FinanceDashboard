@@ -202,6 +202,9 @@ qt_add_executable(FinanceDashboard
 # Turning it into a proper Qt Test case is still the plan — see TODO.md.
 
 # ── QML module — controllers (QML_ELEMENT) + QML UI ───────────────────────────
+# Theme.qml is a QML singleton (`pragma Singleton`): every colour of the QML (#79).
+set_source_files_properties(qml/components/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(FinanceDashboard
     URI FinanceDashboard
     VERSION 1.0
@@ -252,6 +255,7 @@ qt_add_qml_module(FinanceDashboard
         qml/components/FormDialog.qml
         qml/components/ConfirmDialog.qml
         qml/components/EmptyState.qml
+        qml/components/Theme.qml
         qml/pages/OverviewPage.qml
         qml/pages/CashFlowPage.qml
         qml/pages/SavingsPage.qml

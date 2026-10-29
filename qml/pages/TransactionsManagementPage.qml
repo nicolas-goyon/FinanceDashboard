@@ -33,7 +33,7 @@ Item {
                 + "classify them, or \"View & Edit Transactions\" to see and fix the saved transaction "
                 + "table for any account. Expand this category in the sidebar (the arrow) to see all three."
             font.pixelSize: 15
-            color: "#6c7086"
+            color: Theme.overlay0
         }
     }
 }

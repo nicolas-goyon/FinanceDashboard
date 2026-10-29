@@ -48,7 +48,7 @@ Item {
         width: hh.hovered ? 13 : 8
         height: width
         radius: width / 2
-        color: "#1e1e2e"
+        color: Theme.base
         border.color: root.pointColor
         border.width: 2
     }
@@ -74,8 +74,8 @@ Item {
 
         background: Rectangle {
             radius: 4
-            color: "#181825"
-            border.color: "#45475a"
+            color: Theme.mantle
+            border.color: Theme.surface1
         }
 
         contentItem: Column {
@@ -93,14 +93,14 @@ Item {
                 visible: root.xIsTime
                 text: Qt.formatDate(new Date(root.pointValueX), root.dateFormat)
                 font.pixelSize: 13
-                color: "#6c7086"
+                color: Theme.overlay0
             }
             Text {
                 text: root.displayValue.toLocaleString(Qt.locale("fr-FR"), 'f', root.decimals)
                       + root.suffix
                 font.pixelSize: 15
                 font.bold: true
-                color: "#cdd6f4"
+                color: Theme.text
             }
         }
     }

@@ -71,26 +71,26 @@ Item {
 
                     LineSeries {
                         name: "Portfolio value"
-                        color: "#89b4fa"
+                        color: Theme.blue
                         width: 2.5
                         Component.onCompleted: {
                             var t = controller.timestamps(); var v = controller.portfolioValues()
                             for (var i = 0; i < t.length; i++) append(t[i], v[i])
                         }
                         pointDelegate: Component {
-                            HoverPoint { seriesName: "Portfolio value"; pointColor: "#89b4fa" }
+                            HoverPoint { seriesName: "Portfolio value"; pointColor: Theme.blue }
                         }
                     }
                     LineSeries {
                         name: "Cumulative deposits"
-                        color: "#6c7086"
+                        color: Theme.overlay0
                         width: 2
                         Component.onCompleted: {
                             var t = controller.timestamps(); var v = controller.depositValues()
                             for (var i = 0; i < t.length; i++) append(t[i], v[i])
                         }
                         pointDelegate: Component {
-                            HoverPoint { seriesName: "Cumulative deposits"; pointColor: "#6c7086" }
+                            HoverPoint { seriesName: "Cumulative deposits"; pointColor: Theme.overlay0 }
                         }
                     }
                 }
@@ -142,7 +142,7 @@ Item {
                             Layout.alignment: Qt.AlignHCenter
                             text: "Click a slice for details"
                             font.pixelSize: 14
-                            color: "#6c7086"
+                            color: Theme.overlay0
                         }
                     }
                 }
@@ -171,12 +171,12 @@ Item {
                             }
                             BarSet {
                                 label: "Gain"
-                                color: "#a6e3a1"
+                                color: Theme.green
                                 Component.onCompleted: values = controller.perfGains
                             }
                             BarSet {
                                 label: "Loss"
-                                color: "#f38ba8"
+                                color: Theme.red
                                 Component.onCompleted: values = controller.perfLosses
                             }
                         }

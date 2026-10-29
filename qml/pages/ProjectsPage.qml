@@ -88,8 +88,8 @@ Item {
                         width: 320
                         height: cardCol.implicitHeight + 28
                         radius: 8
-                        color: cardHover.hovered ? "#232336" : "#1e1e2e"
-                        border.color: cardHover.hovered ? "#89b4fa" : "#313244"
+                        color: cardHover.hovered ? Theme.surfaceHover : Theme.base
+                        border.color: cardHover.hovered ? Theme.blue : Theme.surface0
 
                         HoverHandler { id: cardHover }
                         TapHandler {
@@ -111,7 +111,7 @@ Item {
                                     text: projectCard.modelData.name
                                     font.pixelSize: 18
                                     font.bold: true
-                                    color: "#cdd6f4"
+                                    color: Theme.text
                                     elide: Text.ElideRight
                                 }
                                 StatusBadge {
@@ -133,18 +133,18 @@ Item {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 8
                                     radius: 4
-                                    color: "#11111b"
+                                    color: Theme.crust
                                     Rectangle {
                                         width: parent.width * projectCard.modelData.progressPct
                                         height: parent.height
                                         radius: 4
-                                        color: "#89b4fa"
+                                        color: Theme.blue
                                     }
                                 }
                                 Text {
                                     text: Math.round(projectCard.modelData.progressPct * 100) + " %"
                                     font.pixelSize: 14
-                                    color: "#6c7086"
+                                    color: Theme.overlay0
                                 }
                             }
 
@@ -154,14 +154,14 @@ Item {
                                 rowSpacing: 3
                                 columnSpacing: 16
 
-                                Text { text: "Target";     font.pixelSize: 13; color: "#6c7086" }
-                                Text { text: projectCard.modelData.targetText;     font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
-                                Text { text: "Saved";      font.pixelSize: 13; color: "#6c7086" }
-                                Text { text: projectCard.modelData.earmarkedText + "   (" + projectCard.modelData.monthlyText + ")"; font.pixelSize: 15; color: "#cdd6f4" }
-                                Text { text: "Target date"; font.pixelSize: 13; color: "#6c7086" }
-                                Text { text: projectCard.modelData.targetDateText; font.pixelSize: 15; color: "#cdd6f4" }
-                                Text { text: "Completion"; font.pixelSize: 13; color: "#6c7086" }
-                                Text { text: projectCard.modelData.completionText; font.pixelSize: 15; color: projectCard.modelData.onTrack ? "#a6e3a1" : "#f9e2af" }
+                                Text { text: "Target";     font.pixelSize: 13; color: Theme.overlay0 }
+                                Text { text: projectCard.modelData.targetText;     font.pixelSize: 15; font.bold: true; color: Theme.text }
+                                Text { text: "Saved";      font.pixelSize: 13; color: Theme.overlay0 }
+                                Text { text: projectCard.modelData.earmarkedText + "   (" + projectCard.modelData.monthlyText + ")"; font.pixelSize: 15; color: Theme.text }
+                                Text { text: "Target date"; font.pixelSize: 13; color: Theme.overlay0 }
+                                Text { text: projectCard.modelData.targetDateText; font.pixelSize: 15; color: Theme.text }
+                                Text { text: "Completion"; font.pixelSize: 13; color: Theme.overlay0 }
+                                Text { text: projectCard.modelData.completionText; font.pixelSize: 15; color: projectCard.modelData.onTrack ? Theme.green : Theme.yellow }
                             }
                         }
                     }
@@ -195,7 +195,7 @@ Item {
                     text: controller.projectNames[controller.currentProject] ?? ""
                     font.pixelSize: 23
                     font.bold: true
-                    color: "#cdd6f4"
+                    color: Theme.text
                 }
                 Item { Layout.fillWidth: true }
             }
@@ -244,16 +244,16 @@ Item {
                     LineSeries {
                         id: projectionSeries
                         name: "Projected savings"
-                        color: "#89b4fa"
+                        color: Theme.blue
                         width: 2.5
                         pointDelegate: Component {
-                            HoverPoint { seriesName: "Projected"; pointColor: "#89b4fa" }
+                            HoverPoint { seriesName: "Projected"; pointColor: Theme.blue }
                         }
                     }
                     LineSeries {
                         id: targetSeries
                         name: "Target"
-                        color: "#f38ba8"
+                        color: Theme.red
                         width: 2
                     }
                 }
@@ -272,7 +272,7 @@ Item {
 
                     RowLayout {
                         spacing: 10
-                        Text { text: "Annual rate:"; font.pixelSize: 15; color: "#6c7086" }
+                        Text { text: "Annual rate:"; font.pixelSize: 15; color: Theme.overlay0 }
                         // Set from the controller, not bound: a keystroke breaks a binding.
                         // After each edit the field shows the rate that the controller
                         // applies, so a refused value does not stay on screen (#66).
@@ -280,13 +280,13 @@ Item {
                             id: rateField
                             Layout.preferredWidth: 80
                             Component.onCompleted: text = controller.loanRatePct.toFixed(2)
-                            color: "#cdd6f4"
+                            color: Theme.text
                             font.pixelSize: 15
                             inputMethodHints: Qt.ImhFormattedNumbersOnly
                             background: Rectangle {
-                                color: "#11111b"
+                                color: Theme.crust
                                 radius: 4
-                                border.color: rateField.activeFocus ? "#89b4fa" : "#313244"
+                                border.color: rateField.activeFocus ? Theme.blue : Theme.surface0
                             }
                             onEditingFinished: {
                                 var v = page.parseNumber(text)
@@ -302,21 +302,21 @@ Item {
                                 }
                             }
                         }
-                        Text { text: "%   —   rates are entered manually (no market data)"; font.pixelSize: 14; color: "#6c7086" }
+                        Text { text: "%   —   rates are entered manually (no market data)"; font.pixelSize: 14; color: Theme.overlay0 }
                         Item { Layout.fillWidth: true }
                     }
 
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: 30
-                        color: "#181825"
+                        color: Theme.mantle
                         radius: 4
                         RowLayout {
                             anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                            Text { Layout.preferredWidth: 180; text: "Scenario";        font.pixelSize: 14; font.bold: true; color: "#6c7086" }
-                            Text { Layout.fillWidth: true;     text: "Monthly payment"; font.pixelSize: 14; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                            Text { Layout.preferredWidth: 140; text: "Total interest";  font.pixelSize: 14; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                            Text { Layout.preferredWidth: 140; text: "Total cost";      font.pixelSize: 14; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                            Text { Layout.preferredWidth: 180; text: "Scenario";        font.pixelSize: 14; font.bold: true; color: Theme.overlay0 }
+                            Text { Layout.fillWidth: true;     text: "Monthly payment"; font.pixelSize: 14; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                            Text { Layout.preferredWidth: 140; text: "Total interest";  font.pixelSize: 14; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                            Text { Layout.preferredWidth: 140; text: "Total cost";      font.pixelSize: 14; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
                         }
                     }
                     Repeater {
@@ -327,14 +327,14 @@ Item {
                             required property int index
                             Layout.fillWidth: true
                             Layout.preferredHeight: 34
-                            color: index % 2 === 0 ? "transparent" : "#181825"
+                            color: index % 2 === 0 ? "transparent" : Theme.mantle
                             radius: 4
                             RowLayout {
                                 anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                                Text { Layout.preferredWidth: 180; text: loanRow.modelData.label;         font.pixelSize: 15; color: "#cdd6f4" }
-                                Text { Layout.fillWidth: true;     text: loanRow.modelData.monthly;       font.pixelSize: 15; font.bold: true; color: "#89b4fa"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 140; text: loanRow.modelData.totalInterest; font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
-                                Text { Layout.preferredWidth: 140; text: loanRow.modelData.totalCost;     font.pixelSize: 15; color: "#cdd6f4"; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 180; text: loanRow.modelData.label;         font.pixelSize: 15; color: Theme.text }
+                                Text { Layout.fillWidth: true;     text: loanRow.modelData.monthly;       font.pixelSize: 15; font.bold: true; color: Theme.blue; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 140; text: loanRow.modelData.totalInterest; font.pixelSize: 15; color: Theme.red; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 140; text: loanRow.modelData.totalCost;     font.pixelSize: 15; color: Theme.text; horizontalAlignment: Text.AlignRight }
                             }
                         }
                     }
@@ -342,16 +342,16 @@ Item {
                     Rectangle {
                         Layout.fillWidth: true
                         Layout.preferredHeight: saveVsBorrow.implicitHeight + 20
-                        color: "#181825"
+                        color: Theme.mantle
                         radius: 6
-                        border.color: "#313244"
+                        border.color: Theme.surface0
                         Text {
                             id: saveVsBorrow
                             anchors { fill: parent; margins: 10 }
                             text: "⚖  " + controller.saveVsBorrowText
                             wrapMode: Text.WordWrap
                             font.pixelSize: 15
-                            color: "#cdd6f4"
+                            color: Theme.text
                         }
                     }
                 }
@@ -381,7 +381,7 @@ Item {
             visible: text.length > 0
             wrapMode: Text.WordWrap
             font.pixelSize: 13
-            color: "#f38ba8"
+            color: Theme.red
         }
 
         onOpened: newProjectError.text = ""

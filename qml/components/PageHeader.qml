@@ -25,12 +25,12 @@ RowLayout {
     Rectangle {
         visible: root.showBack
         width: 26; height: 26; radius: 4
-        color: backHover.hovered ? "#181825" : "transparent"
+        color: backHover.hovered ? Theme.mantle : "transparent"
         Text {
             anchors.centerIn: parent
             text: "←"
             font.pixelSize: 19
-            color: "#89b4fa"
+            color: Theme.blue
         }
         HoverHandler { id: backHover }
         TapHandler { onTapped: root.backClicked() }
@@ -40,14 +40,14 @@ RowLayout {
         text: root.title
         font.pixelSize: 23
         font.bold: true
-        color: "#cdd6f4"
+        color: Theme.text
     }
 
     Text {
         visible: root.mock
         text: "[MOCK]"
         font.pixelSize: 14
-        color: "#f38ba8"
+        color: Theme.red
     }
 
     Item { Layout.fillWidth: true }

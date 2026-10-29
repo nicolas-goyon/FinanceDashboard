@@ -48,13 +48,13 @@ Rectangle {
             id: headerRow
             Layout.fillWidth: true
             Layout.preferredHeight: 40
-            color: root.current ? "#313244" : (labelArea.containsMouse ? "#1e1e2e" : "transparent")
+            color: root.current ? Theme.surface0 : (labelArea.containsMouse ? Theme.base : "transparent")
 
             Rectangle {
                 visible: root.current
                 anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
                 width: 3
-                color: "#89b4fa"
+                color: Theme.blue
             }
 
             RowLayout {
@@ -74,7 +74,7 @@ Rectangle {
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
                         text: root.categoryLabel
-                        color: root.current ? "#89b4fa" : "#cdd6f4"
+                        color: root.current ? Theme.blue : Theme.text
                         font { pixelSize: 17; bold: root.current }
                     }
                 }
@@ -90,7 +90,7 @@ Rectangle {
                     Text {
                         anchors.centerIn: parent
                         text: root.expanded ? "▾" : "▸" // ▾ / ▸
-                        color: "#6c7086"
+                        color: Theme.overlay0
                         font.pixelSize: 15
                     }
                 }
@@ -115,20 +115,20 @@ Rectangle {
                     readonly property bool isActive: modelData.id === root.currentActionId
                     width: actionsColumn.width
                     height: 30
-                    color: actionRow.isActive ? "#232336" : (actionMouse.containsMouse ? "#1e1e2e" : "transparent")
+                    color: actionRow.isActive ? Theme.surfaceHover : (actionMouse.containsMouse ? Theme.base : "transparent")
 
                     Rectangle {
                         visible: actionRow.isActive
                         anchors { left: parent.left; top: parent.top; bottom: parent.bottom }
                         width: 3
-                        color: "#89b4fa"
+                        color: Theme.blue
                     }
 
                     Text {
                         anchors { left: parent.left; verticalCenter: parent.verticalCenter }
                         anchors.leftMargin: 36
                         text: actionRow.modelData.label
-                        color: actionRow.isActive ? "#89b4fa" : "#a6adc8"
+                        color: actionRow.isActive ? Theme.blue : Theme.subtext0
                         font.pixelSize: 15
                         font.bold: actionRow.isActive
                     }

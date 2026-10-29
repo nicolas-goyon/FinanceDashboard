@@ -31,7 +31,7 @@ Item {
 
     signal closeRequested()
 
-    readonly property color defaultNewColor: "#89b4fa"
+    readonly property color defaultNewColor: Theme.blue
 
     ScrollView {
         anchors.fill: parent
@@ -74,7 +74,7 @@ Item {
                     + "Urgent savings, …) and drive the badge color shown on account rows. Both are picked "
                     + "per-account on Manage Accounts."
                 font.pixelSize: 14
-                color: "#6c7086"
+                color: Theme.overlay0
             }
 
             // ── Account types ─────────────────────────────────────────────────
@@ -106,17 +106,17 @@ Item {
                                 width: typeChipRow.implicitWidth + 20
                                 height: 32
                                 radius: 16
-                                color: "#181825"
-                                border.color: "#313244"
+                                color: Theme.mantle
+                                border.color: Theme.surface0
 
                                 RowLayout {
                                     id: typeChipRow
                                     anchors.centerIn: parent
                                     spacing: 6
-                                    Text { text: typeChip.modelData.name; font.pixelSize: 14; color: "#cdd6f4" }
+                                    Text { text: typeChip.modelData.name; font.pixelSize: 14; color: Theme.text }
                                     GhostButton {
                                         text: "✎"
-                                        textColor: "#89b4fa"
+                                        textColor: Theme.blue
                                         horizontalPadding: 5
                                         onClicked: typeDialog.openFor(typeChip.index, typeChip.modelData.name)
                                     }
@@ -164,8 +164,8 @@ Item {
                                 width: chipRow.implicitWidth + 20
                                 height: 32
                                 radius: 16
-                                color: "#181825"
-                                border.color: "#313244"
+                                color: Theme.mantle
+                                border.color: Theme.surface0
 
                                 RowLayout {
                                     id: chipRow
@@ -174,12 +174,12 @@ Item {
                                     Rectangle {
                                         Layout.preferredWidth: 14; Layout.preferredHeight: 14; radius: 7
                                         color: catChip.modelData.color
-                                        border.color: "#313244"
+                                        border.color: Theme.surface0
                                     }
-                                    Text { text: catChip.modelData.name; font.pixelSize: 14; color: "#cdd6f4" }
+                                    Text { text: catChip.modelData.name; font.pixelSize: 14; color: Theme.text }
                                     GhostButton {
                                         text: "✎"
-                                        textColor: "#89b4fa"
+                                        textColor: Theme.blue
                                         horizontalPadding: 5
                                         onClicked: categoryDialog.openFor(catChip.index, catChip.modelData.name, catChip.modelData.color)
                                     }
@@ -265,7 +265,7 @@ Item {
 
         ColumnLayout {
             spacing: 8
-            Text { text: "Color"; font.pixelSize: 15; color: "#6c7086" }
+            Text { text: "Color"; font.pixelSize: 15; color: Theme.overlay0 }
             ColorPickerRow { id: colorRow; dialogTitle: "Choose category color" }
         }
 

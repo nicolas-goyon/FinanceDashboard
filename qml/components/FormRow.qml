@@ -24,18 +24,18 @@ RowLayout {
         Layout.preferredWidth: root.labelWidth
         text: root.label
         font.pixelSize: 15
-        color: "#6c7086"
+        color: Theme.overlay0
     }
     TextField {
         id: field
         Layout.fillWidth: true
-        placeholderTextColor: "#45475a"
-        color: "#cdd6f4"
+        placeholderTextColor: Theme.surface1
+        color: Theme.text
         font.pixelSize: 15
         background: Rectangle {
-            color: "#11111b"
+            color: Theme.crust
             radius: 4
-            border.color: field.activeFocus ? "#89b4fa" : "#313244"
+            border.color: field.activeFocus ? Theme.blue : Theme.surface0
         }
     }
 }

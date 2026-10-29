@@ -71,38 +71,38 @@ Item {
 
                     LineSeries {
                         name: "Livret A"
-                        color: "#89b4fa"
+                        color: Theme.blue
                         width: 2
                         Component.onCompleted: {
                             var t = controller.timestamps(); var v = controller.accountValues(0)
                             for (var i = 0; i < t.length; i++) append(t[i], v[i])
                         }
                         pointDelegate: Component {
-                            HoverPoint { seriesName: "Livret A"; pointColor: "#89b4fa" }
+                            HoverPoint { seriesName: "Livret A"; pointColor: Theme.blue }
                         }
                     }
                     LineSeries {
                         name: "LDDS"
-                        color: "#a6e3a1"
+                        color: Theme.green
                         width: 2
                         Component.onCompleted: {
                             var t = controller.timestamps(); var v = controller.accountValues(1)
                             for (var i = 0; i < t.length; i++) append(t[i], v[i])
                         }
                         pointDelegate: Component {
-                            HoverPoint { seriesName: "LDDS"; pointColor: "#a6e3a1" }
+                            HoverPoint { seriesName: "LDDS"; pointColor: Theme.green }
                         }
                     }
                     LineSeries {
                         name: "Assurance Vie"
-                        color: "#f9e2af"
+                        color: Theme.yellow
                         width: 2
                         Component.onCompleted: {
                             var t = controller.timestamps(); var v = controller.accountValues(2)
                             for (var i = 0; i < t.length; i++) append(t[i], v[i])
                         }
                         pointDelegate: Component {
-                            HoverPoint { seriesName: "Assurance Vie"; pointColor: "#f9e2af" }
+                            HoverPoint { seriesName: "Assurance Vie"; pointColor: Theme.yellow }
                         }
                     }
                 }
@@ -133,19 +133,19 @@ Item {
                                     Layout.fillWidth: true
                                     text: goalRow.modelData.label
                                     font.pixelSize: 15
-                                    color: "#cdd6f4"
+                                    color: Theme.text
                                 }
                                 Text {
                                     text: goalRow.modelData.currentText + "  /  " + goalRow.modelData.targetText
                                     font.pixelSize: 14
-                                    color: "#6c7086"
+                                    color: Theme.overlay0
                                 }
                             }
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 8
                                 radius: 4
-                                color: "#11111b"
+                                color: Theme.crust
                                 Rectangle {
                                     width: parent.width * goalRow.modelData.pct
                                     height: parent.height
@@ -183,17 +183,17 @@ Item {
                         }
                         BarSet {
                             label: "Livret A"
-                            color: "#89b4fa"
+                            color: Theme.blue
                             Component.onCompleted: values = controller.interestValues(0)
                         }
                         BarSet {
                             label: "LDDS"
-                            color: "#a6e3a1"
+                            color: Theme.green
                             Component.onCompleted: values = controller.interestValues(1)
                         }
                         BarSet {
                             label: "Assurance Vie"
-                            color: "#f9e2af"
+                            color: Theme.yellow
                             Component.onCompleted: values = controller.interestValues(2)
                         }
                     }

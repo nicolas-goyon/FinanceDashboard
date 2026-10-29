@@ -14,23 +14,23 @@ Rectangle {
 
     property string text: ""
     property string variant: "neutral" // "neutral" | "danger"
-    property color textColor: "#cdd6f4"
+    property color textColor: Theme.text
     property real fontSize: 13
     property bool bold: false
     property real horizontalPadding: 8
 
     signal clicked()
 
-    readonly property color restingTextColor: root.variant === "danger" ? "#6c7086" : root.textColor
-    readonly property color activeTextColor: root.variant === "danger" ? "#f38ba8" : root.textColor
-    readonly property color hoverBg: root.variant === "danger" ? "#3d2028" : "#1e1e2e"
-    readonly property color hoverBorderColor: root.variant === "danger" ? "#f38ba8" : "#313244"
+    readonly property color restingTextColor: root.variant === "danger" ? Theme.overlay0 : root.textColor
+    readonly property color activeTextColor: root.variant === "danger" ? Theme.red : root.textColor
+    readonly property color hoverBg: root.variant === "danger" ? Theme.dangerBg : Theme.base
+    readonly property color hoverBorderColor: root.variant === "danger" ? Theme.red : Theme.surface0
 
     implicitWidth: label.implicitWidth + root.horizontalPadding * 2
     implicitHeight: 22
     radius: 4
     color: hover.hovered ? root.hoverBg : "transparent"
-    border.color: hover.hovered ? root.hoverBorderColor : "#313244"
+    border.color: hover.hovered ? root.hoverBorderColor : Theme.surface0
 
     Text {
         id: label

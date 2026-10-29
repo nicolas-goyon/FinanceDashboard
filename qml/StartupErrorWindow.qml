@@ -23,7 +23,7 @@ ApplicationWindow {
     // adds the name (QGuiApplication::applicationDisplayName, set by main.cpp)
     // at the end of a window title that does not end with it.
     title: "Can't start — " + Application.displayName
-    color: "#11111b"
+    color: Theme.crust
 
     ColumnLayout {
         anchors.fill: parent
@@ -33,14 +33,14 @@ ApplicationWindow {
         Text {
             Layout.fillWidth: true
             text: Application.displayName + " can't start"
-            color: "#f38ba8"
+            color: Theme.red
             font.pixelSize: 22
             font.bold: true
         }
         Text {
             Layout.fillWidth: true
             text: "One or more requirements below are not met. Fix the ones marked ✘ and start the app again."
-            color: "#cdd6f4"
+            color: Theme.text
             font.pixelSize: 14
             wrapMode: Text.WordWrap
         }
@@ -63,9 +63,9 @@ ApplicationWindow {
 
                         Layout.fillWidth: true
                         implicitHeight: rowContent.implicitHeight + 20
-                        color: "#1e1e2e"
+                        color: Theme.base
                         radius: 6
-                        border.color: row.modelData.ok ? "#313244" : "#f38ba8"
+                        border.color: row.modelData.ok ? Theme.surface0 : Theme.red
 
                         RowLayout {
                             id: rowContent
@@ -76,7 +76,7 @@ ApplicationWindow {
                             Text {
                                 Layout.alignment: Qt.AlignTop
                                 text: row.modelData.ok ? "✔" : "✘"
-                                color: row.modelData.ok ? "#a6e3a1" : "#f38ba8"
+                                color: row.modelData.ok ? Theme.green : Theme.red
                                 font.pixelSize: 18
                             }
                             ColumnLayout {
@@ -87,14 +87,14 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: row.modelData.name
                                           + (!row.modelData.ok && !row.modelData.fatal ? "  (warning)" : "")
-                                    color: "#cdd6f4"
+                                    color: Theme.text
                                     font.pixelSize: 15
                                     font.bold: true
                                 }
                                 Text {
                                     Layout.fillWidth: true
                                     text: row.modelData.detail
-                                    color: "#6c7086"
+                                    color: Theme.overlay0
                                     font.pixelSize: 13
                                     wrapMode: Text.WrapAnywhere
                                 }
@@ -102,7 +102,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     visible: !row.modelData.ok && row.modelData.hint !== ""
                                     text: "Fix: " + row.modelData.hint
-                                    color: "#f9e2af"
+                                    color: Theme.yellow
                                     font.pixelSize: 13
                                     wrapMode: Text.WordWrap
                                 }
