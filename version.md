@@ -35,7 +35,14 @@ _No changes logged yet — add one with `python tools/version.py add <Section> "
 
 ---
 
-## v0.2.3 (release in progress)
+## v0.2.3 — 2026-10-29 — User interface
+
+User interface release. The charts give their values: pie slices are clickable, the bar and
+point tooltips are shown in full, the day appears on the daily balance chart, and the theme
+outlines are gone. The tables of the import review and of the transactions scroll at the
+default window size. A review survives a visit to another page, and the account dialogs keep
+their values and delete the right account. Projects reads French numbers. ARCHITECTURE.MD and
+README.md are rewritten, every QML colour comes from one Theme, and qmllint reports no warning.
 
 ### Changed
 - QML colours: every colour of the QML comes from a `Theme` singleton
