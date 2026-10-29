@@ -53,6 +53,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   loaded the first time it is shown and is then kept; "Done" on the import report starts the
   next import at step 1. The target account is kept by its id, so an account added or removed
   on another page meanwhile does not change the account that Save writes to (#64).
+- Manage Accounts, account dialog: an edit keeps a currency that is not in the list, instead of
+  saving EUR. A type, category or currency that is not in its list (removed, or unknown) is
+  shown in its box as "<value> (kept)", and Save keeps it; an empty category shows "(none)"
+  (#63).
 
 ---
 
