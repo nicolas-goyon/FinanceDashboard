@@ -67,6 +67,11 @@ builds, source archives). Then CI opens a pull request that merges the release b
   fails, as `CMakeLists.txt` requires (`qt_standard_project_setup(REQUIRES 6.10)`). Before, 6.8
   and 6.9 passed the check, and the Docker build then stopped at configure. `README.md`,
   `CI-CD.md` and `ci.yml` now say Qt 6.10+ (#81).
+- qmllint: the project target (`FinanceDashboard_qmllint`) reports no warning (21 before).
+  `ImportSnapshotPage.qml` and `InvestmentsPage.qml` declare `pragma ComponentBehavior: Bound`,
+  the sidebar delegate of `Main.qml` reads its `modelData` through its id and sizes its line
+  with `Layout.preferredHeight`, and the checkpoint list of Manage Accounts no longer uses a
+  comma expression (#70).
 
 ### Docs
 - README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest

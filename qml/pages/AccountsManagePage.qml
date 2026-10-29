@@ -258,7 +258,10 @@ Item {
                                     spacing: 6
 
                                     Repeater {
-                                        model: (page.checkpointsTick, AccountController.balanceCheckpoints(accRow.index))
+                                        // Reads checkpointsTick so that the list is read again after a
+                                        // change: balanceCheckpoints() has no notify signal.
+                                        model: page.checkpointsTick >= 0
+                                            ? AccountController.balanceCheckpoints(accRow.index) : []
                                         delegate: Rectangle {
                                             id: checkpointChip
                                             required property var modelData

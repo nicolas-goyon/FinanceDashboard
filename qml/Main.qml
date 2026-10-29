@@ -261,6 +261,7 @@ ApplicationWindow {
                     // see `categories` above and ARCHITECTURE.MD § Sidebar
                     // Navigation).
                     delegate: ColumnLayout {
+                        id: sidebarEntry
                         required property var modelData
                         Layout.fillWidth: true
                         spacing: 0
@@ -269,19 +270,19 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             Layout.topMargin: 12
                             Layout.bottomMargin: 4
-                            visible: modelData.sectionLabel !== undefined
+                            visible: sidebarEntry.modelData.sectionLabel !== undefined
                             spacing: 4
 
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 16
                                 Layout.rightMargin: 16
-                                height: 1
+                                Layout.preferredHeight: 1
                                 color: "#313244"
                             }
                             Text {
                                 Layout.leftMargin: 16
-                                text: modelData.sectionLabel !== undefined ? modelData.sectionLabel : ""
+                                text: sidebarEntry.modelData.sectionLabel !== undefined ? sidebarEntry.modelData.sectionLabel : ""
                                 color: "#6c7086"
                                 font { pixelSize: 11; bold: true; letterSpacing: 1 }
                             }
@@ -289,11 +290,11 @@ ApplicationWindow {
 
                         SidebarCategory {
                             Layout.fillWidth: true
-                            categoryLabel: modelData.label
-                            actions: modelData.actions
-                            current: root.isCategoryActive(modelData)
+                            categoryLabel: sidebarEntry.modelData.label
+                            actions: sidebarEntry.modelData.actions
+                            current: root.isCategoryActive(sidebarEntry.modelData)
                             currentActionId: root.currentViewId
-                            onSelected: root.currentViewId = modelData.id
+                            onSelected: root.currentViewId = sidebarEntry.modelData.id
                             onActionTriggered: (actionId) => {
                                 // Only actions with a real page behind them
                                 // change the view; every other action on the
