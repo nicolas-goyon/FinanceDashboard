@@ -49,6 +49,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   0 for an account that is never negative, as "From 0" does. "From 0" includes 0: it starts the
   axis at 0 for a positive account and ends it at 0 for a negative account. An account that is
   always negative now shows its line with both settings (#65).
+- Import Transactions: a visit to another page during a review no longer loses it. The page is
+  loaded the first time it is shown and is then kept; "Done" on the import report starts the
+  next import at step 1. The target account is kept by its id, so an account added or removed
+  on another page meanwhile does not change the account that Save writes to (#64).
 
 ---
 

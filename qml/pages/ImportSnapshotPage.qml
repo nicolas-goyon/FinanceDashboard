@@ -59,6 +59,11 @@ Item {
 
     property int matchedAccountIndex: -1
     property int selectedAccountIndex: -1
+    // The id of the picked account. The indexes above are positions in
+    // AccountController.accounts; this page stays loaded while another page
+    // adds or removes accounts (#64), so the indexes are read again from the
+    // ids when the list changes (see the Connections below).
+    property int selectedAccountId: -1
     // The account that has the hash of this statement from before #50 (an
     // 8-character BIC): Save replaces it.
     property int legacyAccountIndex: -1
@@ -81,8 +86,34 @@ Item {
 
     function goToReview() {
         readMatches()
-        selectedAccountIndex = matchedAccountIndex
+        selectAccountIndex(matchedAccountIndex)
         page.step = 1
+    }
+
+    function selectAccountIndex(index) {
+        selectedAccountIndex = index
+        selectedAccountId = index >= 0 && index < AccountController.accounts.length
+            ? AccountController.accounts[index].id : -1
+    }
+
+    Connections {
+        target: AccountController
+        function onAccountsChanged() {
+            if (page.step !== 1)
+                return
+            page.readMatches()
+            var accounts = AccountController.accounts
+            var index = -1
+            for (var i = 0; i < accounts.length; i++) {
+                if (accounts[i].id === page.selectedAccountId) {
+                    index = i
+                    break
+                }
+            }
+            // A removed account is not picked again: Save stays disabled
+            // until the user picks one.
+            page.selectAccountIndex(index)
+        }
     }
 
     // ── Save flow — reconciliation gate + brief disable + report step ────────
@@ -378,7 +409,7 @@ Item {
                                 model: AccountController.accounts
                                 textRole: "name"
                                 currentIndex: page.selectedAccountIndex
-                                onActivated: page.selectedAccountIndex = currentIndex
+                                onActivated: page.selectAccountIndex(currentIndex)
                             }
                             Text {
                                 visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex === page.selectedAccountIndex
@@ -1060,7 +1091,13 @@ Item {
                         onClicked: { controller.reset(); page.step = 0 }
                     }
                     Item { Layout.fillWidth: true }
-                    PillButton { text: "Done"; variant: "neutral"; onClicked: page.closeRequested() }
+                    // The page stays loaded after it closes (Main.qml, #64): reset it,
+                    // so that the next import starts at step 1.
+                    PillButton {
+                        text: "Done"
+                        variant: "neutral"
+                        onClicked: { controller.reset(); page.step = 0; page.closeRequested() }
+                    }
                 }
             }
 
