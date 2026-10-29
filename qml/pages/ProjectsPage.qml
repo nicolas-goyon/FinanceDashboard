@@ -16,6 +16,19 @@ Item {
 
     property bool showDetail: false
 
+    // Reads a number typed in French or English: "3,5", "3.5", "40 000"
+    // (spaces, no-break spaces and narrow no-break spaces are thousands
+    // separators). Returns NaN for anything else, so a field never reads
+    // "3,5" as 3 or "40 000" as 40 without a message (#75).
+    function parseNumber(text) {
+        var s = text.trim().replace(/[\s\u00a0\u202f]/g, "").replace(",", ".")
+        return /^-?\d+(\.\d+)?$/.test(s) ? Number(s) : NaN
+    }
+    function parseWholeNumber(text) {
+        var s = text.trim().replace(/[\s\u00a0\u202f]/g, "")
+        return /^\d+$/.test(s) ? Number(s) : NaN
+    }
+
     ProjectsController { id: controller }
 
     function rebuildChart() {
@@ -260,10 +273,13 @@ Item {
                     RowLayout {
                         spacing: 10
                         Text { text: "Annual rate:"; font.pixelSize: 15; color: "#6c7086" }
+                        // Set from the controller, not bound: a keystroke breaks a binding.
+                        // After each edit the field shows the rate that the controller
+                        // applies, so a refused value does not stay on screen (#66).
                         TextField {
                             id: rateField
                             Layout.preferredWidth: 80
-                            text: controller.loanRatePct.toFixed(2)
+                            Component.onCompleted: text = controller.loanRatePct.toFixed(2)
                             color: "#cdd6f4"
                             font.pixelSize: 15
                             inputMethodHints: Qt.ImhFormattedNumbersOnly
@@ -273,8 +289,17 @@ Item {
                                 border.color: rateField.activeFocus ? "#89b4fa" : "#313244"
                             }
                             onEditingFinished: {
-                                var v = parseFloat(text)
-                                if (!isNaN(v)) controller.loanRatePct = v
+                                var v = page.parseNumber(text)
+                                if (!isNaN(v))
+                                    controller.loanRatePct = v
+                                text = controller.loanRatePct.toFixed(2)
+                            }
+                            Connections {
+                                target: controller
+                                function onLoanChanged() {
+                                    if (!rateField.activeFocus)
+                                        rateField.text = controller.loanRatePct.toFixed(2)
+                                }
                             }
                         }
                         Text { text: "%   —   rates are entered manually (no market data)"; font.pixelSize: 14; color: "#6c7086" }
@@ -349,16 +374,38 @@ Item {
         FormRow { id: fEarmarked; label: "Already saved (€)";        labelWidth: 150; placeholderText: "0" }
         FormRow { id: fMonthly;   label: "Monthly contribution (€)"; labelWidth: 150; placeholderText: "300" }
 
+        // Why Create did nothing (#75). Empty when the form is correct.
+        Text {
+            id: newProjectError
+            Layout.fillWidth: true
+            visible: text.length > 0
+            wrapMode: Text.WordWrap
+            font.pixelSize: 13
+            color: "#f38ba8"
+        }
+
+        onOpened: newProjectError.text = ""
+
         onSaveClicked: {
-            var target = parseFloat(fTarget.text)
-            var months = parseInt(fMonths.text)
-            var saved = parseFloat(fEarmarked.text)
-            var monthly = parseFloat(fMonthly.text)
-            if (fName.text.trim().length === 0 || isNaN(target) || isNaN(months))
+            var target = page.parseNumber(fTarget.text)
+            var months = page.parseWholeNumber(fMonths.text)
+            // An empty optional field is 0.
+            var saved = fEarmarked.text.trim().length > 0 ? page.parseNumber(fEarmarked.text) : 0
+            var monthly = fMonthly.text.trim().length > 0 ? page.parseNumber(fMonthly.text) : 0
+            var bad = []
+            if (fName.text.trim().length === 0) bad.push("a name")
+            if (isNaN(target) || target <= 0) bad.push("a target amount above 0")
+            if (isNaN(months) || months < 1 || months > 1200) bad.push("a number of months from 1 to 1200")
+            if (isNaN(saved)) bad.push("a number for \"Already saved\"")
+            if (isNaN(monthly)) bad.push("a number for \"Monthly contribution\"")
+            if (bad.length > 0) {
+                newProjectError.text = "Enter " + bad.join(", ") + ". Numbers can be written 40 000 or 3,5."
                 return
-            controller.addProject(fName.text, target, months,
-                                  isNaN(saved) ? 0 : saved,
-                                  isNaN(monthly) ? 0 : monthly)
+            }
+            if (!controller.addProject(fName.text, target, months, saved, monthly)) {
+                newProjectError.text = "The project was not created. Check the values."
+                return
+            }
             fName.text = ""
             fTarget.text = ""
             fMonths.text = ""

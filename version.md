@@ -72,6 +72,12 @@ builds, source archives). Then CI opens a pull request that merges the release b
   the sidebar delegate of `Main.qml` reads its `modelData` through its id and sizes its line
   with `Layout.preferredHeight`, and the checkpoint list of Manage Accounts no longer uses a
   comma expression (#70).
+- Projects: the number fields read French input ("3,5", "40 000") and refuse anything else with
+  a message. Before, "3,5" was read as 3, "40 000" as 40 and "40k" as 40, without a message.
+  The New project dialog stays open and tells which value is wrong, also for a target of 0 or a
+  month count outside 1 to 1200, which closed it with no project before (`addProject()` now
+  returns whether it added the project). After an edit, the loan-rate field shows the rate that
+  applies, and it follows the rate when it changes (#75, #66).
 
 ### Docs
 - README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest
