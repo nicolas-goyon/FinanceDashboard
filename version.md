@@ -96,6 +96,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   the category of `CashFlowController` that gives its values, instead of names and colours
   written in the QML. A change of the order of the categories in C++ can no longer mislabel the
   bars and their tooltips (#72).
+- Manage Accounts: the "×" of a hash and of a balance checkpoint is a `GhostButton` with the
+  red hover of the other remove buttons, instead of a bare text. Removing a hash asks first,
+  because the import then no longer picks the account by itself; the dialog keeps the account
+  id and the hash, so it removes that hash even if the list changes (#78).
 
 ### Docs
 - README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest
