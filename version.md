@@ -83,6 +83,11 @@ builds, source archives). Then CI opens a pull request that merges the release b
   changed while the dialog was open. The two clean-up dialogs keep the account id, and they
   open only for a valid account (with no account, they threw a TypeError). Import: "Choose file
   & Import" is disabled when no statement template exists (#67, #68).
+- Account Details, balance chart: the axis shows the day ("02 Oct") when the range shown is
+  about three months or less, and the month ("Oct 26") above. Before, every tick of a 7-day or
+  1-month range read the same month. The tooltips of this chart show the day too ("02 Oct
+  2026"): `HoverPoint` has a `dateFormat` property, and the monthly charts keep "MMM yyyy"
+  (#73).
 
 ### Docs
 - README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest
