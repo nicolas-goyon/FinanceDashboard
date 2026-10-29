@@ -218,3 +218,8 @@ ring and the slice from the position of the press.
 Do not give a series the colour `"transparent"`. Qt Graphs replaces a colour with alpha 0 by the
 theme colour: this applies to `color` and `borderColor` of a series. A line that only carries
 `pointDelegate` markers gets a visible colour, and the delegates receive it as `pointColor`.
+
+A tooltip inside a `barDelegate` is a `ToolTip` (QtQuick.Controls), not a child `Rectangle`
+(see `HoverBar.qml`). Each bar delegate is a sibling, the renderer resets their `z`, and the plot
+area clips them: a child `Rectangle` is drawn under the next bars and cut at the top. A `ToolTip`
+is drawn in the overlay of the window.
