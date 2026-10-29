@@ -274,7 +274,7 @@ Item {
 
                     RowLayout {
                         spacing: 10
-                        Text { Layout.preferredWidth: 90; text: "Template"; font.pixelSize: 15; color: "#6c7086" }
+                        Text { Layout.preferredWidth: 90; text: "Template"; font.pixelSize: 15; color: Theme.overlay0 }
                         ComboBox {
                             id: templateBox
                             Layout.fillWidth: true
@@ -292,7 +292,7 @@ Item {
                             + "More bank/PDF templates will be added over time — each gets its own parser "
                             + "(see ARCHITECTURE.MD § Statement Import)."
                         font.pixelSize: 13
-                        color: "#6c7086"
+                        color: Theme.overlay0
                     }
 
                     PillButton {
@@ -326,7 +326,7 @@ Item {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             text: "The file could not be parsed. Open the log below for details."
-                            color: "#f38ba8"
+                            color: Theme.red
                             font.pixelSize: 15
                         }
                         RowLayout {
@@ -360,24 +360,24 @@ Item {
                             rowSpacing: 6
                             Layout.fillWidth: true
 
-                            Text { text: "Holder";      font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Account";     font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "IBAN";        font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Period";      font.pixelSize: 13; color: "#6c7086" }
+                            Text { text: "Holder";      font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Account";     font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "IBAN";        font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Period";      font.pixelSize: 13; color: Theme.overlay0 }
 
-                            Text { text: controller.statementInfo.holderName;    font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: controller.statementInfo.accountName;   font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: controller.statementInfo.iban;          font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: controller.statementInfo.periodFromText + " → " + controller.statementInfo.periodToText; font.pixelSize: 15; color: "#cdd6f4" }
+                            Text { text: controller.statementInfo.holderName;    font.pixelSize: 15; color: Theme.text }
+                            Text { text: controller.statementInfo.accountName;   font.pixelSize: 15; color: Theme.text }
+                            Text { text: controller.statementInfo.iban;          font.pixelSize: 15; color: Theme.text }
+                            Text { text: controller.statementInfo.periodFromText + " → " + controller.statementInfo.periodToText; font.pixelSize: 15; color: Theme.text }
 
-                            Text { text: "Balance start"; font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Balance end";   font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Rows parsed";   font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Issues";        font.pixelSize: 13; color: "#6c7086" }
+                            Text { text: "Balance start"; font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Balance end";   font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Rows parsed";   font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Issues";        font.pixelSize: 13; color: Theme.overlay0 }
 
-                            Text { text: controller.statementInfo.balanceStartText + " (" + controller.statementInfo.balanceStartDateText + ")"; font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: controller.statementInfo.balanceEndText + " (" + controller.statementInfo.balanceEndDateText + ")"; font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: controller.statementInfo.transactionCount; font.pixelSize: 15; color: "#cdd6f4" }
+                            Text { text: controller.statementInfo.balanceStartText + " (" + controller.statementInfo.balanceStartDateText + ")"; font.pixelSize: 15; color: Theme.text }
+                            Text { text: controller.statementInfo.balanceEndText + " (" + controller.statementInfo.balanceEndDateText + ")"; font.pixelSize: 15; color: Theme.text }
+                            Text { text: controller.statementInfo.transactionCount; font.pixelSize: 15; color: Theme.text }
                             StatusBadge {
                                 pillHeight: 22
                                 variant: controller.errorCount > 0 ? "danger" : (controller.warningCount > 0 ? "warning" : "success")
@@ -393,22 +393,22 @@ Item {
                         // ARCHITECTURE.MD). Shown here so the match is auditable.
                         RowLayout {
                             spacing: 24
-                            Text { text: "BIC:"; font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: controller.statementInfo.bic; font.pixelSize: 15; color: "#cdd6f4" }
-                            Text { text: "Account hash:"; font.pixelSize: 13; color: "#6c7086" }
+                            Text { text: "BIC:"; font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: controller.statementInfo.bic; font.pixelSize: 15; color: Theme.text }
+                            Text { text: "Account hash:"; font.pixelSize: 13; color: Theme.overlay0 }
                             Text {
                                 text: controller.statementInfo.accountHash
                                 font.pixelSize: 14
                                 font.family: Fonts.monospace
-                                color: "#89b4fa"
+                                color: Theme.blue
                             }
                         }
 
-                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#313244" }
+                        Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.surface0 }
 
                         RowLayout {
                             spacing: 10
-                            Text { text: "Target account"; font.pixelSize: 15; color: "#6c7086" }
+                            Text { text: "Target account"; font.pixelSize: 15; color: Theme.overlay0 }
                             ComboBox {
                                 id: accountBox
                                 Layout.preferredWidth: 260
@@ -421,7 +421,7 @@ Item {
                                 visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex === page.selectedAccountIndex
                                 text: "✓ matched by account hash"
                                 font.pixelSize: 13
-                                color: "#a6e3a1"
+                                color: Theme.green
                             }
                             // A hash belongs to one account (#47): Save (or
                             // "Link this account") moves it to the picked one.
@@ -429,7 +429,7 @@ Item {
                                 visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex !== page.selectedAccountIndex
                                 text: "⚠ the account hash is on \"" + page.matchedAccountName + "\": Save moves it to this account"
                                 font.pixelSize: 13
-                                color: "#f9e2af"
+                                color: Theme.yellow
                             }
                             // The old form of the hash (#50) on a third account.
                             Text {
@@ -438,13 +438,13 @@ Item {
                                 text: "⚠ the old account hash (8-character BIC) is on \"" + page.legacyAccountName
                                       + "\": Save moves it to this account"
                                 font.pixelSize: 13
-                                color: "#f9e2af"
+                                color: Theme.yellow
                             }
                             Text {
                                 visible: page.matchedAccountIndex < 0
                                 text: "⚠ no automatic match — please pick the account"
                                 font.pixelSize: 13
-                                color: "#f9e2af"
+                                color: Theme.yellow
                             }
                         }
 
@@ -546,7 +546,7 @@ Item {
                                 text: controller.predicting ? "The app calculates the category suggestions…"
                                                             : controller.predictionInfo.summary
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                             }
                         }
 
@@ -592,7 +592,7 @@ Item {
                                 Rectangle {
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 28
-                                    color: "#181825"
+                                    color: Theme.mantle
                                     radius: 4
                                     RowLayout {
                                         anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
@@ -686,14 +686,14 @@ Item {
                                         required property int index
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 44
-                                        color: index % 2 === 0 ? "transparent" : "#181825"
+                                        color: index % 2 === 0 ? "transparent" : Theme.mantle
                                         opacity: modelData.included ? 1.0 : 0.4
 
                                         RowLayout {
                                             anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                             spacing: 8
 
-                                            Text { Layout.preferredWidth: columnWidths.opDate; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
+                                            Text { Layout.preferredWidth: columnWidths.opDate; text: txRow.modelData.operationDate; font.pixelSize: 14; color: Theme.overlay0 }
                                             TextField {
                                                 id: nameField
                                                 objectName: "rowNameField" // see onPredictionsAboutToBeApplied
@@ -701,15 +701,15 @@ Item {
                                                 Layout.preferredHeight: 32
                                                 text: txRow.modelData.name
                                                 font.pixelSize: 15
-                                                color: "#cdd6f4"
-                                                placeholderTextColor: "#45475a"
+                                                color: Theme.text
+                                                placeholderTextColor: Theme.surface1
                                                 placeholderText: "(no name)"
                                                 // Same recipe as FormRow.qml's TextField — see
                                                 // ARCHITECTURE.MD § Shared Components.
                                                 background: Rectangle {
-                                                    color: "#11111b"
+                                                    color: Theme.crust
                                                     radius: 4
-                                                    border.color: nameField.activeFocus ? "#89b4fa" : "#313244"
+                                                    border.color: nameField.activeFocus ? Theme.blue : Theme.surface0
                                                 }
                                                 // Auto-extracted at parse time (see
                                                 // extractTransactionName() in
@@ -731,9 +731,9 @@ Item {
                                                 }
                                             }
                                             Item { Layout.fillWidth: true }
-                                            Text { Layout.preferredWidth: columnWidths.debit;   text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
-                                            Text { Layout.preferredWidth: columnWidths.credit;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
-                                            Text { Layout.preferredWidth: columnWidths.balance; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                                            Text { Layout.preferredWidth: columnWidths.debit;   text: txRow.modelData.debitText;  font.pixelSize: 15; color: Theme.red; horizontalAlignment: Text.AlignRight }
+                                            Text { Layout.preferredWidth: columnWidths.credit;  text: txRow.modelData.creditText; font.pixelSize: 15; color: Theme.green; horizontalAlignment: Text.AlignRight }
+                                            Text { Layout.preferredWidth: columnWidths.balance; text: txRow.modelData.balanceText; font.pixelSize: 14; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
 
                                             ColorComboBox {
                                                 id: categoryBox
@@ -881,15 +881,15 @@ Item {
                             rowSpacing: 6
                             Layout.fillWidth: true
 
-                            Text { text: "Transactions saved"; font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Total income";       font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Total expenses";     font.pixelSize: 13; color: "#6c7086" }
-                            Text { text: "Net change";         font.pixelSize: 13; color: "#6c7086" }
+                            Text { text: "Transactions saved"; font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Total income";       font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Total expenses";     font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Net change";         font.pixelSize: 13; color: Theme.overlay0 }
 
-                            Text { text: reportStep.report.transactionCount !== undefined ? reportStep.report.transactionCount : 0; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
-                            Text { text: reportStep.report.totalIncomeText ? reportStep.report.totalIncomeText : "—"; font.pixelSize: 18; font.bold: true; color: "#a6e3a1" }
-                            Text { text: reportStep.report.totalExpenseText ? reportStep.report.totalExpenseText : "—"; font.pixelSize: 18; font.bold: true; color: "#f38ba8" }
-                            Text { text: reportStep.report.netChangeText ? reportStep.report.netChangeText : "—"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
+                            Text { text: reportStep.report.transactionCount !== undefined ? reportStep.report.transactionCount : 0; font.pixelSize: 18; font.bold: true; color: Theme.text }
+                            Text { text: reportStep.report.totalIncomeText ? reportStep.report.totalIncomeText : "—"; font.pixelSize: 18; font.bold: true; color: Theme.green }
+                            Text { text: reportStep.report.totalExpenseText ? reportStep.report.totalExpenseText : "—"; font.pixelSize: 18; font.bold: true; color: Theme.red }
+                            Text { text: reportStep.report.netChangeText ? reportStep.report.netChangeText : "—"; font.pixelSize: 18; font.bold: true; color: Theme.text }
                         }
 
                         // Rows that this account already had (a re-import, or a
@@ -902,7 +902,7 @@ Item {
                             text: (reportStep.report.alreadySavedCount || 0)
                                 + " transaction(s) of this statement were already saved, so they were not added again."
                             font.pixelSize: 13
-                            color: "#f9e2af"
+                            color: Theme.yellow
                         }
 
                         // Of those, rows with the bank reference and the amount of
@@ -919,8 +919,8 @@ Item {
                                 + " transactions, the bank reuses its references: see <a href=\""
                                 + (reportStep.report.reusedReferenceUrl || "") + "\">this issue</a>."
                             font.pixelSize: 13
-                            color: "#fab387"
-                            linkColor: "#89b4fa"
+                            color: Theme.peach
+                            linkColor: Theme.blue
                             onLinkActivated: function(link) { Qt.openUrlExternally(link) }
                         }
                     }
@@ -956,7 +956,7 @@ Item {
                                     + (reportStep.reconciliation.startSourceDateText || "—") + ") — diff "
                                     + (reportStep.reconciliation.startDiffText || "—")
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                             }
                         }
 
@@ -976,7 +976,7 @@ Item {
                                     + " vs. declared " + (reportStep.reconciliation.endDeclaredText || "—")
                                     + " — diff " + (reportStep.reconciliation.endDiffText || "—")
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                             }
                         }
                     }
@@ -1030,7 +1030,7 @@ Item {
                                         if (magnitude <= 0)
                                             continue
                                         var slice = append(cats[i].category, magnitude)
-                                        slice.color = CategoryController.categoryColor(cats[i].category) || "#6c7086"
+                                        slice.color = CategoryController.categoryColor(cats[i].category) || Theme.overlay0
                                         // Without it, the slice gets the outline colour of the theme (#71).
                                         slice.borderColor = slice.color
                                         slice.labelVisible = true
@@ -1056,14 +1056,14 @@ Item {
                             visible: reportStep.byCategory.length > 0
                             text: "Click a slice for details"
                             font.pixelSize: 14
-                            color: "#6c7086"
+                            color: Theme.overlay0
                         }
 
                         Rectangle {
                             visible: reportStep.byCategory.length > 0
                             Layout.fillWidth: true
                             Layout.preferredHeight: 1
-                            color: "#313244"
+                            color: Theme.surface0
                         }
 
                         Repeater {
@@ -1081,20 +1081,20 @@ Item {
                                         Layout.preferredHeight: 22
                                         radius: 11
                                         color: Qt.rgba(1, 1, 1, 0.08)
-                                        border.color: CategoryController.categoryColor(catRow.modelData.category) || "#6c7086"
+                                        border.color: CategoryController.categoryColor(catRow.modelData.category) || Theme.overlay0
                                         Text {
                                             id: catBadge
                                             anchors.centerIn: parent
                                             text: catRow.modelData.category
                                             font.pixelSize: 13
-                                            color: CategoryController.categoryColor(catRow.modelData.category) || "#6c7086"
+                                            color: CategoryController.categoryColor(catRow.modelData.category) || Theme.overlay0
                                         }
                                     }
                                     Text {
                                         text: catRow.modelData.totalText
                                         font.pixelSize: 15
                                         font.bold: true
-                                        color: catRow.modelData.totalRaw >= 0 ? "#a6e3a1" : "#f38ba8"
+                                        color: catRow.modelData.totalRaw >= 0 ? Theme.green : Theme.red
                                     }
                                 }
 
@@ -1111,8 +1111,8 @@ Item {
                                             width: subChipRow.implicitWidth + 14
                                             height: 20
                                             radius: 10
-                                            color: "#181825"
-                                            border.color: CategoryController.subcategoryColor(catRow.modelData.category, subChip.modelData.subcategory) || "#313244"
+                                            color: Theme.mantle
+                                            border.color: CategoryController.subcategoryColor(catRow.modelData.category, subChip.modelData.subcategory) || Theme.surface0
 
                                             RowLayout {
                                                 id: subChipRow
@@ -1121,7 +1121,7 @@ Item {
                                                 Text {
                                                     text: subChip.modelData.subcategory + " · " + subChip.modelData.totalText
                                                     font.pixelSize: 11
-                                                    color: "#a6adc8"
+                                                    color: Theme.subtext0
                                                 }
                                             }
                                         }
@@ -1164,8 +1164,8 @@ Item {
         modal: true
 
         background: Rectangle {
-            color: "#181825"
-            border.color: "#45475a"
+            color: Theme.mantle
+            border.color: Theme.surface1
             radius: 8
         }
 
@@ -1174,12 +1174,12 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
-                Text { text: "Import log"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
+                Text { text: "Import log"; font.pixelSize: 18; font.bold: true; color: Theme.text }
                 Item { Layout.fillWidth: true }
                 Text {
                     text: controller.errorCount + " error(s) · " + controller.warningCount + " warning(s)"
                     font.pixelSize: 14
-                    color: "#6c7086"
+                    color: Theme.overlay0
                 }
             }
 
@@ -1221,13 +1221,13 @@ Item {
                                 Text {
                                     text: "L" + logRow.modelData.line
                                     font.pixelSize: 13
-                                    color: "#6c7086"
+                                    color: Theme.overlay0
                                 }
                                 Text {
                                     Layout.fillWidth: true
                                     text: logRow.modelData.message
                                     font.pixelSize: 15
-                                    color: "#cdd6f4"
+                                    color: Theme.text
                                     wrapMode: Text.WordWrap
                                 }
                             }
@@ -1238,7 +1238,7 @@ Item {
                                 text: logRow.modelData.rawLine
                                 font.pixelSize: 13
                                 font.family: Fonts.monospace
-                                color: "#45475a"
+                                color: Theme.surface1
                                 wrapMode: Text.WordWrap
                             }
                         }
@@ -1271,15 +1271,15 @@ Item {
         property string descriptionText: ""
 
         background: Rectangle {
-            color: "#181825"
-            border.color: "#45475a"
+            color: Theme.mantle
+            border.color: Theme.surface1
             radius: 8
         }
 
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text { text: "Full description"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
+            Text { text: "Full description"; font.pixelSize: 18; font.bold: true; color: Theme.text }
 
             ScrollView {
                 Layout.fillWidth: true
@@ -1294,9 +1294,9 @@ Item {
                     persistentSelection: true
                     wrapMode: TextEdit.WordWrap
                     font.pixelSize: 15
-                    color: "#cdd6f4"
-                    selectionColor: "#89b4fa"
-                    selectedTextColor: "#11111b"
+                    color: Theme.text
+                    selectionColor: Theme.blue
+                    selectedTextColor: Theme.crust
                 }
             }
 
@@ -1330,15 +1330,15 @@ Item {
         property var check: ({})
 
         background: Rectangle {
-            color: "#181825"
-            border.color: "#f38ba8"
+            color: Theme.mantle
+            border.color: Theme.red
             radius: 8
         }
 
         contentItem: ColumnLayout {
             spacing: 12
 
-            Text { text: "Balance doesn't add up"; font.pixelSize: 18; font.bold: true; color: "#cdd6f4" }
+            Text { text: "Balance doesn't add up"; font.pixelSize: 18; font.bold: true; color: Theme.text }
 
             Text {
                 Layout.fillWidth: true
@@ -1349,7 +1349,7 @@ Item {
                     + "adds up to " + (reconciliationDialog.check.endComputedText || "—")
                     + " — a difference of " + (reconciliationDialog.check.endDiffText || "—") + "."
                 font.pixelSize: 14
-                color: "#cdd6f4"
+                color: Theme.text
             }
 
             Text {
@@ -1359,7 +1359,7 @@ Item {
                     + "Review the KEEP column, or add a matching adjustment transaction (category "
                     + "\"Reconciliation Adjustment\") to close the gap."
                 font.pixelSize: 13
-                color: "#6c7086"
+                color: Theme.overlay0
             }
 
             RowLayout {

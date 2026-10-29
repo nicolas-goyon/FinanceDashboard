@@ -122,9 +122,9 @@ Item {
                 var hi = inp[i].value * scale
                 ctx.fillStyle = inp[i].color
                 ctx.fillRect(xLeft, ly, nodeW, hi)
-                ctx.fillStyle = "#cdd6f4"
+                ctx.fillStyle = Theme.text
                 ctx.fillText(inp[i].name, xLeft - labelGap, ly + hi / 2 - 7)
-                ctx.fillStyle = "#6c7086"
+                ctx.fillStyle = Theme.overlay0
                 ctx.fillText(euro(inp[i].value), xLeft - labelGap, ly + hi / 2 + 8)
                 ly += hi + gap
             }
@@ -136,20 +136,20 @@ Item {
                 var hj = out[j].value * scale
                 ctx.fillStyle = out[j].color
                 ctx.fillRect(xRight, ry, nodeW, hj)
-                ctx.fillStyle = "#cdd6f4"
+                ctx.fillStyle = Theme.text
                 ctx.fillText(out[j].name, xRight + nodeW + labelGap, ry + hj / 2 - 7)
-                ctx.fillStyle = "#6c7086"
+                ctx.fillStyle = Theme.overlay0
                 ctx.fillText(euro(out[j].value), xRight + nodeW + labelGap, ry + hj / 2 + 8)
                 ry += hj + gap
             }
 
             // Centre node + label
-            ctx.fillStyle = "#45475a"
+            ctx.fillStyle = Theme.surface1
             ctx.fillRect(xCentre, centreY0, nodeW, centreH)
-            ctx.fillStyle = "#cdd6f4"
+            ctx.fillStyle = Theme.text
             ctx.textAlign = "center"
             ctx.fillText(root.centreName, xCentre + nodeW / 2, centreY0 - 12)
-            ctx.fillStyle = "#6c7086"
+            ctx.fillStyle = Theme.overlay0
             ctx.fillText(euro(total), xCentre + nodeW / 2, centreY0 + centreH + 12)
         }
     }

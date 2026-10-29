@@ -26,7 +26,7 @@ Item {
         return i < controller.categories.length ? controller.categories[i].name : ""
     }
     function categoryColor(i) {
-        return i < controller.categories.length ? controller.categories[i].color : "#6c7086"
+        return i < controller.categories.length ? controller.categories[i].color : Theme.overlay0
     }
 
     ScrollView {
@@ -43,7 +43,7 @@ Item {
                 title: "Cash Flow"
                 mock: true
 
-                Text { text: "Month:"; font.pixelSize: 15; color: "#6c7086" }
+                Text { text: "Month:"; font.pixelSize: 15; color: Theme.overlay0 }
                 ComboBox {
                     id: monthSelector
                     Layout.preferredWidth: 120
@@ -93,12 +93,12 @@ Item {
                         }
                         BarSet {
                             label: "Income"
-                            color: "#a6e3a1"
+                            color: Theme.green
                             Component.onCompleted: values = controller.incomeValues
                         }
                         BarSet {
                             label: "Expenses"
-                            color: "#f38ba8"
+                            color: Theme.red
                             Component.onCompleted: values = controller.expenseValues
                         }
                     }
@@ -131,7 +131,7 @@ Item {
 
                     LineSeries {
                         name: "3-month avg"
-                        color: "#89b4fa"
+                        color: Theme.blue
                         width: 2
 
                         Component.onCompleted: {
@@ -143,7 +143,7 @@ Item {
                         pointDelegate: Component {
                             HoverPoint {
                                 seriesName: "3-month avg"
-                                pointColor: "#89b4fa"
+                                pointColor: Theme.blue
                             }
                         }
                     }
@@ -209,7 +209,7 @@ Item {
                             Layout.alignment: Qt.AlignHCenter
                             text: "Click a slice for details"
                             font.pixelSize: 14
-                            color: "#6c7086"
+                            color: Theme.overlay0
                         }
                     }
                 }
@@ -235,7 +235,7 @@ Item {
                                 // Zebra parity matches every other striped list
                                 // in the app (odd rows tinted) — this one used
                                 // to be inverted, the only page that was.
-                                color: index % 2 === 0 ? "transparent" : "#181825"
+                                color: index % 2 === 0 ? "transparent" : Theme.mantle
                                 radius: 4
 
                                 RowLayout {
@@ -247,11 +247,11 @@ Item {
                                         Layout.fillWidth: true
                                         text: expenseRow.modelData.label
                                         font.pixelSize: 15
-                                        color: "#cdd6f4"
+                                        color: Theme.text
                                         elide: Text.ElideRight
                                     }
-                                    Text { text: expenseRow.modelData.category; font.pixelSize: 14; color: "#6c7086" }
-                                    Text { text: expenseRow.modelData.amount; font.pixelSize: 15; font.bold: true; color: "#cdd6f4" }
+                                    Text { text: expenseRow.modelData.category; font.pixelSize: 14; color: Theme.overlay0 }
+                                    Text { text: expenseRow.modelData.amount; font.pixelSize: 15; font.bold: true; color: Theme.text }
                                 }
                             }
                         }

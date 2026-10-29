@@ -93,7 +93,7 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Copy my prod database"; font.pixelSize: 16; font.bold: true; color: "#cdd6f4" }
+                            Text { text: "Copy my prod database"; font.pixelSize: 16; font.bold: true; color: Theme.text }
                             Text {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
@@ -102,7 +102,7 @@ Item {
                                     + "schema, the Test app upgrades it, as a new version of the prod app would. The "
                                     + "Test data from before the copy is kept in a file."
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                             }
                             Text {
                                 Layout.fillWidth: true
@@ -110,7 +110,7 @@ Item {
                                 wrapMode: Text.Wrap
                                 text: controller.prodDatabaseText
                                 font.pixelSize: 13
-                                color: controller.prodDatabaseFound ? "#a6adc8" : "#f9e2af"
+                                color: controller.prodDatabaseFound ? Theme.subtext0 : Theme.yellow
                             }
                         }
                         PillButton {
@@ -129,7 +129,7 @@ Item {
                         wrapMode: Text.Wrap
                         text: controller.copyReport
                         font.pixelSize: 13
-                        color: controller.copyFailed ? "#f38ba8" : "#a6adc8"
+                        color: controller.copyFailed ? Theme.red : Theme.subtext0
                     }
                 }
             }
@@ -140,7 +140,7 @@ Item {
                 text: "Both actions wipe every table in the local SQLite database. Useful when the schema "
                     + "changes during development, or to start over. Neither action can be undone."
                 font.pixelSize: 15
-                color: "#6c7086"
+                color: Theme.overlay0
             }
 
             ChartCard {
@@ -159,14 +159,14 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Reset Database"; font.pixelSize: 16; font.bold: true; color: "#cdd6f4" }
+                            Text { text: "Reset Database"; font.pixelSize: 16; font.bold: true; color: Theme.text }
                             Text {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
                                 text: "Clears everything — accounts, categories, hashes, transactions. Starts from a "
                                     + "completely blank database."
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                             }
                         }
                         PillButton {
@@ -177,7 +177,7 @@ Item {
                         }
                     }
 
-                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#313244" }
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.surface0 }
 
                     RowLayout {
                         Layout.fillWidth: true
@@ -185,14 +185,14 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Reset to Mock Data"; font.pixelSize: 16; font.bold: true; color: "#cdd6f4" }
+                            Text { text: "Reset to Mock Data"; font.pixelSize: 16; font.bold: true; color: Theme.text }
                             Text {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
                                 text: "Clears everything, then reseeds the default categories, account categories, "
                                     + "account types, demo accounts, and a few sample transactions."
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                             }
                         }
                         PillButton {
@@ -228,7 +228,7 @@ Item {
                         text: "Remove data for a single account instead of resetting the whole database. Both "
                             + "actions below are irreversible."
                         font.pixelSize: 13
-                        color: "#6c7086"
+                        color: Theme.overlay0
                     }
 
                     EmptyState {

@@ -111,23 +111,23 @@ Item {
 
                     AreaSeries {
                         name: "Checking"
-                        color: "#6e89b4fa"
-                        borderColor: "#89b4fa"
+                        color: Theme.blueArea
+                        borderColor: Theme.blue
                         borderWidth: 1.5
                         upperSeries: checkingBound
                     }
                     AreaSeries {
                         name: "Savings"
-                        color: "#6ea6e3a1"
-                        borderColor: "#a6e3a1"
+                        color: Theme.greenArea
+                        borderColor: Theme.green
                         borderWidth: 1.5
                         upperSeries: savingsBound
                         lowerSeries: checkingBound
                     }
                     AreaSeries {
                         name: "Trading"
-                        color: "#6ecba6f7"
-                        borderColor: "#cba6f7"
+                        color: Theme.mauveArea
+                        borderColor: Theme.mauve
                         borderWidth: 1.5
                         upperSeries: tradingBound
                         lowerSeries: savingsBound
@@ -143,7 +143,7 @@ Item {
                     // pointColor of each HoverPoint.
                     LineSeries {
                         id: hoverChecking
-                        color: "#89b4fa"
+                        color: Theme.blue
                         width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
@@ -154,7 +154,7 @@ Item {
                     }
                     LineSeries {
                         id: hoverSavings
-                        color: "#a6e3a1"
+                        color: Theme.green
                         width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
@@ -165,7 +165,7 @@ Item {
                     }
                     LineSeries {
                         id: hoverTrading
-                        color: "#cba6f7"
+                        color: Theme.mauve
                         width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
@@ -225,7 +225,7 @@ Item {
                             Layout.alignment: Qt.AlignHCenter
                             text: "Click a slice for details"
                             font.pixelSize: 14
-                            color: "#6c7086"
+                            color: Theme.overlay0
                         }
                     }
                 }
@@ -254,12 +254,12 @@ Item {
                             }
                             BarSet {
                                 label: "Gain"
-                                color: "#a6e3a1"
+                                color: Theme.green
                                 Component.onCompleted: values = controller.netGains
                             }
                             BarSet {
                                 label: "Loss"
-                                color: "#f38ba8"
+                                color: Theme.red
                                 Component.onCompleted: values = controller.netLosses
                             }
                         }

@@ -33,15 +33,15 @@ Rectangle {
 
     color: {
         if (root.variant === "danger")
-            return hover.hovered ? "#5a2d36" : "#3d2028"
+            return hover.hovered ? Theme.dangerBgStrong : Theme.dangerBg
         if (root.variant === "neutral")
-            return hover.hovered ? "#313244" : "#1e1e2e"
-        return hover.hovered ? "#264d80" : "#1e3a5f" // primary
+            return hover.hovered ? Theme.surface0 : Theme.base
+        return hover.hovered ? Theme.primaryBgHover : Theme.primaryBg // primary
     }
     border.color: {
-        if (root.variant === "danger")  return "#f38ba8"
-        if (root.variant === "neutral") return "#313244"
-        return "#89b4fa" // primary
+        if (root.variant === "danger")  return Theme.red
+        if (root.variant === "neutral") return Theme.surface0
+        return Theme.blue // primary
     }
 
     Text {
@@ -50,7 +50,7 @@ Rectangle {
         text: root.text
         font.pixelSize: root.fontSize
         font.bold: root.bold
-        color: root.variant === "danger" ? "#f38ba8" : "#cdd6f4"
+        color: root.variant === "danger" ? Theme.red : Theme.text
     }
 
     HoverHandler { id: hover }

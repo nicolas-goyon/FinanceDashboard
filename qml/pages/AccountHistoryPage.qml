@@ -224,14 +224,14 @@ Item {
         for (var i = 0; i < categories.length; i++) {
             var cat = categories[i]
             var catSlice = categoryRing.append(cat.category, cat.totalRaw)
-            catSlice.color = CategoryController.categoryColor(cat.category) || "#6c7086"
+            catSlice.color = CategoryController.categoryColor(cat.category) || Theme.overlay0
             // Without it, the slice gets the outline colour of the theme (#71).
             catSlice.borderColor = catSlice.color
             catSlice.labelVisible = true
             for (var j = 0; j < cat.subcategories.length; j++) {
                 var sub = cat.subcategories[j]
                 var subSlice = subcategoryRing.append(sub.subcategory, sub.totalRaw)
-                subSlice.color = CategoryController.subcategoryColor(cat.category, sub.subcategory) || "#6c7086"
+                subSlice.color = CategoryController.subcategoryColor(cat.category, sub.subcategory) || Theme.overlay0
                 // Without it, the slice gets the outline colour of the theme (#71).
                 subSlice.borderColor = subSlice.color
                 // Was missing — the outer ring showed no labels at all, only
@@ -319,7 +319,7 @@ Item {
                 visible: AccountController.accounts.length === 0
                 text: "No accounts yet — add one from Account Management → Manage Accounts."
                 font.pixelSize: 15
-                color: "#f38ba8"
+                color: Theme.red
             }
 
             ColumnLayout {
@@ -393,7 +393,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 6
-                            Text { text: "RANGE"; font.pixelSize: 12; font.bold: true; color: "#6c7086" }
+                            Text { text: "RANGE"; font.pixelSize: 12; font.bold: true; color: Theme.overlay0 }
                             Item { Layout.fillWidth: true }
                             PillButton {
                                 text: "7D"; fontSize: 12; horizontalPadding: 10; implicitHeight: 24
@@ -434,7 +434,7 @@ Item {
                             visible: page.chartRange === "custom"
                             spacing: 6
                             Item { Layout.fillWidth: true }
-                            Text { text: "From"; font.pixelSize: 12; color: "#6c7086" }
+                            Text { text: "From"; font.pixelSize: 12; color: Theme.overlay0 }
                             TextField {
                                 Layout.preferredWidth: 110
                                 implicitHeight: 24
@@ -443,7 +443,7 @@ Item {
                                 text: page.customStartIso
                                 onEditingFinished: page.customStartIso = text.trim()
                             }
-                            Text { text: "to"; font.pixelSize: 12; color: "#6c7086" }
+                            Text { text: "to"; font.pixelSize: 12; color: Theme.overlay0 }
                             TextField {
                                 Layout.preferredWidth: 110
                                 implicitHeight: 24
@@ -457,7 +457,7 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 6
-                            Text { text: "Y AXIS"; font.pixelSize: 12; font.bold: true; color: "#6c7086" }
+                            Text { text: "Y AXIS"; font.pixelSize: 12; font.bold: true; color: Theme.overlay0 }
                             Item { Layout.fillWidth: true }
                             PillButton {
                                 text: "Auto"
@@ -484,16 +484,16 @@ Item {
                         theme: GraphsTheme {
                             colorScheme: GraphsTheme.ColorScheme.Dark
                             plotAreaBackgroundVisible: true
-                            plotAreaBackgroundColor: "#181825"
+                            plotAreaBackgroundColor: Theme.mantle
                             backgroundVisible: false
                             gridVisible: true
-                            grid.mainColor: "#313244"
-                            grid.subColor: "#313244"
-                            axisX.mainColor: "#313244"
-                            axisX.labelTextColor: "#6c7086"
-                            axisY.mainColor: "#313244"
-                            axisY.labelTextColor: "#6c7086"
-                            labelTextColor: "#6c7086"
+                            grid.mainColor: Theme.surface0
+                            grid.subColor: Theme.surface0
+                            axisX.mainColor: Theme.surface0
+                            axisX.labelTextColor: Theme.overlay0
+                            axisY.mainColor: Theme.surface0
+                            axisY.labelTextColor: Theme.overlay0
+                            labelTextColor: Theme.overlay0
                             labelFont.pixelSize: 12
                         }
 
@@ -511,13 +511,13 @@ Item {
                         LineSeries {
                             id: balanceSeries
                             name: page.account !== null ? page.account.name : ""
-                            color: "#89b4fa"
+                            color: Theme.blue
                             width: 2
                             pointDelegate: Component {
                                 HoverPoint {
                                     seriesName: page.account !== null ? page.account.name : ""
                                     dateFormat: "dd MMM yyyy"
-                                    pointColor: "#89b4fa"
+                                    pointColor: Theme.blue
                                     suffix: " " + page.currencySymbol
                                 }
                             }
@@ -571,9 +571,9 @@ Item {
                                     theme: GraphsTheme {
                                         colorScheme: GraphsTheme.ColorScheme.Dark
                                         plotAreaBackgroundVisible: true
-                                        plotAreaBackgroundColor: "#181825"
+                                        plotAreaBackgroundColor: Theme.mantle
                                         backgroundVisible: false
-                                        labelTextColor: "#cdd6f4"
+                                        labelTextColor: Theme.text
                                         labelFont.pixelSize: 13
                                     }
 
@@ -613,7 +613,7 @@ Item {
                                 visible: !!page.breakdown.income && page.breakdown.income.length > 0
                                 text: "Click a category (inner ring) or subcategory (outer ring) slice for details"
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                                 wrapMode: Text.WordWrap
                                 Layout.maximumWidth: parent.width
                                 horizontalAlignment: Text.AlignHCenter
@@ -649,9 +649,9 @@ Item {
                                     theme: GraphsTheme {
                                         colorScheme: GraphsTheme.ColorScheme.Dark
                                         plotAreaBackgroundVisible: true
-                                        plotAreaBackgroundColor: "#181825"
+                                        plotAreaBackgroundColor: Theme.mantle
                                         backgroundVisible: false
-                                        labelTextColor: "#cdd6f4"
+                                        labelTextColor: Theme.text
                                         labelFont.pixelSize: 13
                                     }
 
@@ -691,7 +691,7 @@ Item {
                                 visible: !!page.breakdown.expenses && page.breakdown.expenses.length > 0
                                 text: "Click a category (inner ring) or subcategory (outer ring) slice for details"
                                 font.pixelSize: 13
-                                color: "#6c7086"
+                                color: Theme.overlay0
                                 wrapMode: Text.WordWrap
                                 Layout.maximumWidth: parent.width
                                 horizontalAlignment: Text.AlignHCenter
@@ -740,19 +740,19 @@ Item {
                             Rectangle {
                                 Layout.preferredWidth: txCol.rowWidth
                                 Layout.preferredHeight: 28
-                                color: "#181825"
+                                color: Theme.mantle
                                 radius: 4
                                 RowLayout {
                                     anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                     spacing: 8
-                                    Text { Layout.preferredWidth: 90;  text: "DATE";        font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                                    Text { Layout.preferredWidth: 300; text: "NAME";        font.pixelSize: 13; font.bold: true; color: "#6c7086" }
+                                    Text { Layout.preferredWidth: 90;  text: "DATE";        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 300; text: "NAME";        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
                                     Item { Layout.preferredWidth: 16 }
-                                    Text { Layout.preferredWidth: 90;  text: "DEBIT";       font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 90;  text: "CREDIT";      font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 100; text: "BALANCE";     font.pixelSize: 13; font.bold: true; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 130; text: "CATEGORY";    font.pixelSize: 13; font.bold: true; color: "#6c7086" }
-                                    Text { Layout.preferredWidth: 130; text: "SUBCATEGORY"; font.pixelSize: 13; font.bold: true; color: "#6c7086" }
+                                    Text { Layout.preferredWidth: 90;  text: "DEBIT";       font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 90;  text: "CREDIT";      font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 100; text: "BALANCE";     font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 130; text: "CATEGORY";    font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 130; text: "SUBCATEGORY"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
                                 }
                             }
 
@@ -771,23 +771,23 @@ Item {
                                     required property int index
                                     Layout.preferredWidth: txCol.rowWidth
                                     Layout.preferredHeight: 36
-                                    color: index % 2 === 0 ? "transparent" : "#181825"
+                                    color: index % 2 === 0 ? "transparent" : Theme.mantle
 
                                     RowLayout {
                                         anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                         spacing: 8
-                                        Text { Layout.preferredWidth: 90; text: txRow.modelData.operationDate; font.pixelSize: 14; color: "#6c7086" }
+                                        Text { Layout.preferredWidth: 90; text: txRow.modelData.operationDate; font.pixelSize: 14; color: Theme.overlay0 }
                                         Text {
                                             Layout.preferredWidth: 300
                                             text: txRow.modelData.name.length > 0 ? txRow.modelData.name : "—"
                                             font.pixelSize: 15
-                                            color: "#cdd6f4"
+                                            color: Theme.text
                                             elide: Text.ElideRight
                                         }
                                         Item { Layout.preferredWidth: 16 }
-                                        Text { Layout.preferredWidth: 90;  text: txRow.modelData.debitText;  font.pixelSize: 15; color: "#f38ba8"; horizontalAlignment: Text.AlignRight }
-                                        Text { Layout.preferredWidth: 90;  text: txRow.modelData.creditText; font.pixelSize: 15; color: "#a6e3a1"; horizontalAlignment: Text.AlignRight }
-                                        Text { Layout.preferredWidth: 100; text: txRow.modelData.balanceText; font.pixelSize: 14; color: "#6c7086"; horizontalAlignment: Text.AlignRight }
+                                        Text { Layout.preferredWidth: 90;  text: txRow.modelData.debitText;  font.pixelSize: 15; color: Theme.red; horizontalAlignment: Text.AlignRight }
+                                        Text { Layout.preferredWidth: 90;  text: txRow.modelData.creditText; font.pixelSize: 15; color: Theme.green; horizontalAlignment: Text.AlignRight }
+                                        Text { Layout.preferredWidth: 100; text: txRow.modelData.balanceText; font.pixelSize: 14; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
 
                                         Rectangle {
                                             Layout.preferredWidth: 130
@@ -795,17 +795,17 @@ Item {
                                             Layout.preferredHeight: 20
                                             radius: 10
                                             color: Qt.rgba(1, 1, 1, 0.08)
-                                            border.color: CategoryController.categoryColor(txRow.modelData.category) || "#6c7086"
+                                            border.color: CategoryController.categoryColor(txRow.modelData.category) || Theme.overlay0
                                             Text {
                                                 anchors.centerIn: parent
                                                 text: txRow.modelData.category
                                                 font.pixelSize: 12
-                                                color: CategoryController.categoryColor(txRow.modelData.category) || "#6c7086"
+                                                color: CategoryController.categoryColor(txRow.modelData.category) || Theme.overlay0
                                                 elide: Text.ElideRight
                                                 width: Math.min(implicitWidth, 118)
                                             }
                                         }
-                                        Text { Layout.preferredWidth: 130; visible: txRow.modelData.category.length === 0; text: "—"; font.pixelSize: 14; color: "#6c7086" }
+                                        Text { Layout.preferredWidth: 130; visible: txRow.modelData.category.length === 0; text: "—"; font.pixelSize: 14; color: Theme.overlay0 }
 
                                         Rectangle {
                                             Layout.preferredWidth: 130
@@ -813,17 +813,17 @@ Item {
                                             Layout.preferredHeight: 20
                                             radius: 10
                                             color: Qt.rgba(1, 1, 1, 0.08)
-                                            border.color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || "#6c7086"
+                                            border.color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || Theme.overlay0
                                             Text {
                                                 anchors.centerIn: parent
                                                 text: txRow.modelData.subcategory
                                                 font.pixelSize: 12
-                                                color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || "#6c7086"
+                                                color: CategoryController.subcategoryColor(txRow.modelData.category, txRow.modelData.subcategory) || Theme.overlay0
                                                 elide: Text.ElideRight
                                                 width: Math.min(implicitWidth, 118)
                                             }
                                         }
-                                        Text { Layout.preferredWidth: 130; visible: txRow.modelData.subcategory.length === 0; text: "—"; font.pixelSize: 14; color: "#6c7086" }
+                                        Text { Layout.preferredWidth: 130; visible: txRow.modelData.subcategory.length === 0; text: "—"; font.pixelSize: 14; color: Theme.overlay0 }
                                     }
                                 }
                             }

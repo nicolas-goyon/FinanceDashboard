@@ -40,7 +40,7 @@ Item {
         anchors.fill: parent
         font.pixelSize: 13
         font.bold: true
-        color: "#6c7086"
+        color: Theme.overlay0
         horizontalAlignment: cell.horizontalAlignment
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight
@@ -63,7 +63,7 @@ Item {
             width: 2
             height: parent.height * 0.6
             radius: 1
-            color: dragArea.containsMouse || dragArea.pressed ? "#89b4fa" : "transparent"
+            color: dragArea.containsMouse || dragArea.pressed ? Theme.blue : "transparent"
         }
 
         MouseArea {

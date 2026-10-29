@@ -57,7 +57,7 @@ ComboBox {
     // Name of the currently selected item; drives currentIndex.
     property string currentName: ""
     // Swatch/background color used when nothing is selected / name not found.
-    property color emptyColor: "#45475a"
+    property color emptyColor: Theme.surface1
 
     signal nameActivated(string name)
 
@@ -75,7 +75,7 @@ ComboBox {
     // used to pick a readable dark-or-light text color against it.
     function readableTextColor(bg) {
         var luminance = 0.299 * bg.r + 0.587 * bg.g + 0.114 * bg.b
-        return luminance > 0.6 ? "#11111b" : "#cdd6f4"
+        return luminance > 0.6 ? Theme.crust : Theme.text
     }
 
     currentIndex: indexForName(currentName)
@@ -176,6 +176,6 @@ ComboBox {
     background: Rectangle {
         radius: 4
         color: control.currentColor
-        border.color: "#313244"
+        border.color: Theme.surface0
     }
 }

@@ -31,6 +31,7 @@ database").
 qml/Main.qml          The window, the sidebar and the navigation (currentViewId).
 qml/pages/            One file for each page. Display only.
 qml/components/       Shared QML components (ChartCard, PillButton, FormDialog, HoverPoint, …).
+qml/components/Theme.qml  Every colour of the QML (a singleton, `Theme.<name>`).
 src/controllers/      One subfolder for each domain. One controller class for each page.
 src/controllers/ui/   QML singletons with no page, for example Fonts (the fixed-pitch font).
 src/db/               Database (connection, transactions, upgrades) and tables/ (one class per table).
@@ -54,6 +55,8 @@ Put the UI in QML. Put the algorithms, the analytics and the data access in C++.
 - Each page has one C++ controller class (`QML_ELEMENT`) in `src/controllers/<domain>/`.
 - The controller contains all the logic.
 - The `.qml` file only shows the data that the controller gives to it.
+- Take every colour from `Theme` (`qml/components/Theme.qml`). Do not write a hex colour in a
+  page or a component. Add a new colour to `Theme.qml` first.
 - Use `QML_SINGLETON` only for data that many pages share (example: `CategoryController`,
   `AccountController`).
 

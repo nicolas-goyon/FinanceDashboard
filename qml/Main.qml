@@ -42,7 +42,7 @@ ApplicationWindow {
     // main.cpp sets it from the identity of the build (QtQuick Application
     // singleton: https://doc.qt.io/qt-6/qml-qtquick-application.html).
     title: Application.displayName
-    color: "#11111b"
+    color: Theme.crust
 
     property string currentViewId: "overview"
 
@@ -231,7 +231,7 @@ ApplicationWindow {
         id: sidebar
         anchors { top: parent.top; bottom: parent.bottom; left: parent.left }
         width: 240
-        color: "#181825"
+        color: Theme.mantle
 
         Flickable {
             anchors.fill: parent
@@ -248,7 +248,7 @@ ApplicationWindow {
                     Layout.margins: 16
                     Layout.bottomMargin: 4
                     text: "FINANCE DASHBOARD"
-                    color: "#6c7086"
+                    color: Theme.overlay0
                     font { pixelSize: 14; bold: true }
                 }
 
@@ -278,12 +278,12 @@ ApplicationWindow {
                                 Layout.leftMargin: 16
                                 Layout.rightMargin: 16
                                 Layout.preferredHeight: 1
-                                color: "#313244"
+                                color: Theme.surface0
                             }
                             Text {
                                 Layout.leftMargin: 16
                                 text: sidebarEntry.modelData.sectionLabel !== undefined ? sidebarEntry.modelData.sectionLabel : ""
-                                color: "#6c7086"
+                                color: Theme.overlay0
                                 font { pixelSize: 11; bold: true; letterSpacing: 1 }
                             }
                         }
@@ -327,7 +327,7 @@ ApplicationWindow {
     Rectangle {
         id: sidebarDivider
         anchors { top: parent.top; bottom: parent.bottom; left: sidebar.right }
-        width: 1; color: "#313244"
+        width: 1; color: Theme.surface0
     }
 
     // ── Update banner (#117) ─────────────────────────────────────────────────
@@ -343,7 +343,7 @@ ApplicationWindow {
         anchors { top: parent.top; left: sidebarDivider.right; right: parent.right }
         height: UpdateController.bannerVisible && root.currentViewId !== "updates" ? 40 : 0
         visible: height > 0
-        color: UpdateController.installState === "failed" ? "#4c2032" : "#1e3a5f"
+        color: UpdateController.installState === "failed" ? Theme.dangerBannerBg : Theme.primaryBg
 
         RowLayout {
             anchors { fill: parent; leftMargin: 20; rightMargin: 12 }
@@ -359,7 +359,7 @@ ApplicationWindow {
                         ? UpdateController.installText + " " + Math.round(UpdateController.installProgress * 100) + " %"
                         : UpdateController.installText
                 font.pixelSize: 14
-                color: "#cdd6f4"
+                color: Theme.text
             }
             PillButton {
                 visible: UpdateController.installState === "idle" && UpdateController.installsItself
@@ -586,7 +586,7 @@ ApplicationWindow {
         padding: 20
         modal: true
 
-        background: Rectangle { color: "#181825"; border.color: "#45475a"; radius: 8 }
+        background: Rectangle { color: Theme.mantle; border.color: Theme.surface1; radius: 8 }
 
         contentItem: ColumnLayout {
             spacing: 14
@@ -595,14 +595,14 @@ ApplicationWindow {
                 text: "Database upgraded"
                 font.pixelSize: 19
                 font.bold: true
-                color: "#cdd6f4"
+                color: Theme.text
             }
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: root.databaseNotice
                 font.pixelSize: 14
-                color: "#a6adc8"
+                color: Theme.subtext0
             }
             RowLayout {
                 Layout.topMargin: 6

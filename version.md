@@ -31,6 +31,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
 
 ## v0.2.3 (current)
 
+### Changed
+- QML colours: every colour of the QML comes from a `Theme` singleton
+  (`qml/components/Theme.qml`, `Theme.<name>`): the 14 colours of the Catppuccin Mocha palette
+  under their palette names, 10 colours outside the palette named by their use, and 3 area
+  fills. The 448 hex literals of the pages and components are gone. The app looks the same: the
+  colour values do not change (#79).
+
 ### Fixed
 - Pie and donut charts: a click on a slice now shows its details. Each `PieSeries` sets
   `selectable: true`; without it Qt Graphs emits no `clicked` signal. The 2-level pies of

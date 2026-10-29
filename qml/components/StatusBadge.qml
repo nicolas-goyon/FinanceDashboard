@@ -29,16 +29,16 @@ Rectangle {
     radius: root.pillHeight / 2
 
     color: {
-        if (root.variant === "success") return "#1a3328"
-        if (root.variant === "warning") return "#3d3320"
-        if (root.variant === "danger")  return "#3d2028"
-        return "#181825" // neutral
+        if (root.variant === "success") return Theme.successBg
+        if (root.variant === "warning") return Theme.warningBg
+        if (root.variant === "danger")  return Theme.dangerBg
+        return Theme.mantle // neutral
     }
     border.color: {
-        if (root.variant === "success") return "#2d5a45"
-        if (root.variant === "warning") return "#5a4d2d"
-        if (root.variant === "danger")  return "#5a2d36"
-        return "#313244" // neutral
+        if (root.variant === "success") return Theme.successBgStrong
+        if (root.variant === "warning") return Theme.warningBgStrong
+        if (root.variant === "danger")  return Theme.dangerBgStrong
+        return Theme.surface0 // neutral
     }
 
     Text {
@@ -47,10 +47,10 @@ Rectangle {
         text: root.text
         font.pixelSize: root.pillHeight >= 24 ? 14 : 12
         color: {
-            if (root.variant === "success") return "#a6e3a1"
-            if (root.variant === "warning") return "#f9e2af"
-            if (root.variant === "danger")  return "#f38ba8"
-            return "#a6adc8" // neutral
+            if (root.variant === "success") return Theme.green
+            if (root.variant === "warning") return Theme.yellow
+            if (root.variant === "danger")  return Theme.red
+            return Theme.subtext0 // neutral
         }
     }
 }

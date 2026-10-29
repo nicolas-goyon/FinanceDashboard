@@ -19,7 +19,8 @@ RowLayout {
     id: root
     spacing: 10
 
-    property string selectedColor: "#89b4fa"
+    // Text ("#rrggbb"): the value is saved as it is.
+    property string selectedColor: root.colorToHex(Theme.blue)
     property string dialogTitle: "Choose color"
 
     // color -> "#rrggbb", built from the documented r/g/b real (0..1)
@@ -37,22 +38,22 @@ RowLayout {
         Layout.preferredWidth: 32; Layout.preferredHeight: 32; radius: 16
         color: root.selectedColor
         border.width: 2
-        border.color: "#45475a"
+        border.color: Theme.surface1
         TapHandler {
             onTapped: { colorDialog.selectedColor = root.selectedColor; colorDialog.open() }
         }
     }
     Rectangle {
         Layout.preferredWidth: 110; Layout.preferredHeight: 26; radius: 4
-        color: swatchHover.hovered ? "#313244" : "#1e1e2e"
-        border.color: "#313244"
-        Text { anchors.centerIn: parent; text: "Choose color…"; font.pixelSize: 14; color: "#cdd6f4" }
+        color: swatchHover.hovered ? Theme.surface0 : Theme.base
+        border.color: Theme.surface0
+        Text { anchors.centerIn: parent; text: "Choose color…"; font.pixelSize: 14; color: Theme.text }
         HoverHandler { id: swatchHover }
         TapHandler {
             onTapped: { colorDialog.selectedColor = root.selectedColor; colorDialog.open() }
         }
     }
-    Text { text: root.selectedColor; font.pixelSize: 14; color: "#6c7086" }
+    Text { text: root.selectedColor; font.pixelSize: 14; color: Theme.overlay0 }
 
     ColorDialog {
         id: colorDialog
