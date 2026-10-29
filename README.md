@@ -107,12 +107,17 @@ cmake --build build --config Release
 
 ### 3. Run
 
+The build folder has no Qt DLLs, so put the `bin` folder of your Qt on `PATH` first (in the
+same PowerShell window):
+
 ```powershell
+$env:PATH = "C:\Qt\6.11.1\msvc2022_64\bin;$env:PATH"
 .\build\Release\FinanceDashboard.exe
 ```
 
 Or open the project in **Qt Creator** (`File → Open File or Project → CMakeLists.txt`) and
-press **Run**.
+press **Run**: Qt Creator sets `PATH` for you. Or run the copy in `stage/` (see below), which
+has its own Qt.
 
 There is no manual `windeployqt` step any more. To produce a copy that runs on a machine with
 no Qt installed, install the project instead — `qt_generate_deploy_qml_app_script()` pulls in
@@ -144,10 +149,23 @@ cmake -B build-test -DFD_APP_IDENTITY=test -DCMAKE_PREFIX_PATH="C:/Qt/6.11.1/msv
 
 ### Tests
 
+On Linux (one build type for each build folder):
+
 ```bash
-cmake -B build -DFD_BUILD_TESTS=ON
+cmake -B build -DFD_BUILD_TESTS=ON -DCMAKE_PREFIX_PATH=~/Qt/6.11.1/gcc_64
 cmake --build build
 ctest --test-dir build --output-on-failure
+```
+
+On Windows, with the Visual Studio generator of the steps above, give the build type to
+`ctest` with `-C` (without it, `ctest` reports each test as "Not Run"), and put the `bin` folder
+of your Qt on `PATH` (the tests need the Qt DLLs too):
+
+```powershell
+cmake -B build -G "Visual Studio 17 2022" -DFD_BUILD_TESTS=ON -DCMAKE_PREFIX_PATH="C:/Qt/6.11.1/msvc2022_64"
+cmake --build build --config Release
+$env:PATH = "C:\Qt\6.11.1\msvc2022_64\bin;$env:PATH"
+ctest --test-dir build -C Release --output-on-failure
 ```
 
 `ctest` runs `predictor_selftest` (category prediction), `import_save_test` (the statement
@@ -177,17 +195,32 @@ first run.
 ```
 
 The build script runs that requirement check first (`CHECK_REQUIREMENTS` / `FORCE_BUILD` in
-`.env`, or `-SkipChecks` / `-Force`) and keeps every run's logs in
-`logs/docker-build/<date_time>_<variant>/`.
+`.env`) and keeps every run's logs in `logs/docker-build/<date_time>_<variant>/`. Its options:
 
-Result: `dist/<target>-<link mode>-<build type>/` — e.g. `dist/windows-shared-release/` holds
-`FinanceDashboard.exe` (a small launcher that checks the requirements, then starts the app)
-and `app/` (the real app plus its Qt DLLs, `plugins/` and `qml/`). Nothing needs installing on
-the computer that runs it; copy the whole folder anywhere and start `FinanceDashboard.exe`.
-`LINK_MODE=static` puts everything in a single executable instead, but the first
-image build compiles Qt from source (~1–3 h). The Windows exe is cross-compiled with
-**llvm-mingw (clang)**, not the MinGW g++ used by the local CLion build. Every option is
-documented in `.env.example`.
+| PowerShell | bash | What it does |
+|---|---|---|
+| `-NoImage` | `--no-image` | Skips the image step (faster when only the code changed). |
+| `-SkipChecks` | `--skip-checks` | Does not run the requirement check (overrides `CHECK_REQUIREMENTS`). |
+| `-Force` | `--force` | Builds even if the check fails (overrides `FORCE_BUILD`). |
+
+Result: `dist/<target>-<link mode>-<build type>/`, for example `dist/windows-shared-release/`.
+It holds a small launcher, `FinanceDashboard.exe` (`FinanceDashboard` on Linux), which checks
+the requirements and then starts the app, and `app/`, with the real app and the
+`requirements.txt` that the launcher reads. Copy the whole folder anywhere and start the
+launcher.
+
+- `LINK_MODE=shared`: `app/` also holds the Qt DLLs (`.so` files on Linux), `plugins/` and
+  `qml/`.
+- `LINK_MODE=static`: `app/` holds one executable with Qt inside. The output is still the
+  launcher, `app/` and `app/requirements.txt`. The first image build compiles Qt from source
+  (~1–3 h).
+
+With `TARGET=windows`, nothing needs installing on the computer that runs it. With
+`TARGET=linux`, that computer needs glibc 2.35+ (Ubuntu 22.04+, Debian 12+) and system
+libraries that are not shipped with the app: X11/xcb (`libxcb-cursor0`, `libxkbcommon-x11-0`, …),
+OpenGL (`libgl1`, `libegl1`) and `libfontconfig1`. The launcher and the requirement check tell
+which packages are missing. The Windows exe is cross-compiled with **llvm-mingw (clang)**, not
+with the MSVC of the local build above. Every option is documented in `.env.example`.
 
 ---
 
@@ -197,7 +230,7 @@ documented in `.env.example`.
 FinanceDashboard/
 ├── qml/        — UI only (QML). No business logic.
 ├── src/        — Controllers, database layer, models, statement-import templates, update check (all C++).
-├── tests/      — CTest registration for the predictor self-test harness.
+├── tests/      — The CTest suites: predictor, import, database, update check, calculations.
 ├── tools/      — Static-analysis runners, the doc generator, version.py (version/changelog),
 │                 release_flow.py (the branches that CI makes for a release) and their tests,
 │                 Docker build wrappers + requirement check (docker-build.*, check-requirements.*).

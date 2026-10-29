@@ -68,6 +68,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
   and 6.9 passed the check, and the Docker build then stopped at configure. `README.md`,
   `CI-CD.md` and `ci.yml` now say Qt 6.10+ (#81).
 
+### Docs
+- README.md: the Run and Tests steps work on Windows (the Qt `bin` folder on `PATH`, and `ctest
+  -C Release` with the Visual Studio generator), with a Linux test example. The Docker section
+  gives the bash options next to the PowerShell ones, says that a static build is still the
+  launcher, `app/` and `app/requirements.txt`, and lists the system libraries that a Linux
+  build needs. The project layout describes the tests folder as it is (#104, #94).
+
 ---
 
 ## v0.2.2 — 2026-10-27 — Import and calculations
