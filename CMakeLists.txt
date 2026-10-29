@@ -230,6 +230,8 @@ qt_add_qml_module(FinanceDashboard
         src/controllers/updates/UpdateController.cpp
         src/controllers/updates/UpdateInstaller.h
         src/controllers/updates/UpdateInstaller.cpp
+        # Fonts that QML cannot name (fixed-pitch font of the system, #77).
+        src/controllers/ui/Fonts.h
     QML_FILES
         qml/Main.qml
         qml/StartupErrorWindow.qml
@@ -295,6 +297,7 @@ target_include_directories(FinanceDashboard PRIVATE
     src/controllers/dataentry
     src/controllers/database
     src/controllers/updates
+    src/controllers/ui
 )
 
 target_link_libraries(FinanceDashboard PRIVATE

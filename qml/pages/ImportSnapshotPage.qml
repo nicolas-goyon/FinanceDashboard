@@ -399,7 +399,7 @@ Item {
                             Text {
                                 text: controller.statementInfo.accountHash
                                 font.pixelSize: 14
-                                font.family: "monospace"
+                                font.family: Fonts.monospace
                                 color: "#89b4fa"
                             }
                         }
@@ -1237,7 +1237,7 @@ Item {
                                 Layout.leftMargin: 70
                                 text: logRow.modelData.rawLine
                                 font.pixelSize: 13
-                                font.family: "monospace"
+                                font.family: Fonts.monospace
                                 color: "#45475a"
                                 wrapMode: Text.WordWrap
                             }
