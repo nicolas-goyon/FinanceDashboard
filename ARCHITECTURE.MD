@@ -214,3 +214,7 @@ hole of a donut is reported as a slice, and when two `PieSeries` share one `Grap
 on one ring can be reported by the other. The 2-level pies of Account Details are one
 `GraphsView` with two `PieSeries`; `showRingSliceInfo()` in `AccountHistoryPage.qml` finds the
 ring and the slice from the position of the press.
+
+Do not give a series the colour `"transparent"`. Qt Graphs replaces a colour with alpha 0 by the
+theme colour: this applies to `color` and `borderColor` of a series. A line that only carries
+`pointDelegate` markers gets a visible colour, and the delegates receive it as `pointColor`.

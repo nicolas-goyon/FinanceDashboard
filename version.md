@@ -38,6 +38,9 @@ builds, source archives). Then CI opens a pull request that merges the release b
   of a click come from the position of the press, because the Qt Graphs 6.10 hit test ignores
   `holeSize`. The subcategory ring starts 0.03 outside the category ring, as intended, instead
   of under it (#57).
+- Overview, net worth chart: the hover lines on the layer borders are no longer drawn in the
+  green of the theme. They have the colour of their layer, and so have the markers and the
+  tooltip titles (#58).
 
 ---
 
