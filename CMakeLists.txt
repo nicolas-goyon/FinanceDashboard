@@ -154,6 +154,8 @@ set(FD_CORE_SOURCES
     src/utils/AccountHashing.h
     src/calc/TransferMatcher.h
     src/calc/TransferMatcher.cpp
+    src/calc/NetWorthCalc.h
+    src/calc/NetWorthCalc.cpp
     src/utils/StatusMessage.h
     src/utils/StatusMessage.cpp
     # Category prediction (see docs/category-prediction.md). UI-independent

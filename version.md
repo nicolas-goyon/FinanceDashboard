@@ -57,6 +57,11 @@ builds, source archives). Then CI opens a pull request that merges the release b
   once; cancel a confirmed transfer. On the transactions page, "✎ Edit" can mark one row as an
   internal transfer, and these rows show "⇄ Internal transfer" in place of a category. Schema
   step 9 stores the answer.
+- Value of the investment accounts (#208): on an account of the "Investments" category (or of
+  type PEA, CTO or Assurance Vie), a balance checkpoint is a valuation ("＋ Add valuation"). The
+  value at a date is the last valuation plus the deposits and withdrawals after it; the rest of
+  the change is the gain or loss of the period. The same calculation gives the value of every
+  account for the net worth pages.
 
 ### Fixed
 - The application log no longer shows statement data (#205): the upgrade steps and the import

@@ -11,12 +11,15 @@
 //         infinity, and the currency of the amount
 //   #207  TransferMatcher: a debit and a credit of the same amount on two
 //         accounts of the net worth, 3 days apart or less, are one transfer
+//   #208  NetWorthCalc: the value of an investment account between two
+//         valuations, and savings + gains = change of the net worth
 //   #33   Money: whole cents (half away from zero), the amounts that the app
 //         can store, and cents that survive a round trip through a double
 
 #include "CashFlowController.h"
 #include "InvestmentsController.h"
 #include "ProjectsController.h"
+#include "calc/NetWorthCalc.h"
 #include "calc/TransferMatcher.h"
 #include "utils/Formatter.h"
 #include "utils/Money.h"
@@ -104,6 +107,8 @@ private slots:
     void centsSurviveARoundTrip();
     void transferIsADebitAndACreditOfTheNetWorth();
     void transferPairsTakeTheSmallestGap();
+    void valueBetweenTwoValuations();
+    void savingsPlusGainsIsTheChangeOfTheNetWorth();
 };
 
 namespace {
@@ -399,6 +404,80 @@ void CalcTest::transferPairsTakeTheSmallestGap()
     QCOMPARE(pairs.at(0).creditId, 4);
     QCOMPARE(pairs.at(1).debitId, 1);
     QCOMPARE(pairs.at(1).creditId, 3);
+}
+
+void CalcTest::valueBetweenTwoValuations()
+{
+    // An assurance vie: 10 000 on 01/31, a deposit of 500 on 02/10, then a
+    // valuation of 11 200 on 03/31.
+    NetWorthCalc::AccountHistory account;
+    account.accountId = 1;
+    account.checkpoints = {
+        Data::AccountBalanceCheckpoint{1, 1, QDate(2026, 1, 31), 10000.0, QString()},
+        Data::AccountBalanceCheckpoint{2, 1, QDate(2026, 3, 31), 11200.0, QString()},
+    };
+    Data::Transaction deposit = row(1, 1, QDate(2026, 2, 10), 0.0, 500.0);
+    deposit.balanceAfter = 500.0; // the cash line of the statement: not the value
+    account.rows = {deposit};
+    QCOMPARE(NetWorthCalc::valueCentsAt(account, QDate(2026, 1, 15)), qint64(0)); // before anything
+    QCOMPARE(NetWorthCalc::valueCentsAt(account, QDate(2026, 2, 9)), qint64(1000000));
+    QCOMPARE(NetWorthCalc::valueCentsAt(account, QDate(2026, 2, 15)), qint64(1050000));
+    QCOMPARE(NetWorthCalc::valueCentsAt(account, QDate(2026, 3, 31)), qint64(1120000));
+    // February and March: 500 deposited, so 700 of gains.
+    const NetWorthCalc::Period period = NetWorthCalc::period({account}, QDate(2026, 2, 1), QDate(2026, 3, 31));
+    QCOMPARE(period.changeCents(), qint64(120000));
+    QCOMPARE(period.flows.savingsCents(), qint64(50000));
+    QCOMPARE(period.gainsCents(), qint64(70000));
+
+    // A checking account with no checkpoint: the balance before its first
+    // row comes from that row.
+    NetWorthCalc::AccountHistory checking;
+    checking.accountId = 2;
+    Data::Transaction first = row(2, 2, QDate(2026, 1, 5), 100.0, 0.0);
+    first.balanceAfter = 1000.0;
+    checking.rows = {row(3, 2, QDate(2026, 1, 20), 0.0, 2000.0), first};
+    QCOMPARE(NetWorthCalc::valueCentsAt(checking, QDate(2026, 1, 4)), qint64(0));
+    QCOMPARE(NetWorthCalc::valueCentsAt(checking, QDate(2026, 1, 5)), qint64(100000));
+    QCOMPARE(NetWorthCalc::valueCentsAt(checking, QDate(2026, 1, 31)), qint64(300000));
+}
+
+void CalcTest::savingsPlusGainsIsTheChangeOfTheNetWorth()
+{
+    // A year of fictitious data: a salary, rent, a transfer to the Livret A
+    // (an internal transfer, both sides), a payment to a joint account outside
+    // the net worth (spending), interest in a row, and a valuation of an
+    // investment account.
+    NetWorthCalc::AccountHistory checking;
+    checking.accountId = 1;
+    checking.checkpoints = {Data::AccountBalanceCheckpoint{1, 1, QDate(2025, 12, 31), 1000.0, QString()}};
+    checking.rows = {
+        row(1, 1, QDate(2026, 1, 28), 0.0, 2500.0),        // salary
+        row(2, 1, QDate(2026, 2, 1), 900.0, 0.0),          // rent
+        row(3, 1, QDate(2026, 2, 3), 1000.0, 0.0, 3),      // → Livret A
+        row(5, 1, QDate(2026, 2, 5), 150.0, 0.0),          // → joint account
+    };
+    NetWorthCalc::AccountHistory livret;
+    livret.accountId = 2;
+    livret.checkpoints = {Data::AccountBalanceCheckpoint{2, 2, QDate(2025, 12, 31), 5000.0, QString()}};
+    livret.rows = {
+        row(4, 2, QDate(2026, 2, 4), 0.0, 1000.0, 3),      // ← checking
+        row(6, 2, QDate(2026, 12, 31), 0.0, 150.0),        // interest
+    };
+    NetWorthCalc::AccountHistory pea;
+    pea.accountId = 3;
+    pea.checkpoints = {
+        Data::AccountBalanceCheckpoint{3, 3, QDate(2025, 12, 31), 8000.0, QString()},
+        Data::AccountBalanceCheckpoint{4, 3, QDate(2026, 12, 31), 8600.0, QString()},
+    };
+    const QVector<NetWorthCalc::AccountHistory> scope = {checking, livret, pea};
+    const NetWorthCalc::Period year = NetWorthCalc::period(scope, QDate(2026, 1, 1), QDate(2026, 12, 31));
+    QCOMPARE(year.flows.incomeCents, qint64(265000));   // salary + interest
+    QCOMPARE(year.flows.spendingCents, qint64(105000)); // rent + joint account, not the transfer
+    QCOMPARE(year.flows.savingsCents(), qint64(160000));
+    QCOMPARE(year.startValueCents, qint64(1400000));
+    QCOMPARE(year.endValueCents, qint64(1620000));
+    QCOMPARE(year.gainsCents(), qint64(60000));         // the PEA
+    QCOMPARE(year.flows.savingsCents() + year.gainsCents(), year.changeCents());
 }
 
 QTEST_GUILESS_MAIN(CalcTest)
