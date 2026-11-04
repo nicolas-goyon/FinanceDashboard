@@ -235,6 +235,12 @@ when it closes.
     without the internal transfers.
   - The change of the net worth = the savings + the gains. The gains are the rest: valuations,
     interest that is not in a row, corrections, a transfer with one side only.
+- `NetWorthScope` (`src/controllers/common/`) reads the accounts of the net worth, with their
+  rows and checkpoints, in one pass. It puts each account in a group: day-to-day, savings
+  (`Data::isSavings()`), investments (`Data::isInvestment()`).
+- A page on real data reads the database again when it is shown (`onVisibleChanged` →
+  `reload()`): the pages stay loaded in the StackLayout. It clears its series before it fills
+  them again.
 
 ### Account tags
 
@@ -382,7 +388,7 @@ reason.
 | Statement import, review and report | `src/controllers/dataentry/SnapshotImportController.h`, `qml/pages/ImportSnapshotPage.qml`, `src/import/` |
 | Category prediction | `src/predict/CategoryPredictor.h`, `src/predict/LabelNormalizer.h` |
 | Categories, accounts, account types | `src/controllers/dataentry/CategoryController.h`, `AccountController.h` |
-| Net worth scope and internal transfers | `AccountController.h` (`setInNetWorth()`), `src/controllers/dataentry/TransfersController.h`, `src/calc/TransferMatcher.h`, `qml/pages/InternalTransfersPage.qml` |
+| Net worth, internal transfers, Overview | `src/controllers/common/NetWorthScope.h`, `src/calc/NetWorthCalc.h`, `src/controllers/overview/NetWorthController.h`, `AccountController.h` (`setInNetWorth()`), `src/controllers/dataentry/TransfersController.h`, `src/calc/TransferMatcher.h`, `qml/pages/InternalTransfersPage.qml` |
 | Database, schema, upgrades | `src/db/Database.h`, `src/db/tables/` |
 | Database management (reset, demo data, clean-up) | `src/controllers/database/DatabaseManagementController.h` |
 | Update check and installation | `src/controllers/updates/UpdateController.h`, `UpdateInstaller.h`, `src/update/`, `packaging/windows/update-restart.iss`, `README.md` § Updates |

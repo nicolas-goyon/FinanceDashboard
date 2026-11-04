@@ -63,6 +63,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
   the change is the gain or loss of the period. The same calculation gives the value of every
   account for the net worth pages.
 
+### Changed
+- The Overview shows real data (#209): the net worth today, its change this month and over 12
+  months, the savings rate of the month (without the internal transfers), the net worth of the
+  last 12 months by group of accounts (day-to-day, savings, investments), the allocation today
+  and the change of each month. It reads the data again each time the page is shown. The [MOCK]
+  badge is gone from this page.
+
 ### Fixed
 - The application log no longer shows statement data (#205): the upgrade steps and the import
   log ids and counts, not the descriptions, labels, rule patterns or account names. The tests

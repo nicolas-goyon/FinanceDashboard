@@ -218,6 +218,8 @@ qt_add_qml_module(FinanceDashboard
     SOURCES
         # PROJECT.md pages (mock data — UI pass)
         # One subfolder per page/domain under src/controllers/ (see ARCHITECTURE.MD § Directory Map).
+        src/controllers/common/NetWorthScope.h
+        src/controllers/common/NetWorthScope.cpp
         src/controllers/overview/NetWorthController.h
         src/controllers/overview/NetWorthController.cpp
         src/controllers/cashflow/CashFlowController.h

@@ -76,6 +76,25 @@ struct Account {
     return false;
 }
 
+// A savings account (#209, #211): the account category "Savings", or a type
+// of the default list for regulated savings. An investment account is not a
+// savings account.
+[[nodiscard]] inline bool isSavings(const Account& account)
+{
+    if (isInvestment(account)) {
+        return false;
+    }
+    if (account.category.compare(QLatin1String("Savings"), Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    for (const char* type : {"Livret A", "LDDS", "LEP", "PEL", "CEL", "Livret Jeune"}) {
+        if (account.type.compare(QLatin1String(type), Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 struct AccountCategory {
     int     id = -1;
     QString name;
