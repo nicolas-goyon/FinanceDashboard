@@ -434,77 +434,30 @@ QString AccountController::nameOfAccount(int accountId) const
     return account != m_accounts.cend() ? account->name : QStringLiteral("another account");
 }
 
-bool AccountController::addHash(int accountIndex, const QString& hash)
+bool AccountController::linkAccountHash(int accountIndex, const QString& hash)
 {
     if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
         return false;
     }
+    const Data::Account& account = m_accounts.at(accountIndex);
     const QString stored = AccountHashing::storedForm(hash);
-    if (!AccountHashing::isFingerprint(stored)) {
-        setStatus(StatusMessage::Level::Warning,
-                  QStringLiteral("⚠  An account hash has 64 hexadecimal characters (0-9, a-f)"));
-        return false;
-    }
-    // One account for each hash (#47): a typed hash does not take the hash
-    // of another account.
-    const int owner = Database::instance().accountOfHash(stored);
-    if (owner == m_accounts.at(accountIndex).id) {
-        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  This account already has this hash"));
-        return false;
-    }
-    if (owner >= 0) {
-        setStatus(StatusMessage::Level::Warning,
-                  QStringLiteral("⚠  The account \"%1\" has this hash. Remove it there first").arg(nameOfAccount(owner)));
-        return false;
-    }
-
-    // accountIndex bounds-checked above; QList's at() is const-only, so
-    // mutating through operator[] is genuinely required here.
-    Data::Account& acc = m_accounts[accountIndex]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-    const int hashId = Database::instance().addAccountHash(acc.id, stored, QStringLiteral("manual"));
-    if (hashId < 0) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not add the hash"));
-        return false;
-    }
-    acc.hashes.append(Data::AccountHash{ hashId, stored, QStringLiteral("manual") });
-    emit accountsChanged();
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Hash added"));
-    return true;
-}
-
-bool AccountController::linkAccountHash(int accountIndex, const QString& hash, const QString& legacyHash)
-{
-    if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
-        return false;
-    }
-    const int accountId = m_accounts.at(accountIndex).id;
-    const int owner = Database::instance().accountOfHash(hash);
-    const int legacyOwner = legacyHash.isEmpty() ? -1 : Database::instance().accountOfHash(legacyHash);
-    if (owner == accountId && legacyOwner < 0) {
+    if (std::any_of(account.hashes.cbegin(), account.hashes.cend(),
+                    [&](const Data::AccountHash& h) { return h.hash == stored; })) {
         return false; // already linked
     }
-    QString previous;
-    if (owner >= 0 && owner != accountId) {
-        previous = nameOfAccount(owner);
-    } else if (legacyOwner >= 0 && legacyOwner != accountId) {
-        previous = nameOfAccount(legacyOwner);
-    }
-    // The hash moves when another account has it (#47); its form from before
-    // #50 goes (#50).
-    if (!Database::instance().linkAccountHash(accountId, hash, QStringLiteral("auto"), legacyHash)) {
+    // A tag can be on two accounts (#203): the other accounts keep it.
+    if (!Database::instance().linkAccountHash(account.id, hash, QStringLiteral("auto"))) {
         setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not link the account"));
         return false;
     }
-    reload(); // two accounts can change: read them again
-    setStatus(StatusMessage::Level::Success,
-              previous.isEmpty() ? QStringLiteral("✓  Account linked")
-                                 : QStringLiteral("✓  Account linked: the hash is no longer on \"%1\"").arg(previous));
+    reload();
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account linked"));
     return true;
 }
 
-// NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
-// positionally from AccountsManagePage.qml as (accountIndex, hashIndex).
-void AccountController::removeHash(int accountIndex, int hashIndex)
+// Removes every tag of the account: the import does not suggest it any more,
+// until the user links it again from the review of a statement.
+void AccountController::forgetImportLink(int accountIndex)
 {
     if (accountIndex < 0 || accountIndex >= m_accounts.size()) {
         return;
@@ -512,15 +465,16 @@ void AccountController::removeHash(int accountIndex, int hashIndex)
     // accountIndex bounds-checked above; QList's at() is const-only, so
     // mutating through operator[] is genuinely required here.
     Data::Account& acc = m_accounts[accountIndex]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
-    if (hashIndex < 0 || hashIndex >= acc.hashes.size()) {
-        return;
+    while (!acc.hashes.isEmpty()) {
+        if (!Database::instance().removeAccountHash(acc.hashes.constFirst().id)) {
+            setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not remove the import link"));
+            emit accountsChanged();
+            return;
+        }
+        acc.hashes.removeFirst();
     }
-    if (!Database::instance().removeAccountHash(acc.hashes.at(hashIndex).id)) {
-        return;
-    }
-    acc.hashes.removeAt(hashIndex);
     emit accountsChanged();
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Hash removed"));
+    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Import link removed"));
 }
 
 bool AccountController::accountHasHash(int accountIndex, const QString& hash) const

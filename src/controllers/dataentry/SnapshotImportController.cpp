@@ -100,18 +100,40 @@ SnapshotImportController::~SnapshotImportController()
     m_predictionWatcher.future().cancel();
 }
 
+QString SnapshotImportController::accountTag() const
+{
+    if (!m_accountTagComputed) {
+        m_accountTag = AccountHashing::compute(m_statement.iban, m_statement.bic);
+        m_accountTagComputed = true;
+    }
+    return m_accountTag;
+}
+
+namespace {
+// An identifier of the statement header, for the review screen: its last 4
+// characters only (#202). The full value stays in memory and is never shown.
+QString maskedTail(const QString& value)
+{
+    constexpr qsizetype kShown = 4;
+    if (value.isEmpty()) {
+        return QStringLiteral("\u2014"); // —
+    }
+    return QStringLiteral("\u2022\u2022\u2022\u2022 ") + value.right(kShown);
+}
+} // namespace
+
 QVariantMap SnapshotImportController::statementInfo() const
 {
-    const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
+    const QString hash = accountTag();
 
     return QVariantMap{
         { "holderName",         m_statement.accountHolderName.isEmpty() ? QStringLiteral("—") : m_statement.accountHolderName },
         { "accountName",        m_statement.accountName.isEmpty()       ? QStringLiteral("—") : m_statement.accountName },
-        { "clientCode",         m_statement.clientCode.isEmpty()        ? QStringLiteral("—") : m_statement.clientCode },
-        { "accountNumber",      m_statement.accountNumber.isEmpty()     ? QStringLiteral("—") : m_statement.accountNumber },
-        { "iban",               m_statement.iban.isEmpty()              ? QStringLiteral("—") : m_statement.iban },
+        { "clientCode",         maskedTail(m_statement.clientCode) },
+        { "accountNumber",      maskedTail(m_statement.accountNumber) },
+        { "iban",               maskedTail(m_statement.iban) },
         { "bic",                m_statement.bic.isEmpty()               ? QStringLiteral("—") : m_statement.bic },
-        // HMAC-SHA256(iban, key=bic) — see AccountHashing::compute(). Empty IBAN → "—".
+        // The one-byte tag of the account — see AccountHashing::compute(). Empty IBAN → "—".
         { "accountHash",        hash.isEmpty() ? QStringLiteral("—") : hash },
         // Same value, un-prettified (empty string instead of "—") — what
         // ImportSnapshotPage.qml's "Link this account" button actually
@@ -263,6 +285,8 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
     dropPredictions(); // a job for the earlier statement counts for nothing now
     m_predictor.clear();
     m_statement = Data::ImportedStatement{};
+    m_accountTag.clear();
+    m_accountTagComputed = false;
     m_log.clear();
     m_userEditedRows.clear(); // fresh statement — nobody has decided anything yet
     m_userCategoryRows.clear();
@@ -400,28 +424,26 @@ int SnapshotImportController::matchAccountIndex(const QVariantList& accounts) co
     // shows the manual picker.
     // The fingerprint first, then its form from before #50 (an
     // 8-character BIC, #50): save() replaces that one.
-    QStringList candidates = {AccountHashing::compute(m_statement.iban, m_statement.bic)};
-    const QString legacy = AccountHashing::legacyCompute(m_statement.iban, m_statement.bic);
-    if (!legacy.isEmpty()) {
-        candidates.append(legacy);
-    }
-    if (candidates.first().isEmpty()) {
+    // A tag can be on two accounts (#203): the import suggests an account
+    // only when one account has the tag; else the user picks.
+    const QString tag = accountTag();
+    if (tag.isEmpty()) {
         return -1;
     }
-
-    for (const QString& targetHash : candidates) {
-        for (int i = 0; i < accounts.size(); ++i) {
-            const QVariantMap acc = accounts.at(i).toMap();
-            const QVariantList hashes = acc.value("hashes").toList();
-            for (const QVariant& hashEntry : hashes) {
-                if (hashEntry.toMap().value("hash").toString().compare(targetHash, Qt::CaseInsensitive) == 0) {
-                    return i;
-                }
+    int match = -1;
+    for (int i = 0; i < accounts.size(); ++i) {
+        const QVariantList hashes = accounts.at(i).toMap().value(QStringLiteral("hashes")).toList();
+        const bool has = std::any_of(hashes.cbegin(), hashes.cend(), [&](const QVariant& entry) {
+            return entry.toMap().value(QStringLiteral("hash")).toString().compare(tag, Qt::CaseInsensitive) == 0;
+        });
+        if (has) {
+            if (match >= 0) {
+                return -1; // two accounts have it
             }
+            match = i;
         }
     }
-
-    return -1;
+    return match;
 }
 
 int SnapshotImportController::legacyHashAccountIndex(const QVariantList& accounts) const
@@ -445,6 +467,8 @@ void SnapshotImportController::reset()
 {
     dropPredictions();
     m_statement = Data::ImportedStatement{};
+    m_accountTag.clear();
+    m_accountTagComputed = false;
     m_log.clear();
     m_hasParsed = false;
     m_lastParseFailed = false;
@@ -792,10 +816,8 @@ bool SnapshotImportController::save(int accountId, const QString& accountLabel)
         newRows.append(row);
     }
 
-    const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
-    // The fingerprint from before #50 (an 8-character BIC): replaced by
-    // `hash` (#50).
-    const QString legacyHash = AccountHashing::legacyCompute(m_statement.iban, m_statement.bic);
+    const QString hash = accountTag();
+    const QString legacyHash; // the forms of before v0.3.0 are gone (step 7)
     int inserted = 0;
     if (!Database::instance().saveImport(accountId, newRows, hash, statementCheckpointsToAdd(accountId),
                                          &inserted, legacyHash)) {
@@ -1024,9 +1046,9 @@ QVector<Data::AccountBalanceCheckpoint> SnapshotImportController::statementCheck
         toAdd.append(checkpoint);
     };
     plan(m_statement.balanceStartDate, m_statement.balanceStart,
-         QStringLiteral("Auto — statement start (%1)").arg(m_sourceFileName));
+         QStringLiteral("Auto — statement start"));
     plan(m_statement.balanceEndDate, m_statement.balanceEnd,
-         QStringLiteral("Auto — statement end (%1)").arg(m_sourceFileName));
+         QStringLiteral("Auto — statement end"));
     return toAdd;
 }
 

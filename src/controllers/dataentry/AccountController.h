@@ -16,7 +16,7 @@
 //
 // Session-wide source of truth for the accounts list — backs
 // qml/pages/AccountsManagePage.qml (add/edit/remove accounts, manage
-// per-account hash links, open the transactions page) and
+// the import link of each account, open the transactions page) and
 // qml/pages/AccountTypesCategoriesPage.qml (manage the account-type and
 // account-category lists), and is read wherever an account gets picked or
 // matched: the snapshot table on TransactionsManagementPage.qml and the
@@ -38,17 +38,14 @@
 //     `color` (used for badges), `type` doesn't.
 //   - No iban/bic/account-number fields are stored on an account — the app
 //     does not keep them (product decision). Matching a statement import
-//     to an account is purely via the account_hashes table (a fingerprint,
-//     not a security feature: see utils/AccountHashing.h).
+//     to an account is purely via the account_hashes table (a tag of one
+//     byte, which many bank accounts share: see utils/AccountHashing.h).
 //
-// Hashes: an account can carry multiple stored fingerprints (see
-// AccountHashesTable). Since accounts no longer store their own iban/bic,
-// there is nothing to auto-derive a hash from at account-creation time
-// anymore — hashes only get added via linkAccountHash() (from the statement
-// import review screen, source "auto") or addHash() (typed in manually on
-// AccountsManagePage.qml, source "manual"). `hashCount`/`linked` in
-// accounts() let QML show a "not linked yet" badge without walking the
-// hashes array itself.
+// Import links: an account can carry tags (see AccountHashesTable). They
+// only get added via linkAccountHash() (the "Link this account" action of the
+// import review) or by a save of an import (source "auto").
+// `hashCount`/`linked` in accounts() let QML show a "not linked yet" badge
+// without walking the hashes array itself.
 //
 // Data shape (rebuilt into a QVariantList on every accounts()/
 // accountCategories()/accountTypes() read, same convention as
@@ -111,22 +108,14 @@ public:
     Q_INVOKABLE void renameAccountType(int index, const QString& newName);
     Q_INVOKABLE void removeAccountType(int index);
 
-    // Hash management (index into accounts()). A hash belongs to one account
-    // (#47). addHash() is for a user-typed hash (source "manual"): it must be
-    // 64 hexadecimal characters, and another account must not have it (the
-    // status tells which one). linkAccountHash() is for a hash computed from
-    // a statement's IBAN/BIC during import review (source "auto") — see
-    // ImportSnapshotPage.qml's "Link this account" action: it moves the hash
-    // when another account has it. Both return false (with a status) when
-    // nothing changed, and false with no status when the account already
-    // has the hash (linkAccountHash()).
-    Q_INVOKABLE bool addHash(int accountIndex, const QString& hash);
-    // `legacyHash`: the fingerprint of the statement from before #50
-    // (statementInfo().legacyHashRaw of the import): replaced too.
-    Q_INVOKABLE bool linkAccountHash(int accountIndex, const QString& hash, const QString& legacyHash = QString());
-    // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
-    // positionally from AccountsManagePage.qml as (accountIndex, hashIndex).
-    Q_INVOKABLE void removeHash(int accountIndex, int hashIndex);
+    // Import links (index into accounts()). A link is a tag of one byte
+    // (utils/AccountHashing.h, #203): many bank accounts have the same tag,
+    // so a tag can be on two accounts. linkAccountHash() is for the tag of
+    // the statement under review (ImportSnapshotPage.qml, "Link this
+    // account"); a save links it too. forgetImportLink() removes every tag of
+    // the account (AccountsManagePage.qml).
+    Q_INVOKABLE bool linkAccountHash(int accountIndex, const QString& hash);
+    Q_INVOKABLE void forgetImportLink(int accountIndex);
     Q_INVOKABLE [[nodiscard]] bool accountHasHash(int accountIndex, const QString& hash) const;
 
     // Formatted rows for the per-account transactions page

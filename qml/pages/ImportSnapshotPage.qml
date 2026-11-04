@@ -66,24 +66,18 @@ Item {
     // adds or removes accounts (#64), so the indexes are read again from the
     // ids when the list changes (see the Connections below).
     property int selectedAccountId: -1
-    // The account that has the hash of this statement from before #50 (an
-    // 8-character BIC): Save replaces it.
-    property int legacyAccountIndex: -1
 
     readonly property var selectedAccount:
         page.selectedAccountIndex >= 0 && page.selectedAccountIndex < AccountController.accounts.length
             ? AccountController.accounts[page.selectedAccountIndex] : null
-    // The account that has the hash of the statement (one at most, #47).
+    // The account that the tag of the statement suggests (-1 when no account
+    // or two accounts have it, #203).
     readonly property string matchedAccountName:
         page.matchedAccountIndex >= 0 && page.matchedAccountIndex < AccountController.accounts.length
             ? AccountController.accounts[page.matchedAccountIndex].name : ""
-    readonly property string legacyAccountName:
-        page.legacyAccountIndex >= 0 && page.legacyAccountIndex < AccountController.accounts.length
-            ? AccountController.accounts[page.legacyAccountIndex].name : ""
 
     function readMatches() {
         matchedAccountIndex = controller.matchAccountIndex(AccountController.accounts)
-        legacyAccountIndex = controller.legacyHashAccountIndex(AccountController.accounts)
     }
 
     function goToReview() {
@@ -387,15 +381,15 @@ Item {
                             }
                         }
 
-                        // Account-hash fingerprint — HMAC-SHA256(IBAN, key=BIC), used by
-                        // matchAccountIndex() instead of comparing raw IBAN/BIC (see
-                        // SnapshotImportController::accountHash() / § Statement Import in
-                        // ARCHITECTURE.MD). Shown here so the match is auditable.
+                        // The account tag (#203): one byte of a slow hash of the IBAN,
+                        // used by matchAccountIndex() (see utils/AccountHashing.h and
+                        // § Account tags in ARCHITECTURE.MD). Many bank accounts have
+                        // the same tag, so it tells nothing about the IBAN.
                         RowLayout {
                             spacing: 24
                             Text { text: "BIC:"; font.pixelSize: 13; color: Theme.overlay0 }
                             Text { text: controller.statementInfo.bic; font.pixelSize: 15; color: Theme.text }
-                            Text { text: "Account hash:"; font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: "Account tag:"; font.pixelSize: 13; color: Theme.overlay0 }
                             Text {
                                 text: controller.statementInfo.accountHash
                                 font.pixelSize: 14
@@ -419,24 +413,16 @@ Item {
                             }
                             Text {
                                 visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex === page.selectedAccountIndex
-                                text: "✓ matched by account hash"
+                                text: "✓ suggested by the account tag"
                                 font.pixelSize: 13
                                 color: Theme.green
                             }
-                            // A hash belongs to one account (#47): Save (or
-                            // "Link this account") moves it to the picked one.
+                            // A tag can be on two accounts (#203): Save (or "Link
+                            // this account") adds it to the picked one, and the
+                            // other one keeps it.
                             Text {
                                 visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex !== page.selectedAccountIndex
-                                text: "⚠ the account hash is on \"" + page.matchedAccountName + "\": Save moves it to this account"
-                                font.pixelSize: 13
-                                color: Theme.yellow
-                            }
-                            // The old form of the hash (#50) on a third account.
-                            Text {
-                                visible: page.legacyAccountIndex >= 0 && page.legacyAccountIndex !== page.selectedAccountIndex
-                                         && page.legacyAccountIndex !== page.matchedAccountIndex
-                                text: "⚠ the old account hash (8-character BIC) is on \"" + page.legacyAccountName
-                                      + "\": Save moves it to this account"
+                                text: "⚠ the tag suggests \"" + page.matchedAccountName + "\": Save links this account too"
                                 font.pixelSize: 13
                                 color: Theme.yellow
                             }
@@ -449,7 +435,7 @@ Item {
                         }
 
                         // "Not linked" badge — shown whenever the currently
-                        // selected account has zero stored hashes
+                        // selected account has no tag
                         // (account_hashes table), independent of whether
                         // *this* statement happened to match it. Lets the
                         // user notice and fix an unlinked account from
@@ -464,25 +450,13 @@ Item {
                                 visible: page.selectedAccount !== null && !page.selectedAccount.linked
                                 pillHeight: 24
                                 variant: "warning"
-                                text: "⚠ Not linked — no hash set up for this account"
+                                text: "⚠ Not linked yet — Save links it"
                             }
                             StatusBadge {
                                 visible: page.selectedAccount !== null && page.selectedAccount.linked
                                 pillHeight: 24
                                 variant: "success"
-                                // Guard against null even though `visible` above already
-                                // excludes this case at display time — bindings in QML are
-                                // still evaluated when their dependencies change regardless
-                                // of the item's own `visible` value (it's not a guard), so
-                                // `page.selectedAccount.hashCount` alone would throw
-                                // "Cannot read property 'hashCount' of null" the moment
-                                // `page.selectedAccount` becomes null (e.g. AccountController
-                                // reloads and `selectedAccountIndex` momentarily points past
-                                // the end) even while this badge itself stays invisible.
-                                text: page.selectedAccount !== null
-                                    ? "✓ Linked (" + page.selectedAccount.hashCount + " hash"
-                                      + (page.selectedAccount.hashCount === 1 ? "" : "es") + ")"
-                                    : ""
+                                text: "✓ Linked"
                             }
 
                             // Offer to link this statement's fingerprint to
@@ -499,10 +473,7 @@ Item {
                                 fontSize: 13
                                 onClicked: {
                                     if (AccountController.linkAccountHash(page.selectedAccountIndex,
-                                                                          controller.statementInfo.accountHashRaw,
-                                                                          controller.statementInfo.legacyHashRaw)) {
-                                        // The hash can move from another account (#47), and
-                                        // its old form goes (#50).
+                                                                          controller.statementInfo.accountHashRaw)) {
                                         page.readMatches()
                                     }
                                 }

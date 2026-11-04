@@ -71,7 +71,9 @@ public:
     // ── Schema version (PRAGMA user_version) ─────────────────────────────────
     // The schema version that this app writes. Each version after 0 is one
     // ordered migration step in upgrade().
-    static constexpr int kSchemaVersion = 6;
+    static constexpr int kSchemaVersion = 7;
+    // The schema version from which the database holds no bank identifier (#204).
+    static constexpr int kPrivacyVersion = 7;
     [[nodiscard]] int schemaVersion() const;
     // Empty, unless the last open() upgraded an existing database: then one
     // or more sentences for the user (old and new version, where the backup
@@ -145,24 +147,21 @@ public:
     // Deletes the account and all of its hashes and transactions (one transaction).
     bool removeAccount(int accountId);
 
-    // A hash belongs to one account (#47), in lower case
-    // (AccountHashing::storedForm()); these methods take it in any case.
-    // addAccountHash() is a hash that the user typed: it must be a
-    // fingerprint (AccountHashing::isFingerprint()), and another account must
-    // not have it. Returns the new hash row's id, or -1 with a message in
-    // lastError() (also when this account already has the hash).
+    // An account tag (#203): 2 hexadecimal characters, in lower case
+    // (AccountHashing::storedForm()); these methods take it in any case. A
+    // tag can be on two accounts, once on each.
+    // addAccountHash() returns the new row's id, or -1 with a message in
+    // lastError() (also when this account already has the tag).
     int  addAccountHash(int accountId, const QString& hash, const QString& source);
-    // Links a fingerprint of a statement to `accountId`: added, or moved from
-    // the account that had it (the user picked another account at import).
-    // `legacyHash`: the fingerprint of the same statement from before #50
-    // (AccountHashing::legacyCompute()), removed from the account that has it
-    // (#50). One SQL transaction. False with a message in lastError() on
-    // failure.
+    // Links the tag of a statement to `accountId` (nothing changes when the
+    // account has it). The other accounts keep it. `legacyHash`: a value to
+    // remove first (none since v0.3.0). False with a message in lastError()
+    // on failure.
     bool linkAccountHash(int accountId, const QString& hash, const QString& source,
                          const QString& legacyHash = QString());
     bool removeAccountHash(int hashId);
     [[nodiscard]] bool accountHasHash(int accountId, const QString& hash) const;
-    // The id of the account that has `hash`, or -1.
+    // The id of the first account that has `hash`, or -1.
     [[nodiscard]] int accountOfHash(const QString& hash) const;
     // The name of an account, for the log (its id when it has none).
     [[nodiscard]] QString accountName(int accountId) const;
@@ -188,8 +187,8 @@ public:
     // existing rows — see TransactionsTable::insertBatch()).
     bool insertTransactions(int accountId, const QVector<Data::Transaction>& txs);
     // Saves an imported statement in one SQL transaction: the rows, the
-    // account fingerprint link (when `accountHash` is not empty: added, or
-    // moved from another account, see linkAccountHash()) and the balance
+    // account tag (when `accountHash` is not empty, see linkAccountHash())
+    // and the balance
     // checkpoints. If one write
     // fails, nothing is written and lastError() tells which write failed.
     // A row that the account already has (same fingerprint, see
@@ -324,6 +323,9 @@ private:
         int  removedGenericRules = 0;       // step 6: the pattern had only generic words
         int  mergedRules = 0;               // step 6: a newer rule has the same pattern and category
         int  conflictingRules = 0;          // step 6: one pattern, different categories: removed
+        int  cleanedRows = 0;               // step 7: rows with a bank identifier removed
+        int  removedAccountHashes = 0;      // step 7: the 64-character hashes of the IBAN
+        int  removedIdentifierRules = 0;    // step 7: category rules whose pattern held an identifier
     };
     // The iban / bic / number columns that the accounts table still has.
     [[nodiscard]] QStringList accountNumberColumns() const;
@@ -343,6 +345,13 @@ private:
     bool roundAmountsToCents(const QString& table, const QStringList& columns, int& changedRows);
     bool migrateTo5(UpgradeStats& stats); // account hashes: lower case, one account each (#47)
     bool migrateTo6(UpgradeStats& stats); // category rules: the label keys of #40 and #55
+    bool migrateTo7(UpgradeStats& stats); // privacy: no bank identifier, one-byte account tags (#203, #204)
+    // The clean-up of step 7 on `db` (the database, or the copy made before
+    // the upgrade): see migrateTo7(). `error` gets the SQLite message.
+    static bool removeBankIdentifiers(QSqlDatabase& db, UpgradeStats& stats, QString& error);
+    // Runs removeBankIdentifiers() on the copy that backUp() made, on its own
+    // connection, then compacts it: the copy keeps no identifier either.
+    bool removeBankIdentifiersInCopy(const QString& backupPath);
     // Removes the fingerprint from before #50 (logged when it was on
     // another account than `accountId`). Inside the caller's transaction.
     bool removeLegacyHash(int accountId, const QString& legacyHash);
