@@ -71,7 +71,7 @@ public:
     // ── Schema version (PRAGMA user_version) ─────────────────────────────────
     // The schema version that this app writes. Each version after 0 is one
     // ordered migration step in upgrade().
-    static constexpr int kSchemaVersion = 7;
+    static constexpr int kSchemaVersion = 8;
     // The schema version from which the database holds no bank identifier (#204).
     static constexpr int kPrivacyVersion = 7;
     [[nodiscard]] int schemaVersion() const;
@@ -146,6 +146,8 @@ public:
                         const QString& currency, const QString& notes);
     // Deletes the account and all of its hashes and transactions (one transaction).
     bool removeAccount(int accountId);
+    // Puts the account in the net worth, or takes it out (#206).
+    bool setAccountInNetWorth(int accountId, bool inNetWorth);
 
     // An account tag (#203): 2 hexadecimal characters, in lower case
     // (AccountHashing::storedForm()); these methods take it in any case. A
@@ -346,6 +348,7 @@ private:
     bool migrateTo5(UpgradeStats& stats); // account hashes: lower case, one account each (#47)
     bool migrateTo6(UpgradeStats& stats); // category rules: the label keys of #40 and #55
     bool migrateTo7(UpgradeStats& stats); // privacy: no bank identifier, one-byte account tags (#203, #204)
+    bool migrateTo8(UpgradeStats& stats); // accounts.in_net_worth (#206)
     // The clean-up of step 7 on `db` (the database, or the copy made before
     // the upgrade): see migrateTo7(). `error` gets the SQLite message.
     static bool removeBankIdentifiers(QSqlDatabase& db, UpgradeStats& stats, QString& error);

@@ -21,6 +21,7 @@ constexpr int kColType = 2;
 constexpr int kColCategory = 3;
 constexpr int kColCurrency = 4;
 constexpr int kColNotes = 5;
+constexpr int kColInNetWorth = 6;
 } // namespace
 
 AccountsTable::AccountsTable(QString connectionName)
@@ -109,6 +110,22 @@ bool AccountsTable::update(int accountId, const QString& name, const QString& ty
     return success;
 }
 
+bool AccountsTable::setInNetWorth(int accountId, bool inNetWorth)
+{
+    QSqlQuery query(db());
+    if (!query.prepare(QStringLiteral("UPDATE accounts SET in_net_worth = ? WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[AccountsTable] setInNetWorth");
+        return false;
+    }
+    query.addBindValue(inNetWorth ? 1 : 0);
+    query.addBindValue(accountId);
+    const bool success = query.exec() && query.numRowsAffected() == 1;
+    if (!success) {
+        qWarning() << "[AccountsTable] setInNetWorth error:" << query.lastError().text();
+    }
+    return success;
+}
+
 bool AccountsTable::remove(int accountId)
 {
     QSqlQuery query(db());
@@ -164,7 +181,7 @@ QVector<Data::Account> AccountsTable::all() const
     QVector<Data::Account> result;
     QSqlQuery query(db());
     if (!query.exec(QStringLiteral(
-            "SELECT id, name, type, category, currency, notes"
+            "SELECT id, name, type, category, currency, notes, in_net_worth"
             " FROM accounts ORDER BY id ASC;"))) {
         qWarning() << "[AccountsTable] all error:" << query.lastError().text();
         return result;
@@ -178,6 +195,7 @@ QVector<Data::Account> AccountsTable::all() const
         acc.category = query.value(kColCategory).toString();
         acc.currency = query.value(kColCurrency).toString();
         acc.notes    = query.value(kColNotes).toString();
+        acc.inNetWorth = query.value(kColInNetWorth).toInt() != 0;
         result << acc;
     }
     return result;

@@ -52,7 +52,7 @@
 // CategoryController — no separate QAbstractListModel):
 //   accounts: [{ id, name, type, category, currency, notes,
 //                hashes: [{ id, hash, source }, ...], hashCount,
-//                linked }, ...]
+//                linked, inNetWorth }, ...]
 //   accountCategories: [{ name, color }, ...]
 //   accountTypes: [{ name }, ...]
 
@@ -91,6 +91,8 @@ public:
                                     const QString& currency, const QString& notes);
     // NOLINTEND(bugprone-easily-swappable-parameters)
     Q_INVOKABLE void removeAccount(int index);
+    // Puts the account in the net worth, or takes it out (#206).
+    Q_INVOKABLE void setInNetWorth(int index, bool inNetWorth);
 
     // Account category CRUD (index into accountCategories()).
     // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called

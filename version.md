@@ -47,6 +47,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   automatic balance notes and the category rules that hold an identifier, in the database and
   in its copy, with secure_delete and a VACUUM. The review shows only the end of the client
   code, account number and IBAN.
+- Net worth scope (#206): each account has a "Part of my net worth" check box (on by default)
+  in its dialog, and the accounts outside the net worth show a badge. A move between two
+  accounts of the net worth will not count as income or spending. Schema step 8 adds the flag,
+  on for every existing account.
 
 ### Fixed
 - The application log no longer shows statement data (#205): the upgrade steps and the import

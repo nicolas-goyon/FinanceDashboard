@@ -500,6 +500,7 @@ bool Database::upgrade(int from, UpgradeStats& stats)
         case 5: ok = migrateTo5(stats); break;
         case 6: ok = migrateTo6(stats); break;
         case 7: ok = migrateTo7(stats); break;
+        case 8: ok = migrateTo8(stats); break;
         default: m_lastError = QStringLiteral("there is no migration step %1.").arg(step); break;
         }
         // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
@@ -715,6 +716,28 @@ bool Database::removeBankIdentifiers(QSqlDatabase& db, UpgradeStats& stats, QStr
         ++stats.removedIdentifierRules;
     }
     remove.finish();
+    return true;
+}
+
+// Version 8 — the net worth (#206): the column accounts.in_net_worth. Every
+// account is in the net worth, as before.
+bool Database::migrateTo8(UpgradeStats& stats)
+{
+    Q_UNUSED(stats)
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("PRAGMA table_info(accounts);"))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    while (query.next()) {
+        if (query.value(1).toString() == QLatin1String("in_net_worth")) {
+            return true; // already there (a file of this version with an older user_version)
+        }
+    }
+    if (!query.exec(QStringLiteral("ALTER TABLE accounts ADD COLUMN in_net_worth INTEGER NOT NULL DEFAULT 1;"))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
     return true;
 }
 
@@ -1426,6 +1449,16 @@ bool Database::updateAccount(int accountId, const QString& name, const QString& 
     if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return false; }
     if (!hasText(currency)) { m_lastError = QStringLiteral("The currency is empty."); return false; }
     return m_accountsTable.update(accountId, name, type, category, currency, notes);
+}
+
+bool Database::setAccountInNetWorth(int accountId, bool inNetWorth)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    if (!m_accountsTable.setInNetWorth(accountId, inNetWorth)) {
+        m_lastError = QStringLiteral("Could not change the net worth of the account.");
+        return false;
+    }
+    return true;
 }
 
 bool Database::removeAccount(int accountId)
