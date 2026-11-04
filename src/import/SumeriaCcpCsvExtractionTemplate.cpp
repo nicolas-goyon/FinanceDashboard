@@ -1,4 +1,6 @@
 #include "SumeriaCcpCsvExtractionTemplate.h"
+#include "db/tables/TransactionsTable.h"
+#include "import/StatementSanitizer.h"
 #include "models/ImportLog.h"
 #include "models/ImportedStatement.h"
 #include "utils/Money.h"
@@ -269,9 +271,12 @@ QString extractTransactionName(const QString& rawDescription)
 // Single-line, truncated preview of a (possibly multi-line) raw record, for
 // the parse log — embedded newlines are shown as "↵" so multi-line
 // descriptions are still recognizable as such when debugging.
+// The log popup is UI: the preview shows no identifier either (#202). The
+// header values are not known here, so only the patterns of
+// StatementSanitizer::clean() apply.
 QString previewRawText(const CsvRecord& rec)
 {
-    QString text = rec.rawText.trimmed();
+    QString text = StatementSanitizer::clean(rec.rawText.trimmed());
     text.replace(QLatin1Char('\n'), QChar(kDownwardsArrowWithCorner));
     text.replace(QLatin1Char('\r'), QString());
     if (text.size() > kPreviewMaxChars) {
@@ -551,6 +556,9 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
     }
 
     // ── 3. Parse transaction rows (everything after the header row) ────────
+    // The identifiers of the header, removed wherever a row repeats them.
+    const QStringList secrets = {outStatement.accountHolderName, outStatement.clientCode,
+                                 outStatement.accountNumber, outStatement.iban, outStatement.bic};
     int parsedCount = 0;
     for (int i = headerRecordIndex + 1; i < records.size(); ++i) {
         const CsvRecord& rec = records.at(i);
@@ -616,11 +624,16 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
                 QStringLiteral("Could not parse the running balance for this row"), previewRawText(rec) });
         }
 
+        // The privacy rule (#202): name and description leave this template
+        // without any bank identifier. The bank reference is read from the
+        // raw text first and kept in memory only, for the fingerprint.
+        const QString& rawDescription = rec.fields.at(kColDescription);
         Data::ImportedTransaction transaction;
         transaction.confirmationDate = confirmationDate;
         transaction.operationDate    = operationDate.isValid() ? operationDate : confirmationDate;
-        transaction.name              = extractTransactionName(rec.fields.at(kColDescription)); // lines before the ref block, raw (pre-normalize)
-        transaction.description       = normalizeField(rec.fields.at(kColDescription)); // may have had embedded newlines
+        transaction.bankReference    = TransactionsTable::bankReference(normalizeField(rawDescription));
+        transaction.name             = StatementSanitizer::clean(extractTransactionName(rawDescription), secrets);
+        transaction.description      = StatementSanitizer::cleanDescription(rawDescription, secrets);
         transaction.debit              = std::abs(debit);
         transaction.credit             = std::abs(credit);
         transaction.balanceAfter       = balanceAfter;

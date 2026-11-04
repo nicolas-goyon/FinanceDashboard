@@ -32,6 +32,10 @@ struct Transaction {
     QString category;
     QString subcategory;
     QString sourceTemplate;    // ImportTemplate::id() this row came from, or "" if manual
+    QString bankReference;     // in memory only, never stored: the reference of the bank
+                                 // that the import read from the raw text (#202). The
+                                 // fingerprint uses it; when empty, it reads the reference
+                                 // from `description` (rows saved before #202).
     QString fingerprint;       // identity of the row in its statement — see
                                  // TransactionsTable::fingerprints(). Set by the import
                                  // before it filters the rows; empty: insertBatch()

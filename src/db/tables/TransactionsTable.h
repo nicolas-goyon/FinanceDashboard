@@ -106,7 +106,8 @@ public:
     [[nodiscard]] static QString fingerprint(const Data::Transaction& tx, int occurrence = 1);
     [[nodiscard]] static QString fingerprint(const QString& operationDate, const QString& confirmationDate,
                                              double debit, double credit, double balanceAfter,
-                                             const QString& description, int occurrence = 1);
+                                             const QString& description, int occurrence = 1,
+                                             const QString& reference = QString());
     // The fingerprints of a batch (one statement), in order: the k-th row
     // that has the same plain fingerprint as earlier rows gets occurrence k.
     [[nodiscard]] static QStringList fingerprints(const QVector<Data::Transaction>& txs);

@@ -129,7 +129,8 @@ bool TransactionsTable::ensureColumn(const QString& columnName, const QString& c
 
 QString TransactionsTable::fingerprint(const QString& operationDate, const QString& confirmationDate,
                                        double debit, double credit, double balanceAfter,
-                                       const QString& description, int occurrence)
+                                       const QString& description, int occurrence,
+                                       const QString& reference)
 {
     // Amounts in cents, so that 19.99 parsed twice, or read back from the
     // REAL column, gives the same text.
@@ -137,10 +138,13 @@ QString TransactionsTable::fingerprint(const QString& operationDate, const QStri
     // Maintainer decision (2026-10-18): a row with a bank reference is that
     // reference and its amount. A later export that changes its value date or
     // its running balance still finds it. Without a reference: every field.
-    const QString reference = bankReference(description);
+    // `reference`: read by the import from the raw text (#202), the stored
+    // description has none. Empty: read it from the description (a row saved
+    // before #202).
+    const QString ref = reference.isEmpty() ? bankReference(description) : reference;
     QStringList fields;
-    if (!reference.isEmpty()) {
-        fields = {QStringLiteral("ref"), reference, cents(debit), cents(credit)};
+    if (!ref.isEmpty()) {
+        fields = {QStringLiteral("ref"), ref, cents(debit), cents(credit)};
     } else {
         fields = {
             Sql::text(operationDate), Sql::text(confirmationDate),
@@ -179,7 +183,7 @@ QString TransactionsTable::bankReference(const QString& description)
 QString TransactionsTable::fingerprint(const Data::Transaction& tx, int occurrence)
 {
     return fingerprint(dateToDb(tx.operationDate), dateToDb(tx.confirmationDate),
-                       tx.debit, tx.credit, tx.balanceAfter, tx.description, occurrence);
+                       tx.debit, tx.credit, tx.balanceAfter, tx.description, occurrence, tx.bankReference);
 }
 
 QStringList TransactionsTable::fingerprints(const QVector<Data::Transaction>& txs)

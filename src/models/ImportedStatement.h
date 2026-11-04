@@ -25,7 +25,9 @@ struct ImportedTransaction {
                                  // "…ref.: …" reference block) — see
                                  // ImportTemplate::parse() implementations. User-editable in
                                  // the review table (SnapshotImportController::setRowName()).
-    QString description;
+    QString description;       // without bank identifiers (StatementSanitizer, #202)
+    QString bankReference;     // the reference of the bank, read from the raw text; in
+                                // memory only, for the fingerprint (only its SHA-256 is stored)
     double  debit{0.0};        // magnitude, 0 if this row is a credit
     double  credit{0.0};       // magnitude, 0 if this row is a debit
     double  balanceAfter{0.0};

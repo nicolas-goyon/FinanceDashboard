@@ -39,7 +39,9 @@ to Finance Dashboard, with its own data.
 Linux builds need glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+); on anything older, build
 from source below.
 
-Your data lives in one local SQLite file and never leaves the machine:
+The app stores no bank identifier: the import removes the IBAN, the BIC, the account and card
+numbers, the bank references and the mandate ids from each row before it saves it. Merchant
+and counterparty names stay. Your data lives in one local SQLite file and never leaves the machine:
 `%APPDATA%\DataAnalysis\FinanceDashboard\` on Windows,
 `~/.local/share/DataAnalysis/FinanceDashboard/` on Linux. When a new version changes the
 database format, the app first saves a copy next to it (`finance_dashboard.backup-<date>.db`) and

@@ -92,6 +92,25 @@ of an import (`SnapshotImportController`, `QtConcurrent::run`, #52):
 
 ## Data rule
 
+### Privacy
+
+The privacy rule (maintainer, 2026-10-29): a person with full access to the machine, the
+database, the files and the logs must see nothing more than the user sees in the UI.
+
+- Do not store a bank identifier: IBAN, BIC, account number, card number (also partial),
+  bank reference, mandate id (RUM), creditor id (ICS), client code, holder name.
+- Do not store a bank identifier in an encrypted form either. Do not store a value that gives
+  an identifier back (for example, a hash that a person can reverse by brute force).
+- An import template returns clean rows. It passes the name and the description of each row
+  through `StatementSanitizer` (`src/import/StatementSanitizer.h`) before it returns them.
+- A new template must call `StatementSanitizer`. Add a test with a fictitious statement that
+  holds every kind of identifier (example: `bankIdentifiersAreNeverStored` in
+  `tests/import_save_test.cpp`).
+- The bank reference of a row stays in memory (`bankReference`). The database stores only the
+  fingerprint (a SHA-256) that is made from it.
+- Merchant and counterparty names stay (maintainer decision of 2026-11-04).
+- The app must work the same with fictitious test data and with real data.
+
 ### Transactions and writes
 
 - Put writes that belong together in one SQL transaction, in one `Database` method.

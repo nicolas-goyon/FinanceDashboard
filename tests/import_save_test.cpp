@@ -252,6 +252,7 @@ private slots:
     void utf8FileWithABadByteStaysUtf8();
     void utf16FileIsRead();
     void refInTheFreeTextStaysInTheName();
+    void bankIdentifiersAreNeverStored();
     void nameFallsBackToTheFirstLine();
     void failedSaveSaysItAndKeepsTheReport();
     void saveWithoutAccountIsAWarning();
@@ -1050,6 +1051,73 @@ void ImportSaveTest::refInTheFreeTextStaysInTheName()
                           block, log));
     QCOMPARE(block.transactions.size(), qsizetype(1));
     QCOMPARE(block.transactions.at(0).name, QStringLiteral("Transfer ref: rent March March 2026"));
+}
+
+// The privacy rule (#202): no bank identifier leaves the template, so none
+// reaches the database. Every value below is made up.
+void ImportSaveTest::bankIdentifiersAreNeverStored()
+{
+    QByteArray csv = "Pr\xC3\xA9nom Nom,Jeanne Exemple\nAccount number,98765432101\nClient code,CL7788990011\n";
+    csv += statement("From 03/01/2026 to 03/31/2026", "03/01/2026,1000.00 \xE2\x82\xAC", "03/31/2026,394.00 \xE2\x82\xAC",
+        "03/02,03/02,\"Card payment 1234: SAMPLE STORE\nExternal ref.: 123456789012345\n"
+        "Internal ref.: a1b2c3d4-0000-4000-8000-000000000001\",-10.00,,990.00\n"
+        "03/03,03/03,\"Transfer to FR76 3000 6000 0112 3456 7890 189 SAMPLE LANDLORD\n"
+        "Internal ref.: 0123456789ABCDEF0123456789ABCDEF\",-500.00,,490.00\n"
+        "03/04,03/04,\"Direct debit SAMPLE ENERGY RUM: FR12ZZZ123456789 ICS: FR98ZZZ999999\n"
+        "Internal ref.: c0ffee00-0000-4000-8000-000000000003\",-40.00,,450.00\n"
+        "03/05,03/05,\"Transfer from Jeanne Exemple account 98765432101 client CL7788990011\n"
+        "Internal ref.: c0ffee00-0000-4000-8000-000000000004\",,4.00,454.00\n"
+        "03/06,03/06,Payment XXXX XXXX XXXX 4321 SAMPLE CAFE,-60.00,,394.00\n");
+    const QStringList identifiers = {
+        QStringLiteral("1234:"), QStringLiteral("123456789012345"), QStringLiteral("a1b2c3d4"),
+        QStringLiteral("FR76"), QStringLiteral("3000 6000"), QStringLiteral("0123456789ABCDEF"),
+        QStringLiteral("FR12ZZZ"), QStringLiteral("FR98ZZZ"), QStringLiteral("c0ffee00"),
+        QStringLiteral("Jeanne Exemple"), QStringLiteral("98765432101"), QStringLiteral("CL7788990011"),
+        QStringLiteral("4321"), QString::fromLatin1(kIban), QString::fromLatin1(kBic),
+    };
+    const auto check = [&](const QString& where, const QString& text) {
+        for (const QString& identifier : identifiers) {
+            QVERIFY2(!text.contains(identifier, Qt::CaseInsensitive),
+                     qPrintable(QStringLiteral("%1 keeps \"%2\": %3").arg(where, identifier, text)));
+        }
+    };
+
+    // After the parse: name and description are clean, the merchants stay,
+    // and the bank reference is kept in memory for the fingerprint.
+    Data::ImportedStatement st;
+    QVector<Data::ImportLogEntry> log;
+    QVERIFY(readStatement(csv, st, log));
+    QCOMPARE(st.transactions.size(), qsizetype(5));
+    for (const Data::ImportedTransaction& row : st.transactions) {
+        check(QStringLiteral("name"), row.name);
+        check(QStringLiteral("description"), row.description);
+    }
+    QCOMPARE(st.transactions.at(0).name, QStringLiteral("Card payment •••: SAMPLE STORE"));
+    QVERIFY(st.transactions.at(1).description.contains(QStringLiteral("SAMPLE LANDLORD")));
+    QVERIFY(st.transactions.at(2).description.contains(QStringLiteral("SAMPLE ENERGY")));
+    QVERIFY(st.transactions.at(4).description.contains(QStringLiteral("SAMPLE CAFE")));
+    QCOMPARE(st.transactions.at(0).bankReference, QStringLiteral("a1b2c3d4-0000-4000-8000-000000000001"));
+    for (const Data::ImportLogEntry& entry : log) {
+        check(QStringLiteral("log"), entry.rawLine + QLatin1Char(' ') + entry.message);
+    }
+
+    // After the save: the stored rows are clean too, and a second import of
+    // the same statement adds nothing (the fingerprints still match).
+    {
+        SnapshotImportController controller;
+        parse(controller, csv);
+        controller.save(m_account, QStringLiteral("Checking"));
+    }
+    const QVector<Data::Transaction> saved = Database::instance().transactionsForAccount(m_account);
+    QCOMPARE(saved.size(), qsizetype(5));
+    for (const Data::Transaction& row : saved) {
+        check(QStringLiteral("stored name"), row.name);
+        check(QStringLiteral("stored description"), row.description);
+    }
+    SnapshotImportController again;
+    parse(again, csv);
+    again.save(m_account, QStringLiteral("Checking"));
+    QCOMPARE(transactionCount(), 5);
 }
 
 void ImportSaveTest::nameFallsBackToTheFirstLine()
