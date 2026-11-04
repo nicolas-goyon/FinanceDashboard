@@ -7,8 +7,9 @@ import QtGraphs
 import FinanceDashboard
 
 // ── Overview (Net Worth) — PROJECT.md page 1 ──────────────────────────────────
-// KPI cards · stacked area by account type · allocation donut · net change bars
-// [MOCK DATA — NetWorthController]
+// KPI cards · stacked area by group of accounts · allocation donut · net
+// change bars. From the accounts of the net worth (#206, #209):
+// NetWorthController reads them again each time the page is shown.
 //
 // Note: axis labelFormat cannot render "€" (shows "?"), so units live in the
 // card titles; tooltips (QML Text) keep the € symbol.
@@ -28,18 +29,24 @@ Item {
     property var savingsOwn: []
     property var tradingOwn: []
 
-    Component.onCompleted: {
+    // Fills the series from the controller. Also after a reload: the series
+    // are cleared first.
+    function fill() {
+        checkingBound.clear()
+        savingsBound.clear()
+        tradingBound.clear()
+        hoverChecking.clear()
+        hoverSavings.clear()
+        hoverTrading.clear()
         var t  = controller.timestamps()
-        var b1 = controller.checkingBound()
+        var b1 = controller.dayToDayBound()
         var b2 = controller.savingsBound()
-        var b3 = controller.tradingBound()
+        var b3 = controller.investmentsBound()
         var own1 = [], own2 = [], own3 = []
         for (var i = 0; i < t.length; i++) {
             checkingBound.append(t[i], b1[i])
             savingsBound.append(t[i], b2[i])
             tradingBound.append(t[i], b3[i])
-            // Hover-carrier lines (children complete before this handler runs,
-            // so they must be filled here, not in their own onCompleted)
             hoverChecking.append(t[i], b1[i])
             hoverSavings.append(t[i], b2[i])
             hoverTrading.append(t[i], b3[i])
@@ -50,6 +57,32 @@ Item {
         checkingOwn = own1
         savingsOwn = own2
         tradingOwn = own3
+
+        allocationSeries.clear()
+        var a = controller.allocation
+        for (var j = 0; j < a.length; j++) {
+            var slice = allocationSeries.append(a[j].label, a[j].value)
+            slice.color = a[j].color
+            // Without it, the slice gets the outline colour of the theme (#71).
+            slice.borderColor = slice.color
+            slice.labelVisible = true
+        }
+        allocationInfo.text = "Click a slice for details"
+        monthAxis.categories = controller.monthLabels
+        gainSet.values = controller.netGains
+        lossSet.values = controller.netLosses
+    }
+
+    // Hover-carrier lines are children of the GraphsView: they complete before
+    // this handler runs, so they are filled here.
+    Component.onCompleted: page.fill()
+    // The page stays loaded in the StackLayout: read the data again each time
+    // it is shown (an import, a transfer or a valuation can change it).
+    onVisibleChanged: {
+        if (visible) {
+            controller.reload()
+            page.fill()
+        }
     }
 
     ScrollView {
@@ -64,7 +97,12 @@ Item {
 
             PageHeader {
                 title: "Overview — Net Worth"
-                mock: true
+            }
+
+            EmptyState {
+                visible: !controller.hasData
+                message: "No account is in your net worth yet. Add accounts in Account Management → Manage "
+                    + "Accounts, and import their statements."
             }
 
             // ── KPI cards ─────────────────────────────────────────────────────
@@ -88,7 +126,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 360
-                title: "Net worth over time — by account type (€) — hover the dots for values"
+                title: "Net worth over time — day-to-day, savings, investments (€) — hover the dots for values"
 
                 GraphsView {
                     anchors.fill: parent
@@ -104,13 +142,13 @@ Item {
                         labelFormat: "MMM yy"
                     }
                     axisY: ValueAxis {
-                        min: 0
+                        min: controller.minTotal
                         max: controller.maxTotal
                         labelFormat: "%.0f"
                     }
 
                     AreaSeries {
-                        name: "Checking"
+                        name: "Day-to-day"
                         color: Theme.blueArea
                         borderColor: Theme.blue
                         borderWidth: 1.5
@@ -125,7 +163,7 @@ Item {
                         lowerSeries: checkingBound
                     }
                     AreaSeries {
-                        name: "Trading"
+                        name: "Investments"
                         color: Theme.mauveArea
                         borderColor: Theme.mauve
                         borderWidth: 1.5
@@ -147,7 +185,7 @@ Item {
                         width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
-                                seriesName: "Checking"
+                                seriesName: "Day-to-day"
                                 overrideValues: page.checkingOwn
                             }
                         }
@@ -169,7 +207,7 @@ Item {
                         width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
-                                seriesName: "Trading"
+                                seriesName: "Investments"
                                 overrideValues: page.tradingOwn
                             }
                         }
@@ -198,21 +236,12 @@ Item {
                             theme: GraphsTheme { colorScheme: GraphsTheme.ColorScheme.Dark }
 
                             PieSeries {
+                                id: allocationSeries
                                 // Without it the renderer emits no clicked signal (default false).
                                 selectable: true
                                 pieSize: 0.75
                                 holeSize: 0.42
-
-                                Component.onCompleted: {
-                                    var a = controller.allocation
-                                    for (var i = 0; i < a.length; i++) {
-                                        var slice = append(a[i].label, a[i].value)
-                                        slice.color = a[i].color
-                                        // Without it, the slice gets the outline colour of the theme (#71).
-                                        slice.borderColor = slice.color
-                                        slice.labelVisible = true
-                                    }
-                                }
+                                // Filled by page.fill().
                                 onClicked: (slice) => {
                                     allocationInfo.text = slice.label + "  —  "
                                         + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
@@ -234,7 +263,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 320
-                    title: "Monthly net change (€)"
+                    title: "Change of the net worth each month (€)"
 
                     GraphsView {
                         anchors.fill: parent
@@ -249,18 +278,17 @@ Item {
                         BarSeries {
                             barDelegate: Component { HoverBar {} }
 
-                            axisX: BarCategoryAxis {
-                                Component.onCompleted: categories = controller.monthLabels
-                            }
+                            // Filled by page.fill().
+                            axisX: BarCategoryAxis { id: monthAxis }
                             BarSet {
+                                id: gainSet
                                 label: "Gain"
                                 color: Theme.green
-                                Component.onCompleted: values = controller.netGains
                             }
                             BarSet {
+                                id: lossSet
                                 label: "Loss"
                                 color: Theme.red
-                                Component.onCompleted: values = controller.netLosses
                             }
                         }
                     }

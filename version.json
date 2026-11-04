@@ -23,6 +23,17 @@
           ]
         },
         {
+          "name": "Changed",
+          "groups": [
+            {
+              "title": null,
+              "entries": [
+                "The Overview shows real data (#209): the net worth today, its change this month and over 12 months, the savings rate of the month (without the internal transfers), the net worth of the last 12 months by group of accounts (day-to-day, savings, investments), the allocation today and the change of each month. It reads the data again each time the page is shown. The [MOCK] badge is gone from this page."
+              ]
+            }
+          ]
+        },
+        {
           "name": "Fixed",
           "groups": [
             {

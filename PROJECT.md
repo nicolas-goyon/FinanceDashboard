@@ -31,8 +31,8 @@ The user thinks in **net worth** ("patrimoine"): a set of accounts (checking, li
 
 Landing page — "how am I doing overall?"
 
-- KPI cards: total net worth, month-over-month change (€ and %), savings rate this month, months of emergency fund
-- Stacked area chart: net worth over time, split by account type (checking / savings / trading)
+- KPI cards: total net worth, change this month and over 12 months (€ and %), savings rate this month
+- Stacked area chart: net worth over time, split by group of accounts (day-to-day / savings / investments)
 - Donut: current allocation across account types
 - Bar chart: monthly net change over last 12 months (green/red bars)
 
