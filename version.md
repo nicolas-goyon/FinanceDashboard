@@ -29,7 +29,7 @@ builds, source archives). Then CI opens a pull request that merges the release b
 
 ---
 
-## v0.2.4 (current)
+## v0.3.0 (current)
 
 _No changes logged yet — add one with `python tools/version.py add <Section> "<text>"`._
 
