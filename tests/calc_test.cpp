@@ -9,12 +9,15 @@
 //         Investments: the deposit of the month is not performance
 //   #48   Fmt::money(): rounded to cents before the sign, "—" for NaN and
 //         infinity, and the currency of the amount
+//   #207  TransferMatcher: a debit and a credit of the same amount on two
+//         accounts of the net worth, 3 days apart or less, are one transfer
 //   #33   Money: whole cents (half away from zero), the amounts that the app
 //         can store, and cents that survive a round trip through a double
 
 #include "CashFlowController.h"
 #include "InvestmentsController.h"
 #include "ProjectsController.h"
+#include "calc/TransferMatcher.h"
 #include "utils/Formatter.h"
 #include "utils/Money.h"
 
@@ -99,7 +102,23 @@ private slots:
     void sumOfCentsIsExact();
     void onlyValidAmountsAreRounded();
     void centsSurviveARoundTrip();
+    void transferIsADebitAndACreditOfTheNetWorth();
+    void transferPairsTakeTheSmallestGap();
 };
+
+namespace {
+Data::Transaction row(int id, int account, const QDate& date, double debit, double credit, int transferId = 0)
+{
+    Data::Transaction transaction;
+    transaction.id = id;
+    transaction.accountId = account;
+    transaction.operationDate = date;
+    transaction.debit = debit;
+    transaction.credit = credit;
+    transaction.transferId = transferId;
+    return transaction;
+}
+} // namespace
 
 void CalcTest::projectWithNoMonthlyContributionIsNeverDone()
 {
@@ -332,6 +351,54 @@ void CalcTest::centsSurviveARoundTrip()
     for (qint64 value = -100'000; value <= 100'000; value += 7) {
         QCOMPARE(Money::toCents(Money::fromCents(value)), value);
     }
+}
+
+void CalcTest::transferIsADebitAndACreditOfTheNetWorth()
+{
+    // Account 1: checking, 2: Livret A, 3: a joint account outside the net worth.
+    const QSet<int> scope = {1, 2};
+    const QDate day(2026, 3, 10);
+    const QVector<Data::Transaction> rows = {
+        row(1, 1, day, 500.0, 0.0),                // checking → Livret A, two days later
+        row(2, 2, day.addDays(2), 0.0, 500.0),
+        row(3, 1, day, 80.0, 0.0),                 // to the joint account: spending
+        row(4, 3, day, 0.0, 80.0),
+        row(5, 1, day, 40.0, 0.0),                 // 4 days apart: not suggested
+        row(6, 2, day.addDays(4), 0.0, 40.0),
+        row(7, 1, day, 25.0, 0.0),                 // same account: not a transfer
+        row(8, 1, day, 0.0, 25.0),
+        row(9, 1, day, 300.0, 0.0, Data::kNotATransfer), // the user said no
+        row(10, 2, day, 0.0, 300.0),
+        row(11, 1, day, 12.34, 0.0),               // amounts in cents: 12.34 is not 12.35
+        row(12, 2, day, 0.0, 12.35),
+    };
+    const QVector<TransferMatcher::Pair> pairs = TransferMatcher::find(rows, scope);
+    QCOMPARE(pairs.size(), qsizetype(1));
+    QCOMPARE(pairs.first().debitId, 1);
+    QCOMPARE(pairs.first().creditId, 2);
+    QCOMPARE(pairs.first().days, 2);
+    // A wider window finds the 4-day pair too.
+    QCOMPARE(TransferMatcher::find(rows, scope, 4).size(), qsizetype(2));
+}
+
+void CalcTest::transferPairsTakeTheSmallestGap()
+{
+    // Two debits of 100 and two credits of 100: each row is in one pair, and
+    // the closest dates go together.
+    const QSet<int> scope = {1, 2};
+    const QDate day(2026, 5, 1);
+    const QVector<Data::Transaction> rows = {
+        row(1, 1, day, 100.0, 0.0),
+        row(2, 1, day.addDays(3), 100.0, 0.0),
+        row(3, 2, day.addDays(1), 0.0, 100.0),
+        row(4, 2, day.addDays(3), 0.0, 100.0),
+    };
+    const QVector<TransferMatcher::Pair> pairs = TransferMatcher::find(rows, scope);
+    QCOMPARE(pairs.size(), qsizetype(2));
+    QCOMPARE(pairs.at(0).debitId, 2); // same day
+    QCOMPARE(pairs.at(0).creditId, 4);
+    QCOMPARE(pairs.at(1).debitId, 1);
+    QCOMPARE(pairs.at(1).creditId, 3);
 }
 
 QTEST_GUILESS_MAIN(CalcTest)

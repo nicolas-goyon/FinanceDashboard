@@ -48,6 +48,12 @@ constexpr int kColBalanceAfter = 8;
 constexpr int kColCategory = 9;
 constexpr int kColSubcategory = 10;
 constexpr int kColSourceTemplate = 11;
+constexpr int kColTransferId = 12;
+
+// The columns of the row-reading SELECTs, in the kCol order above.
+constexpr const char* kRowColumns =
+    "id, account_id, confirmation_date, operation_date, name, description,"
+    " debit, credit, balance_after, category, subcategory, source_template, transfer_id";
 } // namespace
 
 TransactionsTable::TransactionsTable(QString connectionName)
@@ -287,11 +293,9 @@ QVector<Data::Transaction> TransactionsTable::allForAccount(int accountId) const
     QVector<Data::Transaction> result;
     QSqlQuery query(db());
     if (!query.prepare(QStringLiteral(
-        "SELECT id, account_id, confirmation_date, operation_date, name, description,"
-        " debit, credit, balance_after, category, subcategory, source_template"
-        " FROM transactions WHERE account_id = ?"
+        "SELECT %1 FROM transactions WHERE account_id = ?"
         " ORDER BY operation_date DESC, id DESC;"
-    ))) {
+    ).arg(QLatin1String(kRowColumns)))) {
         Sql::logPrepareError(query, "[TransactionsTable] allForAccount");
         return {};
     }
@@ -316,6 +320,7 @@ QVector<Data::Transaction> TransactionsTable::allForAccount(int accountId) const
         transaction.category          = query.value(kColCategory).toString();
         transaction.subcategory       = query.value(kColSubcategory).toString();
         transaction.sourceTemplate    = query.value(kColSourceTemplate).toString();
+        transaction.transferId        = query.value(kColTransferId).toInt();
         result.append(transaction);
     }
     return result;
@@ -326,10 +331,8 @@ QVector<Data::Transaction> TransactionsTable::allCategorized() const
     QVector<Data::Transaction> result;
     QSqlQuery query(db());
     if (!query.exec(QStringLiteral(
-            "SELECT id, account_id, confirmation_date, operation_date, name, description,"
-            " debit, credit, balance_after, category, subcategory, source_template"
-            " FROM transactions WHERE category != ''"
-            " ORDER BY operation_date ASC, id ASC;"))) {
+            "SELECT %1 FROM transactions WHERE category != ''"
+            " ORDER BY operation_date ASC, id ASC;").arg(QLatin1String(kRowColumns)))) {
         qWarning() << "[TransactionsTable] allCategorized error:" << query.lastError().text();
         return result;
     }
@@ -348,9 +351,71 @@ QVector<Data::Transaction> TransactionsTable::allCategorized() const
         transaction.category          = query.value(kColCategory).toString();
         transaction.subcategory       = query.value(kColSubcategory).toString();
         transaction.sourceTemplate    = query.value(kColSourceTemplate).toString();
+        transaction.transferId        = query.value(kColTransferId).toInt();
         result.append(transaction);
     }
     return result;
+}
+
+QVector<Data::Transaction> TransactionsTable::all() const
+{
+    QVector<Data::Transaction> result;
+    QSqlQuery query(db());
+    if (!query.exec(QStringLiteral("SELECT %1 FROM transactions ORDER BY operation_date ASC, id ASC;")
+                        .arg(QLatin1String(kRowColumns)))) {
+        qWarning() << "[TransactionsTable] all error:" << query.lastError().text();
+        return result;
+    }
+    while (query.next()) {
+        Data::Transaction transaction;
+        transaction.id                = query.value(kColId).toInt();
+        transaction.accountId         = query.value(kColAccountId).toInt();
+        transaction.confirmationDate  = dateFromDb(query.value(kColConfirmationDate).toString());
+        transaction.operationDate     = dateFromDb(query.value(kColOperationDate).toString());
+        transaction.name              = query.value(kColName).toString();
+        transaction.description       = query.value(kColDescription).toString();
+        transaction.debit             = query.value(kColDebit).toDouble();
+        transaction.credit            = query.value(kColCredit).toDouble();
+        transaction.balanceAfter      = query.value(kColBalanceAfter).toDouble();
+        transaction.category          = query.value(kColCategory).toString();
+        transaction.subcategory       = query.value(kColSubcategory).toString();
+        transaction.sourceTemplate    = query.value(kColSourceTemplate).toString();
+        transaction.transferId        = query.value(kColTransferId).toInt();
+        result.append(transaction);
+    }
+    return result;
+}
+
+bool TransactionsTable::setTransferId(int transactionId, int transferId)
+{
+    QSqlQuery query(db());
+    if (!query.prepare(QStringLiteral("UPDATE transactions SET transfer_id = ? WHERE id = ?;"))) {
+        Sql::logPrepareError(query, "[TransactionsTable] setTransferId");
+        return false;
+    }
+    query.addBindValue(transferId);
+    query.addBindValue(transactionId);
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        qWarning() << "[TransactionsTable] setTransferId error:" << query.lastError().text();
+        return false;
+    }
+    return true;
+}
+
+bool TransactionsTable::clearTransfer(int transferId)
+{
+    QSqlQuery query(db());
+    if (!query.prepare(QStringLiteral("UPDATE transactions SET transfer_id = ? WHERE transfer_id = ?;"))) {
+        Sql::logPrepareError(query, "[TransactionsTable] clearTransfer");
+        return false;
+    }
+    query.addBindValue(Data::kNotATransfer);
+    query.addBindValue(transferId);
+    if (!query.exec()) {
+        qWarning() << "[TransactionsTable] clearTransfer error:" << query.lastError().text();
+        return false;
+    }
+    return true;
 }
 
 int TransactionsTable::countForAccount(int accountId) const
@@ -439,13 +504,11 @@ std::optional<Data::Transaction> TransactionsTable::latestOnOrBefore(int account
 {
     QSqlQuery query(db());
     if (!query.prepare(QStringLiteral(
-        "SELECT id, account_id, confirmation_date, operation_date, name, description,"
-        " debit, credit, balance_after, category, subcategory, source_template"
-        " FROM transactions WHERE account_id = ?"
+        "SELECT %1 FROM transactions WHERE account_id = ?"
         " AND COALESCE(NULLIF(confirmation_date, ''), operation_date) != ''"
         " AND COALESCE(NULLIF(confirmation_date, ''), operation_date) <= ?"
         " ORDER BY COALESCE(NULLIF(confirmation_date, ''), operation_date) DESC, id DESC LIMIT 1;"
-    ))) {
+    ).arg(QLatin1String(kRowColumns)))) {
         Sql::logPrepareError(query, "[TransactionsTable] latestOnOrBefore");
         return std::nullopt;
     }
@@ -469,5 +532,33 @@ std::optional<Data::Transaction> TransactionsTable::latestOnOrBefore(int account
     transaction.category         = query.value(kColCategory).toString();
     transaction.subcategory      = query.value(kColSubcategory).toString();
     transaction.sourceTemplate   = query.value(kColSourceTemplate).toString();
+    transaction.transferId       = query.value(kColTransferId).toInt();
+    return transaction;
+}
+std::optional<Data::Transaction> TransactionsTable::byId(int transactionId) const
+{
+    QSqlQuery query(db());
+    if (!query.prepare(QStringLiteral("SELECT %1 FROM transactions WHERE id = ?;").arg(QLatin1String(kRowColumns)))) {
+        Sql::logPrepareError(query, "[TransactionsTable] byId");
+        return std::nullopt;
+    }
+    query.addBindValue(transactionId);
+    if (!query.exec() || !query.next()) {
+        return std::nullopt;
+    }
+    Data::Transaction transaction;
+    transaction.id               = query.value(kColId).toInt();
+    transaction.accountId        = query.value(kColAccountId).toInt();
+    transaction.confirmationDate = dateFromDb(query.value(kColConfirmationDate).toString());
+    transaction.operationDate    = dateFromDb(query.value(kColOperationDate).toString());
+    transaction.name             = query.value(kColName).toString();
+    transaction.description      = query.value(kColDescription).toString();
+    transaction.debit            = query.value(kColDebit).toDouble();
+    transaction.credit           = query.value(kColCredit).toDouble();
+    transaction.balanceAfter     = query.value(kColBalanceAfter).toDouble();
+    transaction.category         = query.value(kColCategory).toString();
+    transaction.subcategory      = query.value(kColSubcategory).toString();
+    transaction.sourceTemplate   = query.value(kColSourceTemplate).toString();
+    transaction.transferId       = query.value(kColTransferId).toInt();
     return transaction;
 }

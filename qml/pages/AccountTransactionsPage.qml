@@ -238,9 +238,17 @@ Item {
                                         // colors resolved via CategoryController (see that
                                         // singleton's categoryColor()/subcategoryColor() convenience
                                         // lookups — ARCHITECTURE.MD § Category Management).
+                                        // #207: an internal transfer has no spending category.
+                                        StatusBadge {
+                                            Layout.preferredWidth: 130
+                                            visible: txRow.modelData.internalTransfer
+                                            pillHeight: 20
+                                            variant: "success"
+                                            text: "⇄ Internal transfer"
+                                        }
                                         Rectangle {
                                             Layout.preferredWidth: 130
-                                            visible: txRow.modelData.category.length > 0
+                                            visible: !txRow.modelData.internalTransfer && txRow.modelData.category.length > 0
                                             Layout.preferredHeight: 20
                                             radius: 10
                                             color: Qt.rgba(1, 1, 1, 0.08)
@@ -254,7 +262,7 @@ Item {
                                                 width: Math.min(implicitWidth, 118)
                                             }
                                         }
-                                        Text { Layout.preferredWidth: 130; visible: txRow.modelData.category.length === 0; text: "—"; font.pixelSize: 14; color: Theme.overlay0 }
+                                        Text { Layout.preferredWidth: 130; visible: !txRow.modelData.internalTransfer && txRow.modelData.category.length === 0; text: "—"; font.pixelSize: 14; color: Theme.overlay0 }
 
                                         Rectangle {
                                             Layout.preferredWidth: 130
@@ -369,6 +377,7 @@ Item {
         width: 460
 
         property int transactionId: -1
+        property bool wasTransfer: false
 
         function categoryNames() {
             return CategoryController.categories.map(function(c) { return c.name })
@@ -397,6 +406,8 @@ Item {
             editSubcategoryBox.model = subcategoryNames(row.category)
             var si = subcategoryNames(row.category).indexOf(row.subcategory)
             editSubcategoryBox.currentIndex = si
+            editTransferBox.checked = row.internalTransfer
+            editDialog.wasTransfer = row.internalTransfer
 
             open()
         }
@@ -436,6 +447,13 @@ Item {
                 enabled: count > 0
             }
         }
+        // #207: a move between two accounts of the net worth. Off also
+        // cancels the other side of the transfer.
+        CheckBox {
+            id: editTransferBox
+            text: "Internal transfer (not income, not spending)"
+            palette.windowText: Theme.text
+        }
 
         onSaveClicked: {
             var debit = parseFloat(editDebitRow.text.trim().replace(",", "."))
@@ -452,6 +470,8 @@ Item {
                 editDescriptionRow.text.trim(),
                 debit, credit,
                 category, subcategory)
+            if (ok && editTransferBox.checked !== editDialog.wasTransfer)
+                ok = AccountController.setInternalTransfer(editDialog.transactionId, editTransferBox.checked)
             if (ok) {
                 page.reloadRows()
                 close()

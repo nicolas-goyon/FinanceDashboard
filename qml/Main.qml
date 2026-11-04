@@ -91,7 +91,7 @@ ApplicationWindow {
     // below and ARCHITECTURE.MD § Sidebar Navigation → Overlay pages.
     readonly property var overlayViewIds: [
         "importTransactions", "manageCategories",
-        "manageAccounts", "accountTypes", "accountTransactions", "accountDetails"
+        "manageAccounts", "accountTypes", "accountTransactions", "accountDetails", "internalTransfers"
     ]
     readonly property bool isOverlayView: root.overlayViewIds.indexOf(root.currentViewId) !== -1
 
@@ -174,7 +174,9 @@ ApplicationWindow {
                 // button) — see the dual return-view handling in the
                 // accountTransactions Loader/Component below and
                 // ARCHITECTURE.MD § Account Management.
-                { id: "accountTransactions", label: "View & Edit Transactions" }
+                { id: "accountTransactions", label: "View & Edit Transactions" },
+                // #207: the moves between two accounts of the net worth.
+                { id: "internalTransfers", label: "Internal Transfers" }
             ]
         },
         {
@@ -528,6 +530,25 @@ ApplicationWindow {
             // Back arrow's target depends on how this page was reached — see
             // accountTransactionsReturnViewId's own doc comment above.
             onCloseRequested: root.currentViewId = root.accountTransactionsReturnViewId
+        }
+    }
+
+    // ── Overlay — Internal Transfers (#207). Lazily loaded/unloaded via
+    //    Loader.active. ──────────────────────────────────────────────────────
+    Loader {
+        anchors {
+            top: updateBanner.bottom; bottom: parent.bottom
+            left: sidebarDivider.right; right: parent.right
+        }
+        active: root.currentViewId === "internalTransfers"
+        visible: active
+        sourceComponent: internalTransfersPageComponent
+    }
+
+    Component {
+        id: internalTransfersPageComponent
+        InternalTransfersPage {
+            onCloseRequested: root.currentViewId = "transactionsManagement"
         }
     }
 

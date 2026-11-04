@@ -38,6 +38,7 @@ src/db/               Database (connection, transactions, upgrades) and tables/ 
 src/models/           Plain data structs (Account, Transaction, Category, …).
 src/import/           Statement templates (ImportTemplate, SumeriaCcpCsvExtractionTemplate).
 src/predict/          Category prediction (CategoryPredictor, LabelNormalizer).
+src/calc/             Calculations with no database and no Qt Quick (TransferMatcher).
 src/update/           Release list, versions and SHA256SUMS parsing, with no network.
 src/startup/          Start-up checks (StartupChecks) and the QML network block (LocalOnlyNetwork).
 src/utils/            Money, AccountHashing and other helpers.
@@ -212,6 +213,16 @@ when it closes.
   new account is in it. Schema step 8 adds the column, on for every account.
 - A move of money between two accounts of the net worth is an internal transfer. It is not
   income and not spending (#207).
+- `transactions.transfer_id` (schema step 9): 0 = not decided, -1 (`Data::kNotATransfer`) = the
+  user said no, > 0 = a transfer. The two rows of a transfer have the id of the debit row. A row
+  without its other side has its own id.
+- `TransferMatcher` (`src/calc/`) suggests the pairs: a debit and a credit of the same amount in
+  cents, on two accounts of the net worth, 3 days apart or less, both not decided. The smallest
+  gap wins. It uses no bank identifier.
+- The user confirms or refuses each pair on the Internal Transfers page
+  (`TransfersController`), or marks one row on the transactions page.
+- A page that adds income and spending must leave out the rows with `transfer_id > 0`
+  (`Data::isInternalTransfer()`).
 - Money that goes to an account outside the net worth (a joint account, the account of a
   child) is spending.
 - The savings of a period are the external income minus the external spending. The change of
@@ -363,6 +374,7 @@ reason.
 | Statement import, review and report | `src/controllers/dataentry/SnapshotImportController.h`, `qml/pages/ImportSnapshotPage.qml`, `src/import/` |
 | Category prediction | `src/predict/CategoryPredictor.h`, `src/predict/LabelNormalizer.h` |
 | Categories, accounts, account types | `src/controllers/dataentry/CategoryController.h`, `AccountController.h` |
+| Net worth scope and internal transfers | `AccountController.h` (`setInNetWorth()`), `src/controllers/dataentry/TransfersController.h`, `src/calc/TransferMatcher.h`, `qml/pages/InternalTransfersPage.qml` |
 | Database, schema, upgrades | `src/db/Database.h`, `src/db/tables/` |
 | Database management (reset, demo data, clean-up) | `src/controllers/database/DatabaseManagementController.h` |
 | Update check and installation | `src/controllers/updates/UpdateController.h`, `UpdateInstaller.h`, `src/update/`, `packaging/windows/update-restart.iss`, `README.md` § Updates |

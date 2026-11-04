@@ -130,6 +130,9 @@ public:
     //    name, description, debitText, debit, creditText, credit, balanceText,
     //    category, subcategory }]
     Q_INVOKABLE [[nodiscard]] QVariantList transactionsForAccount(int accountIndex) const;
+    // Marks a saved row as an internal transfer, or not (#207, see
+    // Database::setInternalTransfer()). `transactionId` is the row id.
+    Q_INVOKABLE bool setInternalTransfer(int transactionId, bool on);
     Q_INVOKABLE [[nodiscard]] int transactionCountForAccount(int accountIndex) const;
 
     // Edits an already-persisted transaction (by its real row id, from

@@ -152,6 +152,8 @@ set(FD_CORE_SOURCES
     src/utils/Formatter.h
     src/utils/Money.h
     src/utils/AccountHashing.h
+    src/calc/TransferMatcher.h
+    src/calc/TransferMatcher.cpp
     src/utils/StatusMessage.h
     src/utils/StatusMessage.cpp
     # Category prediction (see docs/category-prediction.md). UI-independent
@@ -230,6 +232,8 @@ qt_add_qml_module(FinanceDashboard
         src/controllers/dataentry/CategoryController.cpp
         src/controllers/dataentry/AccountController.h
         src/controllers/dataentry/AccountController.cpp
+        src/controllers/dataentry/TransfersController.h
+        src/controllers/dataentry/TransfersController.cpp
         src/controllers/database/DatabaseManagementController.h
         src/controllers/database/DatabaseManagementController.cpp
         src/controllers/updates/UpdateController.h
@@ -274,6 +278,7 @@ qt_add_qml_module(FinanceDashboard
         qml/pages/AccountTypesCategoriesPage.qml
         qml/pages/AccountTransactionsPage.qml
         qml/pages/AccountHistoryPage.qml
+        qml/pages/InternalTransfersPage.qml
 )
 
 # NOTE — qml/pages/ImportSnapshotPage.qml (FileDialog) and
