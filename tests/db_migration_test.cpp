@@ -146,18 +146,58 @@ private:
     [[nodiscard]] QStringList backups() const;
     [[nodiscard]] static int count(const QString& sql);
     [[nodiscard]] static QStringList columns(const QString& table);
+    // Fails when a message of the app since init() holds one of `values`
+    // (with the same case).
+    static void logHasNo(const QStringList& values);
 
     std::unique_ptr<QTemporaryDir> m_dir;
+    QtMessageHandler m_previousHandler = nullptr;
 };
+
+namespace {
+// The messages of the app during a test (#205).
+QStringList& capturedLog()
+{
+    static QStringList log;
+    return log;
+}
+QtMessageHandler& forwardHandler()
+{
+    static QtMessageHandler handler = nullptr;
+    return handler;
+}
+void captureMessage(QtMsgType type, const QMessageLogContext& context, const QString& message)
+{
+    capturedLog().append(message);
+    if (forwardHandler() != nullptr) {
+        forwardHandler()(type, context, message);
+    }
+}
+} // namespace
 
 void DbMigrationTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
+    capturedLog().clear();
+    m_previousHandler = qInstallMessageHandler(captureMessage);
+    forwardHandler() = m_previousHandler;
+}
+
+void DbMigrationTest::logHasNo(const QStringList& values)
+{
+    for (const QString& message : capturedLog()) {
+        for (const QString& value : values) {
+            QVERIFY2(!message.contains(value),
+                     qPrintable(QStringLiteral("\"%1\" in the log: %2").arg(value, message)));
+        }
+    }
 }
 
 void DbMigrationTest::cleanup()
 {
+    qInstallMessageHandler(m_previousHandler);
+    forwardHandler() = nullptr;
     Database::instance().close();
     m_dir.reset();
 }
@@ -290,6 +330,10 @@ void DbMigrationTest::oldDatabaseIsUpgraded()
 
     Database& db = Database::instance();
     QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    // The log gives ids, not statement data or account names (#205).
+    logHasNo({QStringLiteral("CARREFOUR"), QStringLiteral("SNCF"), QStringLiteral("BAKERY"), QStringLiteral("CINEMA"),
+              QStringLiteral("LANDLORD"), QStringLiteral("POWER"), QStringLiteral("Checking"),
+              QStringLiteral("Savings"), QStringLiteral("FR7630006000011234567890189")});
     QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
 
     // Accounts: legacy columns gone, rows and ids kept.
@@ -697,6 +741,10 @@ void DbMigrationTest::version6BankIdentifiersAreRemoved()
     QVERIFY(!QTest::currentTestFailed());
 
     QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    // No statement data in the log either (#205).
+    // (Not a short number alone: the log has the path of the copy, with a time.)
+    logHasNo({iban, QStringLiteral("payment 4321"), QStringLiteral("556677"), QStringLiteral("STORE"),
+              QStringLiteral("BAKERY"), QStringLiteral("LANDLORD"), QStringLiteral("Checking")});
     QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
     QVERIFY2(db.upgradeReport().contains(QStringLiteral("stores no bank identifier")), qPrintable(db.upgradeReport()));
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM account_hashes;")), 0);
@@ -769,6 +817,9 @@ void DbMigrationTest::version5RulesAreNormalizedAgain()
     QVERIFY(!QTest::currentTestFailed());
 
     QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    // The log gives rule ids, not patterns (#205).
+    // ("JOHN DOE" and "CARD PAYMENT" are examples in the text of the report.)
+    logHasNo({QStringLiteral("CARREFOUR"), QStringLiteral("JANE ROE")});
     QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
     const QString report = db.upgradeReport();
     QVERIFY2(report.contains(QStringLiteral("1 category rule(s) were removed: their label had only generic words")),

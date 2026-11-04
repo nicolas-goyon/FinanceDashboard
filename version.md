@@ -48,6 +48,11 @@ builds, source archives). Then CI opens a pull request that merges the release b
   in its copy, with secure_delete and a VACUUM. The review shows only the end of the client
   code, account number and IBAN.
 
+### Fixed
+- The application log no longer shows statement data (#205): the upgrade steps and the import
+  log ids and counts, not the descriptions, labels, rule patterns or account names. The tests
+  capture the log and check it.
+
 ---
 
 ## v0.2.3 — 2026-10-29 — User interface
