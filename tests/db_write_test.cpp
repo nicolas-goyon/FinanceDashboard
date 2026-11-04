@@ -137,7 +137,7 @@ private slots:
     void writeWithoutItsTransactionFails();
     void amountsAreWrittenToTheCent();
     void invalidAmountsAreRefused();
-    void hashBelongsToOneAccount();
+    void tagCanBeOnTwoAccounts();
 
 private:
     QTemporaryDir m_dir;
@@ -678,7 +678,7 @@ void DbWriteTest::invalidAmountsAreRefused()
     QVERIFY(db.loadBalanceCheckpoints(account).isEmpty());
 }
 
-void DbWriteTest::hashBelongsToOneAccount()
+void DbWriteTest::tagCanBeOnTwoAccounts()
 {
     Database& db = Database::instance();
     const int checking = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
@@ -686,57 +686,49 @@ void DbWriteTest::hashBelongsToOneAccount()
     const int savings = db.addAccount(QStringLiteral("Savings"), QStringLiteral("CCP"), QStringLiteral(""),
                                       QStringLiteral("EUR"), QStringLiteral(""));
     QVERIFY(checking >= 0 && savings >= 0);
-    const QString upper = QStringLiteral("ABCDEF0123456789").repeated(4); // 64 hexadecimal characters
-    const QString lower = upper.toLower();
 
     // Typed in upper case: stored in lower case, found in any case.
-    QVERIFY2(db.addAccountHash(checking, QStringLiteral(" ") + upper + QStringLiteral(" "), QStringLiteral("manual")) >= 0,
+    QVERIFY2(db.addAccountHash(checking, QStringLiteral(" 0C "), QStringLiteral("manual")) >= 0,
              qPrintable(db.lastError()));
-    QCOMPARE(db.loadAccounts().first().hashes.first().hash, lower);
-    QVERIFY(db.accountHasHash(checking, lower));
-    QVERIFY(db.accountHasHash(checking, upper));
-    QCOMPARE(db.accountOfHash(upper), checking);
+    QCOMPARE(db.loadAccounts().first().hashes.first().hash, QStringLiteral("0c"));
+    QVERIFY(db.accountHasHash(checking, QStringLiteral("0C")));
+    QCOMPARE(db.accountOfHash(QStringLiteral("0C")), checking);
 
-    // Not a fingerprint, the same hash again, the hash of another account.
-    for (const QString& wrong : {QStringLiteral("ABCDEF0123"), upper + QStringLiteral("0"),
-                                 QStringLiteral("g").repeated(64)}) {
+    // Not a tag: a 64-character fingerprint of before v0.3.0, 3 characters,
+    // not hexadecimal.
+    for (const QString& wrong : {QStringLiteral("ABCDEF0123456789").repeated(4), QStringLiteral("0c0"),
+                                 QStringLiteral("zz")}) {
         QCOMPARE(db.addAccountHash(savings, wrong, QStringLiteral("manual")), -1);
-        QCOMPARE(db.lastError(), QStringLiteral("An account hash has 64 hexadecimal characters (0-9, a-f)."));
+        QCOMPARE(db.lastError(), QStringLiteral("An account tag has 2 hexadecimal characters (0-9, a-f)."));
+        QVERIFY(!db.linkAccountHash(savings, wrong, QStringLiteral("auto")));
     }
-    QCOMPARE(db.addAccountHash(checking, lower, QStringLiteral("manual")), -1);
-    QCOMPARE(db.lastError(), QStringLiteral("The account already has this hash."));
-    QCOMPARE(db.addAccountHash(savings, lower, QStringLiteral("manual")), -1);
-    QCOMPARE(db.lastError(), QStringLiteral("Another account has this hash."));
+    QCOMPARE(db.addAccountHash(checking, QStringLiteral("0c"), QStringLiteral("manual")), -1);
+    QCOMPARE(db.lastError(), QStringLiteral("The account already has this tag."));
 
-    // A link (the import picked Savings) moves the hash: one row, on Savings.
-    QVERIFY2(db.linkAccountHash(savings, upper, QStringLiteral("auto")), qPrintable(db.lastError()));
-    QCOMPARE(db.accountOfHash(lower), savings);
-    QVERIFY(!db.accountHasHash(checking, lower));
-    QVERIFY(db.linkAccountHash(savings, lower, QStringLiteral("auto"))); // already there: nothing changes
+    // Many bank accounts have the same tag: a link adds it, the other
+    // account keeps it, and a second link changes nothing.
+    QVERIFY2(db.linkAccountHash(savings, QStringLiteral("0C"), QStringLiteral("auto")), qPrintable(db.lastError()));
+    QVERIFY(db.linkAccountHash(savings, QStringLiteral("0c"), QStringLiteral("auto")));
+    QVERIFY(db.accountHasHash(checking, QStringLiteral("0c")));
+    QVERIFY(db.accountHasHash(savings, QStringLiteral("0c")));
     QSqlQuery query(db.sqlDatabase());
-    QVERIFY(query.exec(QStringLiteral("SELECT COUNT(*), MIN(source) FROM account_hashes;")) && query.next());
-    QCOMPARE(query.value(0).toInt(), 1);
-    QCOMPARE(query.value(1).toString(), QStringLiteral("auto"));
+    QVERIFY(query.exec(QStringLiteral("SELECT COUNT(*) FROM account_hashes;")) && query.next());
+    QCOMPARE(query.value(0).toInt(), 2);
     query.finish();
 
-    // The controller says which account has the hash, and a link names the
-    // account that loses it.
+    // The controller: "Link this account" once, then "Forget link".
     AccountController controller;
     const int checkingIndex = indexOfName(controller.accounts(), QStringLiteral("Checking"));
-    const int savingsIndex = indexOfName(controller.accounts(), QStringLiteral("Savings"));
-    QVERIFY(checkingIndex >= 0 && savingsIndex >= 0);
-    QVERIFY(!controller.addHash(checkingIndex, upper));
-    QVERIFY2(controller.statusText().contains(QStringLiteral("\"Savings\" has this hash")),
-             qPrintable(controller.statusText()));
-    QVERIFY(!controller.addHash(checkingIndex, QStringLiteral("not a hash")));
-    QVERIFY2(controller.statusText().contains(QStringLiteral("64 hexadecimal characters")),
-             qPrintable(controller.statusText()));
-    QVERIFY(controller.linkAccountHash(checkingIndex, upper));
-    QVERIFY2(controller.statusText().contains(QStringLiteral("no longer on \"Savings\"")),
-             qPrintable(controller.statusText()));
-    QVERIFY(controller.accountHasHash(checkingIndex, lower));
-    QVERIFY(!controller.accountHasHash(savingsIndex, lower));
-    QVERIFY(!controller.linkAccountHash(checkingIndex, lower)); // already linked
+    QVERIFY(checkingIndex >= 0);
+    QVERIFY(!controller.linkAccountHash(checkingIndex, QStringLiteral("0c"))); // already linked
+    QVERIFY(controller.linkAccountHash(checkingIndex, QStringLiteral("a7")));
+    QVERIFY(controller.accountHasHash(checkingIndex, QStringLiteral("a7")));
+    controller.forgetImportLink(checkingIndex);
+    QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓")), qPrintable(controller.statusText()));
+    QVERIFY(!db.accountHasHash(checking, QStringLiteral("0c")));
+    QVERIFY(!db.accountHasHash(checking, QStringLiteral("a7")));
+    QVERIFY(db.accountHasHash(savings, QStringLiteral("0c")));
+    QVERIFY(!controller.accounts().at(checkingIndex).toMap().value(QStringLiteral("linked")).toBool());
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)

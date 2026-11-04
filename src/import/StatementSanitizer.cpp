@@ -154,6 +154,30 @@ QString cleanDescription(const QString& rawDescription, const QStringList& secre
     return clean(single, secrets);
 }
 
+QString cleanStoredDescription(const QString& description)
+{
+    // "External ref.: 123", "Internal ref.: a1b2-…", "End-to-end ref.: E2E1" at
+    // the end, one after the other. The label word is one that the bank
+    // writes, so the last word of the text stays ("STORE External ref.: 1"),
+    // and "ref." has its dot (the free text "ref: rent" of a sender stays).
+    static const QRegularExpression kTrailingRef(
+        QStringLiteral("\\s*(?:(?:External|Internal|End-to-end|Bank|Creditor|Debtor|Mandate|Payment|"
+                       "Transaction|Operation)\\s+)?ref\\.\\s*:\\s*\\S*\\s*$"),
+        QRegularExpression::CaseInsensitiveOption);
+    QString text = description.simplified();
+    for (;;) {
+        const QString shorter = QString(text).remove(kTrailingRef);
+        if (shorter == text) {
+            break;
+        }
+        text = shorter;
+    }
+    if (text.isEmpty() && !description.trimmed().isEmpty()) {
+        text = mask(); // the description had only references
+    }
+    return clean(text);
+}
+
 bool hasIdentifier(const QString& text, const QStringList& secrets)
 {
     return clean(text, secrets) != text;

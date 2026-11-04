@@ -108,6 +108,14 @@ database, the files and the logs must see nothing more than the user sees in the
   `tests/import_save_test.cpp`).
 - The bank reference of a row stays in memory (`bankReference`). The database stores only the
   fingerprint (a SHA-256) that is made from it.
+- A row without a bank reference gets its fingerprint from the clean description, not the raw
+  one. A short value (4 card digits) in a hash can be found by brute force.
+- An automatic balance checkpoint has no file name in its note (the name of a statement file
+  can hold an IBAN).
+- Schema step 7 (#204) cleans a database of before v0.3.0, and its copy: the names and
+  descriptions, the fingerprints of rows without a reference, the notes, the category rules
+  with an identifier, the account hashes. The connection has `secure_delete` on, and a
+  `VACUUM` follows, so the old values are not in the free pages of the file.
 - Merchant and counterparty names stay (maintainer decision of 2026-11-04).
 - The app must work the same with fictitious test data and with real data.
 
@@ -194,20 +202,21 @@ when it closes.
   Examples: the reconciliation of an import, a running balance, a total.
 - Do not add doubles for these. In a double, 0.10 + 0.20 is not 0.30.
 
-### Account hashes
+### Account tags
 
-- An account hash (`account_hashes`) links the statements of a bank account to an account of
-  the app. The import then suggests that account.
-- `AccountHashing::compute()` calculates an HMAC-SHA256 of the IBAN of a statement, with the BIC
-  as the key. The app does not keep the IBAN or the BIC.
-- The hash is not a security feature. The BIC is public, and a person who has the database can
-  find an IBAN by brute force. `src/utils/AccountHashing.h` gives the limit.
-- The app uses the BIC on 11 characters: `PSSTFRPP` is `PSSTFRPPXXX` (#50).
-- The import also tries the hash of an 8-character BIC from before #50. Save (or "Link this
-  account") replaces it, also when it is on another account. The review screen tells the user.
-- A hash belongs to one account, in lower case (#47). A save to another account moves the hash
-  there (`Database::linkAccountHash()`).
-- A hash that the user types must have 64 hexadecimal characters. No other account can have it.
+- An account tag (`account_hashes`) links the statements of a bank account to an account of
+  the app. The import then suggests that account (#203).
+- `AccountHashing::compute()` calculates PBKDF2-HMAC-SHA256 of the IBAN (100 000 iterations,
+  a fixed salt of the app). The tag is the first byte of the result: 2 hexadecimal characters.
+- A tag has 256 values. Many bank accounts have the same tag, so the tag does not identify an
+  IBAN. This obeys the privacy rule. The BIC is not in the tag.
+- A tag can be on two accounts. A save adds the tag to the account and the other accounts keep
+  it (`Database::linkAccountHash()`).
+- The import suggests an account only when exactly one account has the tag. Else the user picks
+  the account.
+- "Forget link" (accounts page) removes the tags of an account.
+- Schema step 7 removes the 64-character hashes of before v0.3.0, and the UNIQUE index on the
+  hash. At the next import of each account, the user picks the account once.
 
 ### Category rules
 

@@ -9,29 +9,28 @@
 
 // ── AccountHashesTable ────────────────────────────────────────────────────────
 //
-// Owns all SQL that touches the `account_hashes` table — the "is this account
-// linked to a statement fingerprint" list (see ARCHITECTURE.MD § Account
-// Management / § Statement Import). An account can carry multiple hashes
-// (e.g. one for each export format of its bank), but a hash belongs to one
-// account only (#47): the import suggests that account.
+// Owns all SQL that touches the `account_hashes` table: the account tags
+// (#203, see utils/AccountHashing.h and ARCHITECTURE.MD § Account tags). A
+// tag is one byte of a slow hash of an IBAN, so many bank accounts have the
+// same tag: a tag can be on two accounts, once on each. The import suggests
+// an account when exactly one account has the tag.
 //
 //   CREATE TABLE account_hashes (
 //     id         INTEGER PRIMARY KEY AUTOINCREMENT,
 //     account_id INTEGER NOT NULL,
-//     hash       TEXT    NOT NULL,
+//     hash       TEXT    NOT NULL,                   -- the tag: 2 hex characters
 //     source     TEXT    NOT NULL DEFAULT 'manual',  -- 'auto' | 'manual'
 //     UNIQUE(account_id, hash)
 //   );
 //   CREATE INDEX idx_account_hashes_account ON account_hashes(account_id);
-//   CREATE UNIQUE INDEX idx_account_hashes_hash ON account_hashes(hash);  -- schema version 5
+//   CREATE INDEX idx_account_hashes_hash ON account_hashes(hash);
 //
-// createTable() is the base schema: its index on `hash` is not UNIQUE.
-// Schema step 5 (Database::migrateTo5()) puts the hashes in lower case,
-// keeps the most recent link of a hash that several accounts had, and
-// replaces that index with a UNIQUE one of the same name.
+// Schema step 5 (Database::migrateTo5()) made the index on `hash` UNIQUE
+// (one account for each 64-character hash, #47). Step 7 removes those hashes
+// and makes the index a plain one again.
 //
-// The hashes are stored in lower case (AccountHashing::storedForm()), and
-// each method below takes a hash in any case.
+// The tags are stored in lower case (AccountHashing::storedForm()), and
+// each method below takes a tag in any case.
 
 class AccountHashesTable
 {

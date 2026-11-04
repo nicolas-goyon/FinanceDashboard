@@ -47,6 +47,12 @@ inline constexpr QStringView kMask = u"\u2022\u2022\u2022"; // •••
 // cleaned and made single-line.
 [[nodiscard]] QString cleanDescription(const QString& rawDescription, const QStringList& secrets = {});
 
+// A description stored before #202: one line, with the reference block of
+// the bank at its end ("… External ref.: 123 Internal ref.: a1b2…"). The
+// block goes (labels with "ref." and a dot, as the bank writes them), then
+// clean(). For the clean-up of the existing databases (#204).
+[[nodiscard]] QString cleanStoredDescription(const QString& description);
+
 // True when `text` still holds something that clean() removes: for tests.
 [[nodiscard]] bool hasIdentifier(const QString& text, const QStringList& secrets = {});
 

@@ -4,6 +4,8 @@
 #include "models/Category.h"
 #include "models/CategoryRule.h"
 #include "models/Transaction.h"
+#include "db/tables/SqlText.h"
+#include "import/StatementSanitizer.h"
 #include "predict/LabelNormalizer.h"
 #include "utils/AccountHashing.h"
 #include "utils/Money.h"
@@ -169,13 +171,26 @@ bool Database::openFile(const QString& path)
             }
             copyCleared = true;
         }
+        // The privacy rule (#204): the copy keeps no bank identifier either.
+        if (from < kPrivacyVersion) {
+            if (!removeBankIdentifiersInCopy(backupPath)) {
+                const QString detail = m_lastError;
+                QFile::remove(backupPath);
+                return failOpen(OpenError::UpgradeFailed,
+                                QStringLiteral("Could not remove the bank identifiers from the copy of the "
+                                               "database, so it was not upgraded: %1 The file was not changed.")
+                                    .arg(sentence(detail)));
+            }
+            copyCleared = true;
+        }
     }
 
-    // The account numbers that step 1 removes: with secure_delete, SQLite
-    // writes zeros over the freed pages inside the upgrade transaction, so the
-    // old values are gone even when the VACUUM below does not run (a crash
+    // secure_delete for every write of this connection (#204): SQLite writes
+    // zeros over the pages that a delete or an update frees, so a deleted row
+    // or an old value is not in the file any more. Also for the values that
+    // the upgrade removes, even when the VACUUM below does not run (a crash
     // after the commit, a full disk).
-    if (copyCleared) {
+    {
         QSqlQuery secureDelete(m_db);
         // Without it, the VACUUM below still writes the file again without
         // the freed pages (#49: the result was not checked).
@@ -208,20 +223,14 @@ bool Database::openFile(const QString& path)
     }
 
     // VACUUM writes the file again without free pages (the zeroed ones of
-    // step 1 too); secure_delete goes back to SQLite's default.
-    if (stats.droppedAccountNumbers) {
+    // steps 1 and 7 too).
+    const bool removedIdentifiers = stats.droppedAccountNumbers || (upgrading && from < kPrivacyVersion);
+    if (removedIdentifiers) {
         QSqlQuery vacuum(m_db);
         if (!vacuum.exec(QStringLiteral("VACUUM;"))) {
             qWarning() << "[Database] VACUUM after the upgrade failed:" << sqlText(vacuum.lastError());
         }
         vacuum.finish();
-    }
-    if (copyCleared) {
-        QSqlQuery secureDelete(m_db);
-        if (!secureDelete.exec(QStringLiteral("PRAGMA secure_delete = OFF;"))) {
-            qWarning() << "[Database] PRAGMA secure_delete = OFF failed:" << sqlText(secureDelete.lastError());
-        }
-        secureDelete.finish();
     }
 
     // WAL mode: better read concurrency, faster writes. After the upgrade:
@@ -238,7 +247,7 @@ bool Database::openFile(const QString& path)
     // The PRAGMA returns a row; finish() releases the statement, else the
     // next commit() fails with "SQL statements in progress".
     pragma.finish();
-    if (stats.droppedAccountNumbers) {
+    if (removedIdentifiers) {
         // Write the WAL into the file and empty it: the old pages go too. The
         // first column is 1 when a reader or a writer blocked the checkpoint.
         if (!pragma.exec(QStringLiteral("PRAGMA wal_checkpoint(TRUNCATE);"))) {
@@ -256,9 +265,17 @@ bool Database::openFile(const QString& path)
                               .arg(from)
                               .arg(kSchemaVersion)
                               .arg(QDir::toNativeSeparators(backupPath));
-        if (copyCleared) {
+        if (stats.droppedAccountNumbers) {
             m_upgradeReport += QStringLiteral("\n\nThe old IBAN, BIC and account numbers were removed, from "
                                               "the database and from the copy.");
+        }
+        if (from < kPrivacyVersion) {
+            m_upgradeReport += QStringLiteral("\n\nThe app now stores no bank identifier. The card numbers, "
+                                              "bank references, IBANs and mandate ids were removed from %1 "
+                                              "transaction(s), from the database and from the copy. The account "
+                                              "links were removed: at the next import of each account, choose "
+                                              "the account once, and the app suggests it again after that.")
+                                   .arg(stats.cleanedRows);
         }
         if (stats.removedDuplicates > 0) {
             m_upgradeReport += QStringLiteral("\n\n%1 duplicate transaction(s) were removed: the same "
@@ -487,6 +504,7 @@ bool Database::upgrade(int from, UpgradeStats& stats)
         case 4: ok = migrateTo4(stats); break;
         case 5: ok = migrateTo5(stats); break;
         case 6: ok = migrateTo6(stats); break;
+        case 7: ok = migrateTo7(stats); break;
         default: m_lastError = QStringLiteral("there is no migration step %1.").arg(step); break;
         }
         // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
@@ -505,6 +523,238 @@ bool Database::upgrade(int from, UpgradeStats& stats)
         m_lastError = sqlText(setVersion.lastError());
     }
     setVersion.finish();
+    return ok;
+}
+
+// Version 7 — the privacy rule (maintainer, 2026-10-29, #202-#204): a person
+// with full access to the files must see nothing more than the UI shows.
+// See removeBankIdentifiers().
+bool Database::migrateTo7(UpgradeStats& stats)
+{
+    return removeBankIdentifiers(m_db, stats, m_lastError);
+}
+
+// The clean-up of step 7, also run on the copy made before the upgrade:
+//   - account_hashes: the 64-character hashes go (an HMAC of the IBAN, which
+//     a person can reverse by brute force). The account tags of #203 (one
+//     byte) come again at the next import of each account. A tag can be on
+//     two accounts, so the UNIQUE index of step 5 becomes a plain one.
+//   - transactions: name and description lose the bank identifiers
+//     (StatementSanitizer). A row without a bank reference gets the
+//     fingerprint of its clean description (with the occurrence it had),
+//     the one that an import gives it now; a row with a reference keeps its
+//     fingerprint (reference and amount).
+//   - balance checkpoints: an automatic note loses the file name of the
+//     statement ("Auto — statement start (<file>)").
+//   - category rules: a pattern that holds an identifier goes.
+bool Database::removeBankIdentifiers(QSqlDatabase& db, UpgradeStats& stats, QString& error)
+{
+    const auto run = [&](const QString& sql) {
+        QSqlQuery query(db);
+        if (!query.exec(sql)) {
+            error = sqlText(query.lastError());
+            return false;
+        }
+        query.finish();
+        return true;
+    };
+
+    // The copy made before an upgrade has the schema of its version: a table
+    // or a column that this version does not have yet is not there.
+    const auto columns = [&](const QString& table) {
+        QStringList names;
+        QSqlQuery info(db);
+        if (info.exec(QStringLiteral("PRAGMA table_info(%1);").arg(table))) {
+            while (info.next()) {
+                names << info.value(1).toString();
+            }
+        }
+        return names;
+    };
+
+    if (!columns(QStringLiteral("account_hashes")).isEmpty()) {
+        {
+            QSqlQuery count(db);
+            if (count.exec(QStringLiteral("SELECT COUNT(*) FROM account_hashes;")) && count.next()) {
+                stats.removedAccountHashes = count.value(0).toInt();
+            }
+        }
+        if (!run(QStringLiteral("DELETE FROM account_hashes;"))
+            || !run(QStringLiteral("DROP INDEX IF EXISTS idx_account_hashes_hash;"))
+            || !run(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_account_hashes_hash ON account_hashes(hash);"))) {
+            return false;
+        }
+    }
+
+    const QStringList txColumns = columns(QStringLiteral("transactions"));
+    const bool hasTransactions = txColumns.contains(QLatin1String("name"))
+                                 && txColumns.contains(QLatin1String("description"));
+    const bool hasFingerprint = txColumns.contains(QLatin1String("fingerprint"));
+
+    // Transactions, account by account: the new fingerprints must stay unique
+    // in their account (two rows that differed only by an identifier).
+    struct Row {
+        int id = 0;
+        int accountId = 0;
+        QString operationDate, confirmationDate, name, description, fingerprint;
+        double debit = 0, credit = 0, balanceAfter = 0;
+    };
+    QVector<Row> rows;
+    if (hasTransactions) {
+        QSqlQuery select(db);
+        if (!select.exec(QStringLiteral("SELECT id, account_id, operation_date, confirmation_date, name, description, "
+                                        "debit, credit, balance_after, %1 FROM transactions "
+                                        "ORDER BY account_id, id;")
+                             .arg(hasFingerprint ? QStringLiteral("fingerprint") : QStringLiteral("''")))) {
+            error = sqlText(select.lastError());
+            return false;
+        }
+        while (select.next()) {
+            Row row;
+            row.id = select.value(0).toInt();
+            row.accountId = select.value(1).toInt();
+            row.operationDate = select.value(2).toString();
+            row.confirmationDate = select.value(3).toString();
+            row.name = select.value(4).toString();
+            row.description = select.value(5).toString();
+            row.debit = select.value(6).toDouble();
+            row.credit = select.value(7).toDouble();
+            row.balanceAfter = select.value(8).toDouble();
+            row.fingerprint = select.value(9).toString();
+            rows.append(row);
+        }
+    }
+    constexpr int kMaxOccurrence = 50;
+    QHash<int, QSet<QString>> taken; // account -> new fingerprints
+    for (const Row& row : rows) {
+        taken[row.accountId].insert(row.fingerprint);
+    }
+    QSqlQuery update(db);
+    if (hasTransactions
+        && !update.prepare(hasFingerprint
+                               ? QStringLiteral("UPDATE transactions SET name = ?, description = ?, fingerprint = ? "
+                                                "WHERE id = ?;")
+                               : QStringLiteral("UPDATE transactions SET name = ?, description = ? WHERE id = ?;"))) {
+        error = sqlText(update.lastError());
+        return false;
+    }
+    for (const Row& row : rows) {
+        const QString name = StatementSanitizer::clean(row.name);
+        const QString description = StatementSanitizer::cleanStoredDescription(row.description);
+        QString fingerprint = row.fingerprint;
+        if (hasFingerprint && TransactionsTable::bankReference(row.description).isEmpty()
+            && description != row.description) {
+            // The occurrence of the old fingerprint (1 for most rows).
+            int occurrence = 1;
+            for (int k = 1; k <= kMaxOccurrence; ++k) {
+                if (TransactionsTable::fingerprint(row.operationDate, row.confirmationDate, row.debit, row.credit,
+                                                   row.balanceAfter, row.description, k) == row.fingerprint) {
+                    occurrence = k;
+                    break;
+                }
+            }
+            QSet<QString>& inAccount = taken[row.accountId];
+            inAccount.remove(row.fingerprint);
+            for (int k = occurrence;; ++k) {
+                fingerprint = TransactionsTable::fingerprint(row.operationDate, row.confirmationDate, row.debit,
+                                                             row.credit, row.balanceAfter, description, k);
+                if (!inAccount.contains(fingerprint)) {
+                    break;
+                }
+            }
+            inAccount.insert(fingerprint);
+        }
+        if (name == row.name && description == row.description && fingerprint == row.fingerprint) {
+            continue;
+        }
+        update.addBindValue(Sql::text(name));
+        update.addBindValue(Sql::text(description));
+        if (hasFingerprint) {
+            update.addBindValue(Sql::text(fingerprint));
+        }
+        update.addBindValue(row.id);
+        if (!update.exec()) {
+            error = sqlText(update.lastError());
+            return false;
+        }
+        ++stats.cleanedRows;
+    }
+    update.finish();
+
+    // The automatic notes: "Auto — statement start (<file name>)".
+    if (columns(QStringLiteral("account_balance_checkpoints")).contains(QLatin1String("note"))
+        && !run(QStringLiteral("UPDATE account_balance_checkpoints SET note = substr(note, 1, instr(note, ' (') - 1) "
+                               "WHERE note LIKE 'Auto %statement%(%' AND instr(note, ' (') > 0;"))) {
+        return false;
+    }
+
+    // Category rules whose pattern holds an identifier.
+    if (columns(QStringLiteral("category_rules")).isEmpty()) {
+        return true;
+    }
+    QStringList identifierPatterns;
+    {
+        QSqlQuery select(db);
+        if (!select.exec(QStringLiteral("SELECT pattern FROM category_rules;"))) {
+            error = sqlText(select.lastError());
+            return false;
+        }
+        while (select.next()) {
+            const QString pattern = select.value(0).toString();
+            if (StatementSanitizer::hasIdentifier(pattern)) {
+                identifierPatterns.append(pattern);
+            }
+        }
+    }
+    QSqlQuery remove(db);
+    if (!remove.prepare(QStringLiteral("DELETE FROM category_rules WHERE pattern = ?;"))) {
+        error = sqlText(remove.lastError());
+        return false;
+    }
+    for (const QString& pattern : identifierPatterns) {
+        remove.addBindValue(pattern);
+        if (!remove.exec()) {
+            error = sqlText(remove.lastError());
+            return false;
+        }
+        ++stats.removedIdentifierRules;
+    }
+    remove.finish();
+    return true;
+}
+
+bool Database::removeBankIdentifiersInCopy(const QString& backupPath)
+{
+    static const QLatin1String kCopyConnection("finance_dashboard_privacy_copy");
+    bool ok = false;
+    {
+        QSqlDatabase copy = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), kCopyConnection);
+        copy.setDatabaseName(backupPath);
+        if (copy.open()) {
+            UpgradeStats ignored;
+            QSqlQuery pragma(copy);
+            ok = pragma.exec(QStringLiteral("PRAGMA journal_mode = DELETE;")) && (pragma.finish(), true)
+                 && pragma.exec(QStringLiteral("PRAGMA secure_delete = ON;")) && (pragma.finish(), true)
+                 && copy.transaction() && removeBankIdentifiers(copy, ignored, m_lastError) && copy.commit();
+            if (!ok) {
+                if (m_lastError.isEmpty()) {
+                    m_lastError = sqlText(copy.lastError());
+                }
+                copy.rollback();
+            } else {
+                QSqlQuery vacuum(copy);
+                ok = vacuum.exec(QStringLiteral("VACUUM;"));
+                if (!ok) {
+                    m_lastError = sqlText(vacuum.lastError());
+                }
+                vacuum.finish();
+            }
+            copy.close();
+        } else {
+            m_lastError = sqlText(copy.lastError());
+        }
+    }
+    QSqlDatabase::removeDatabase(kCopyConnection);
     return ok;
 }
 
@@ -1066,7 +1316,7 @@ bool hasText(const QString& value)
 
 // A hash that the user typed must be a fingerprint as the app computes it:
 // only such a value can match a statement (#47).
-constexpr const char* kNotAFingerprint = "An account hash has 64 hexadecimal characters (0-9, a-f).";
+constexpr const char* kNotAFingerprint = "An account tag has 2 hexadecimal characters (0-9, a-f).";
 
 // An amount must be a number, not larger than Money::kMaxAmount (#33): the
 // app rounds amounts to the cent before it writes them. Refused before any
@@ -1225,11 +1475,12 @@ int Database::addAccountHash(int accountId, const QString& hash, const QString& 
     if (!hasText(hash)) { m_lastError = QStringLiteral("The account hash is empty."); return -1; }
     if (!hasText(source)) { m_lastError = QStringLiteral("The source of the account hash is empty."); return -1; }
     const QString stored = AccountHashing::storedForm(hash);
-    if (!AccountHashing::isFingerprint(stored)) { m_lastError = QString::fromLatin1(kNotAFingerprint); return -1; }
-    // One account for each hash (#47): a typed hash does not move a link.
-    const int owner = m_accountHashesTable.accountOf(stored);
-    if (owner == accountId) { m_lastError = QStringLiteral("The account already has this hash."); return -1; }
-    if (owner >= 0) { m_lastError = QStringLiteral("Another account has this hash."); return -1; }
+    if (!AccountHashing::isTag(stored)) { m_lastError = QString::fromLatin1(kNotAFingerprint); return -1; }
+    // A tag can be on two accounts (#203), once on each.
+    if (m_accountHashesTable.existsForAccount(accountId, stored)) {
+        m_lastError = QStringLiteral("The account already has this tag.");
+        return -1;
+    }
     const int hashId = m_accountHashesTable.insert(accountId, stored, source);
     if (hashId < 0) {
         m_lastError = QStringLiteral("Could not add the account hash.");
@@ -1272,23 +1523,14 @@ bool Database::removeLegacyHash(int accountId, const QString& legacyHash)
 bool Database::linkHashTo(int accountId, const QString& hash, const QString& source)
 {
     const QString stored = AccountHashing::storedForm(hash);
-    if (!AccountHashing::isFingerprint(stored)) {
+    if (!AccountHashing::isTag(stored)) {
         m_lastError = QString::fromLatin1(kNotAFingerprint);
         return false;
     }
-    const int owner = m_accountHashesTable.accountOf(stored);
-    if (owner == accountId) {
+    // A tag can be on two accounts (#203): it does not move, the account gets
+    // it too.
+    if (m_accountHashesTable.existsForAccount(accountId, stored)) {
         return true; // already linked
-    }
-    if (owner >= 0) {
-        // The user picked another account for this statement: the hash moves.
-        if (!m_accountHashesTable.moveToAccount(stored, accountId, source)) {
-            m_lastError = QStringLiteral("Could not move the account fingerprint to this account.");
-            return false;
-        }
-        qInfo().noquote() << "[Database] the account fingerprint moves from the account" << accountName(owner)
-                          << "to the account" << accountName(accountId);
-        return true;
     }
     if (m_accountHashesTable.insert(accountId, stored, source) < 0) {
         m_lastError = QStringLiteral("Could not link the account fingerprint.");

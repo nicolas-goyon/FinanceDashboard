@@ -1,6 +1,7 @@
 #ifndef FINANCEDASHBOARD_UTILS_ACCOUNTHASHING_H
 #define FINANCEDASHBOARD_UTILS_ACCOUNTHASHING_H
 
+#include <QByteArray>
 #include <QChar>
 #include <QCryptographicHash>
 #include <QLatin1Char>
@@ -11,33 +12,29 @@
 
 #include <algorithm>
 
-// ── AccountHashing — the fingerprint of a bank account ──────────────────────
+// ── AccountHashing — the one-byte tag of a bank account ─────────────────────
 //
-// What it is for (maintainer, 2026-10-17, #50): the fingerprint groups the
-// statements of one bank account, and the import suggests the account of
-// the app that has it, without storing the IBAN or the BIC. The app keeps the
-// fingerprint only (account_hashes, see AccountHashesTable). The IBAN and the
-// BIC of a statement stay in memory during its review.
+// What it is for: the import suggests the account of the app that the
+// statements of a bank account went to, without storing anything that gives
+// the IBAN back (privacy rule, maintainer 2026-10-29; option B of
+// 2026-11-04, #203).
 //
-// What it is not: a security feature. The fingerprint is an HMAC-SHA256 of the
-// IBAN, keyed by the BIC. A BIC is public, and for a known bank and branch a
-// French IBAN has about 10^11 candidates (its check digits come from the other
-// digits). So a person who gets the database can find the IBAN of a
-// fingerprint by brute force, in minutes on a GPU. That is acceptable for the
-// grouping and the suggestion; it matters only if the database leaks. A key
-// outside the database (a secret for each install) would make it stronger, but
-// then the fingerprints of two installs would not match: not done.
+// The tag is ONE byte (two hexadecimal characters), the first byte of
+// PBKDF2-HMAC-SHA256 of the normalized IBAN, with a fixed salt of the app and
+// kIterations rounds. A French IBAN of a known bank has about 10^11
+// candidates, so hundreds of millions of IBANs share each of the 256 tag
+// values: a tag cannot give the IBAN back. It is enough to tell apart the
+// few accounts of one user; when two accounts have the same tag, the user
+// picks the account at the import. The slow derivation also makes a test of
+// a guessed IBAN cost 0.1 s or more.
 //
-// The IBAN and the BIC are normalized first: no spaces, upper case, and the
-// BIC on 11 characters. An 8-character BIC is the primary office of the bank,
-// whose branch code is "XXX" (ISO 9362), so PSSTFRPP and PSSTFRPPXXX give one
-// fingerprint (#50). Before #50 (v0.2.1, and the pre-releases of v0.2.2 before
-// it), the key was the normalized BIC without "XXX": the import also tries
-// legacyCompute() (the 8-character form), and the save replaces that
-// fingerprint with compute().
+// The same IBAN gives the same tag on every install (fixed salt). The BIC is
+// not used. Until v0.3.0 the app stored an HMAC-SHA256 of the IBAN keyed by
+// the BIC (64 characters): a person with the database could find the IBAN
+// by brute force. Schema step 7 removed those (Database::migrateTo7()).
 //
-// Every caller uses these functions: a fingerprint computed another way would
-// not match. compute() is empty when there is no IBAN (nothing to match on).
+// The IBAN of a statement stays in memory during its review. compute() is
+// empty when there is no IBAN (nothing to match on).
 
 namespace AccountHashing {
 
@@ -61,42 +58,50 @@ inline QString normalizeBic(const QString& bic)
 }
 
 namespace detail {
-// HMAC-SHA256 of `iban`, keyed by `key`, in lower-case hexadecimal.
-inline QString hmac(const QString& iban, const QString& key)
+// The first byte of PBKDF2-HMAC-SHA256(password, salt, iterations) (RFC 8018,
+// one block: dkLen <= 32).
+inline quint8 pbkdf2FirstByte(const QByteArray& password, const QByteArray& salt, int iterations)
 {
-    QMessageAuthenticationCode mac(QCryptographicHash::Sha256);
-    mac.setKey(key.toUtf8());
-    mac.addData(iban.toUtf8());
-    return QString::fromLatin1(mac.result().toHex());
+    const QByteArray blockIndex("\x00\x00\x00\x01", 4);
+    QByteArray u = QMessageAuthenticationCode::hash(salt + blockIndex, password, QCryptographicHash::Sha256);
+    QByteArray t = u;
+    for (int i = 1; i < iterations; ++i) {
+        u = QMessageAuthenticationCode::hash(u, password, QCryptographicHash::Sha256);
+        for (qsizetype j = 0; j < t.size(); ++j) {
+            t[j] = static_cast<char>(t.at(j) ^ u.at(j));
+        }
+    }
+    return static_cast<quint8>(t.at(0));
 }
 } // namespace detail
 
+inline constexpr int kIterations = 100000;
+inline constexpr QLatin1String kSalt("FinanceDashboard account tag v1");
+
+// The tag of the account of a statement: two lower-case hexadecimal
+// characters, or "" when there is no IBAN. `bic` is not used (kept for the
+// callers).
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — every call site
 // passes the iban and the bic of one statement, with these names.
 inline QString compute(const QString& iban, const QString& bic)
 {
+    Q_UNUSED(bic)
     const QString ibanNorm = normalize(iban);
     if (ibanNorm.isEmpty()) {
         return {};
     }
-    return detail::hmac(ibanNorm, normalizeBic(bic));
+    const quint8 tag = detail::pbkdf2FirstByte(ibanNorm.toUtf8(), QByteArray(kSalt.data(), kSalt.size()), kIterations);
+    return QStringLiteral("%1").arg(tag, 2, 16, QLatin1Char('0'));
 }
 
-// The fingerprint that the app stored before #50 for a statement with the
-// 8-character BIC of a primary office: the key was that normalized BIC,
-// without "XXX". Empty when compute() is the only form: no IBAN, or a BIC of another
-// branch (its 11 characters are the key in both versions).
+// The fingerprint of before #50: not used any more (step 7 removed every
+// stored fingerprint). Always empty.
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — as compute().
 inline QString legacyCompute(const QString& iban, const QString& bic)
 {
-    constexpr qsizetype kFullLength = 11;
-    constexpr qsizetype kPrimaryOfficeLength = 8;
-    const QString ibanNorm = normalize(iban);
-    const QString full = normalizeBic(bic);
-    if (ibanNorm.isEmpty() || full.size() != kFullLength || !full.endsWith(QLatin1String("XXX"))) {
-        return {};
-    }
-    return detail::hmac(ibanNorm, full.left(kPrimaryOfficeLength));
+    Q_UNUSED(iban)
+    Q_UNUSED(bic)
+    return {};
 }
 
 // The form in which the app stores and compares a fingerprint (#47): no
@@ -107,8 +112,19 @@ inline QString storedForm(const QString& hash)
     return hash.trimmed().toLower();
 }
 
-// True when `hash` (in its stored form) is a fingerprint as compute() gives
-// it: 64 hexadecimal characters. Only such a value can match a statement.
+// True when `tag` (in its stored form) is a tag as compute() gives it: 2
+// lower-case hexadecimal characters.
+inline bool isTag(const QString& tag)
+{
+    constexpr qsizetype kTagLength = 2;
+    return tag.size() == kTagLength && std::all_of(tag.cbegin(), tag.cend(), [](QChar character) {
+               return (character >= QLatin1Char('0') && character <= QLatin1Char('9'))
+                      || (character >= QLatin1Char('a') && character <= QLatin1Char('f'));
+           });
+}
+
+// True when `hash` (in its stored form) is a fingerprint of before v0.3.0:
+// 64 hexadecimal characters. For schema step 5 only.
 inline bool isFingerprint(const QString& hash)
 {
     constexpr qsizetype kHexLength = 64; // SHA-256: 32 bytes

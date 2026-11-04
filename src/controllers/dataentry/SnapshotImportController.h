@@ -358,6 +358,12 @@ private:
     bool    m_lastParseFailed{false};
     QString m_sourceFileName;
     QString m_templateId; // last parseFile()'s templateId — stored on saved transactions as source_template
+    // The one-byte tag of the account of m_statement (AccountHashing, #203),
+    // computed once: the slow derivation takes about 0.1 s. Cleared with
+    // m_statement.
+    [[nodiscard]] QString accountTag() const;
+    mutable QString m_accountTag;
+    mutable bool m_accountTagComputed = false;
 
     StatusMessage m_status;
     QVariantMap m_lastImportReport;

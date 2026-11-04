@@ -186,60 +186,31 @@ Item {
                                 }
                             }
 
-                            // Hashes row
+                            // Import link row (#203): the tag of the statements
+                            // of this account. Its value tells nothing to the
+                            // user, so the row shows only whether there is one.
                             RowLayout {
                                 Layout.fillWidth: true
                                 Layout.leftMargin: 4
                                 spacing: 8
 
-                                Text { text: "Hashes:"; font.pixelSize: 12; color: Theme.overlay0 }
-
-                                Flow {
+                                Text { text: "Import:"; font.pixelSize: 12; color: Theme.overlay0 }
+                                Text {
                                     Layout.fillWidth: true
-                                    spacing: 6
-
-                                    Repeater {
-                                        model: accRow.modelData.hashes
-                                        delegate: Rectangle {
-                                            id: hashChip
-                                            required property var modelData
-                                            required property int index
-                                            width: hashChipRow.implicitWidth + 16
-                                            height: 22
-                                            radius: 11
-                                            color: Theme.mantle
-                                            border.color: Theme.surface0
-
-                                            RowLayout {
-                                                id: hashChipRow
-                                                anchors.centerIn: parent
-                                                spacing: 6
-                                                Text {
-                                                    text: hashChip.modelData.hash.substring(0, 10) + "… (" + hashChip.modelData.source + ")"
-                                                    font.pixelSize: 11
-                                                    font.family: Fonts.monospace
-                                                    color: Theme.subtext0
-                                                }
-                                                // Asks first: without the hash, the import no
-                                                // longer finds this account by itself (#78).
-                                                GhostButton {
-                                                    text: "×"
-                                                    variant: "danger"
-                                                    bold: true
-                                                    horizontalPadding: 4
-                                                    Layout.preferredHeight: 18
-                                                    onClicked: removeHashDialog.openFor(accRow.modelData.id, accRow.modelData.name,
-                                                                                        hashChip.modelData.hash)
-                                                }
-                                            }
-                                        }
-                                    }
+                                    text: accRow.modelData.linked
+                                          ? "linked — the import suggests this account for its statements"
+                                          : "not linked — the next import links it"
+                                    font.pixelSize: 12
+                                    color: accRow.modelData.linked ? Theme.subtext0 : Theme.surface1
+                                    elide: Text.ElideRight
                                 }
-
+                                // Asks first: without the link, the import no longer
+                                // suggests this account by itself (#78).
                                 GhostButton {
-                                    text: "＋ Add hash"
-                                    textColor: Theme.green
-                                    onClicked: addHashDialog.openFor(accRow.index)
+                                    visible: accRow.modelData.linked
+                                    text: "Forget link"
+                                    variant: "danger"
+                                    onClicked: forgetLinkDialog.openFor(accRow.modelData.id, accRow.modelData.name)
                                 }
                             }
 
@@ -478,84 +449,32 @@ Item {
         onConfirmed: AccountController.removeAccount(deleteAccountDialog.accountIndex)
     }
 
-    // ── Remove hash confirmation (#78) ────────────────────────────────────────
-    // Keeps the account id and the hash, not their positions: removeHash()
-    // takes indexes, and they are read again on confirm.
+    // ── Forget import link confirmation (#78, #203) ───────────────────────────
+    // Keeps the account id, not its position: the index is read again on
+    // confirm.
     ConfirmDialog {
-        id: removeHashDialog
-        dialogTitle: "Remove hash?"
-        confirmText: "Remove"
+        id: forgetLinkDialog
+        dialogTitle: "Forget the import link?"
+        confirmText: "Forget"
         width: 380
 
         property int accountId: -1
-        property string hash: ""
 
-        function openFor(accountId, accountName, hash) {
-            removeHashDialog.accountId = accountId
-            removeHashDialog.hash = hash
-            message = "This removes the hash " + hash.substring(0, 10) + "… from “" + accountName + "”. "
-                + "The import then no longer picks this account by itself for the statements of "
-                + "this bank account. You can add the hash again with \"＋ Add hash\"."
+        function openFor(accountId, accountName) {
+            forgetLinkDialog.accountId = accountId
+            message = "The import then no longer suggests “" + accountName + "” by itself for the "
+                + "statements of this bank account. The next import that you save to it links it again."
             open()
         }
 
         onConfirmed: {
             var accounts = AccountController.accounts
             for (var i = 0; i < accounts.length; i++) {
-                if (accounts[i].id !== removeHashDialog.accountId)
-                    continue
-                var hashes = accounts[i].hashes
-                for (var j = 0; j < hashes.length; j++) {
-                    if (hashes[j].hash === removeHashDialog.hash) {
-                        AccountController.removeHash(i, j)
-                        return
-                    }
+                if (accounts[i].id === forgetLinkDialog.accountId) {
+                    AccountController.forgetImportLink(i)
+                    return
                 }
-                return
             }
-        }
-    }
-
-    // ── Add hash dialog ────────────────────────────────────────────────────────
-    FormDialog {
-        id: addHashDialog
-        dialogTitle: "Add a hash"
-        saveText: "Add"
-        width: 420
-
-        property int accountIndex: -1
-
-        function openFor(idx) { accountIndex = idx; hashField.text = ""; open() }
-
-        Text {
-            Layout.fillWidth: true
-            wrapMode: Text.WordWrap
-            text: "Paste a fingerprint (64 hexadecimal characters) that this account should also match on "
-                + "import, for example the one of another statement layout of the same account. A fingerprint "
-                + "belongs to one account only. Most accounts don't need this — link an account straight from "
-                + "the import review screen instead (\"Link this account\")."
-            font.pixelSize: 13
-            color: Theme.overlay0
-        }
-        // Not a FormRow — this dialog has no label column, just a full-width
-        // field, so it uses the same TextField recipe directly.
-        TextField {
-            id: hashField
-            Layout.fillWidth: true
-            placeholderText: "64 hexadecimal characters"
-            placeholderTextColor: Theme.surface1
-            font.family: Fonts.monospace
-            color: Theme.text
-            font.pixelSize: 14
-            background: Rectangle { color: Theme.crust; radius: 4; border.color: hashField.activeFocus ? Theme.blue : Theme.surface0 }
-        }
-
-        onSaveClicked: {
-            var trimmed = hashField.text.trim()
-            if (trimmed.length === 0)
-                return
-            AccountController.addHash(addHashDialog.accountIndex, trimmed)
-            close()
         }
     }
 

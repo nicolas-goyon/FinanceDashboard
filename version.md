@@ -38,6 +38,15 @@ builds, source archives). Then CI opens a pull request that merges the release b
   •••: SAMPLE STORE"). Merchant and counterparty names stay. The bank reference stays in memory
   for the fingerprint, and only its SHA-256 is stored. The import log shows no identifier
   either. A shared `StatementSanitizer` does it for every import template (#202).
+- Account tags and clean-up of the existing data (#203, #204): the import recognizes the
+  account of a statement with a tag of one byte (a slow hash of the IBAN that many bank
+  accounts share), in place of a hash that could give the IBAN back. A tag can be on two
+  accounts; the import then lets you pick. The accounts page shows whether an account is
+  linked, with "Forget link". Schema step 7 removes the old account hashes, the card numbers,
+  IBANs and bank references from the stored names and descriptions, the file names from the
+  automatic balance notes and the category rules that hold an identifier, in the database and
+  in its copy, with secure_delete and a VACUUM. The review shows only the end of the client
+  code, account number and IBAN.
 
 ---
 
