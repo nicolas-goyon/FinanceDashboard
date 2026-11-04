@@ -31,7 +31,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
 
 ## v0.3.0 (current)
 
-_No changes logged yet — add one with `python tools/version.py add <Section> "<text>"`._
+### Added
+- Privacy: the import removes every bank identifier from each row before it saves it or shows
+  it: IBAN, BIC, account and card numbers (also partial or masked), bank references, mandate
+  and creditor ids, client code and holder name. A removed value shows as "•••" ("Card payment
+  •••: SAMPLE STORE"). Merchant and counterparty names stay. The bank reference stays in memory
+  for the fingerprint, and only its SHA-256 is stored. The import log shows no identifier
+  either. A shared `StatementSanitizer` does it for every import template (#202).
 
 ---
 

@@ -55,7 +55,7 @@ constexpr double kPercentScale = 100.0;
 // 2026-10-18).
 bool hasReusedReference(const Data::Transaction& row, const QDate& savedOperationDate)
 {
-    return !TransactionsTable::bankReference(row.description).isEmpty() && savedOperationDate != row.operationDate;
+    return !row.bankReference.isEmpty() && savedOperationDate != row.operationDate;
 }
 
 // credit - debit, the signed amount the category predictor wants (see
@@ -733,6 +733,7 @@ bool SnapshotImportController::save(int accountId, const QString& accountLabel)
         row.operationDate    = transaction.operationDate;
         row.name              = transaction.name;
         row.description      = transaction.description;
+        row.bankReference    = transaction.bankReference;
         row.debit            = transaction.debit;
         row.credit           = transaction.credit;
         row.balanceAfter     = transaction.balanceAfter;
@@ -777,14 +778,12 @@ bool SnapshotImportController::save(int accountId, const QString& accountLabel)
             ++alreadySaved;
             if (hasReusedReference(toSave.at(i), saved.value())) {
                 ++reusedReferences;
+                // No reference, amount or date in the log (#205).
                 qWarning().noquote()
-                    << QStringLiteral("[SnapshotImportController] row not saved: bank reference %1, amount %2, "
-                                      "operation date %3; the saved transaction has %4. See %5")
-                           .arg(TransactionsTable::bankReference(toSave.at(i).description))
-                           .arg(toSave.at(i).credit - toSave.at(i).debit, 0, 'f', 2)
-                           .arg(toSave.at(i).operationDate.toString(Qt::ISODate),
-                                saved.value().toString(Qt::ISODate),
-                                QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
+                    << QStringLiteral("[SnapshotImportController] row %1 not saved: a saved transaction has its "
+                                      "bank reference and amount, but another operation date. See %2")
+                           .arg(i + 1)
+                           .arg(QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
             }
             continue;
         }
@@ -921,6 +920,7 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
         row.confirmationDate = transaction.confirmationDate;
         row.operationDate    = transaction.operationDate;
         row.description      = transaction.description;
+        row.bankReference    = transaction.bankReference;
         row.debit            = transaction.debit;
         row.credit           = transaction.credit;
         row.balanceAfter     = transaction.balanceAfter;

@@ -168,6 +168,9 @@ set(FD_CORE_SOURCES
     src/import/ImportTemplateRegistry.cpp
     src/import/SumeriaCcpCsvExtractionTemplate.h
     src/import/SumeriaCcpCsvExtractionTemplate.cpp
+    # Removes the bank identifiers of every imported row (#202).
+    src/import/StatementSanitizer.h
+    src/import/StatementSanitizer.cpp
     # The update check (#117): versions, the list of releases, the kind of
     # installation and the package of a new version. Qt Core only, no network
     # — UpdateController and UpdateInstaller below download.
