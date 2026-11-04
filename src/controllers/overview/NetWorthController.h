@@ -1,6 +1,9 @@
 #ifndef FINANCEDASHBOARD_CONTROLLERS_OVERVIEW_NETWORTHCONTROLLER_H
 #define FINANCEDASHBOARD_CONTROLLERS_OVERVIEW_NETWORTHCONTROLLER_H
 
+#include "controllers/common/NetWorthScope.h"
+
+#include <QDate>
 #include <QObject>
 #include <QStringList>
 #include <QVariantList>
@@ -16,7 +19,8 @@
 //
 // reload() reads the database again: the page calls it when it is shown.
 // The 12 points of the charts are the ends of the last 12 months (the last
-// one is today).
+// one is today). The yearly summary (#212) answers "how much did I save
+// this year?" and "how did my net worth change since last year?".
 class NetWorthController : public QObject
 {
     Q_OBJECT
@@ -40,6 +44,15 @@ class NetWorthController : public QObject
     Q_PROPERTY(double maxTotal  READ maxTotal  NOTIFY changed)
     Q_PROPERTY(double minTimeMs READ minTimeMs NOTIFY changed)
     Q_PROPERTY(double maxTimeMs READ maxTimeMs NOTIFY changed)
+    // Yearly summary (#212): this year (to date) and the 2 years before.
+    // yearLabels: ["2024", "2025", "2026 (to date)"];
+    // yearRows: [{ label, values: [text, text, text], colors: [c, c, c] }]
+    Q_PROPERTY(QStringList yearLabels READ yearLabels NOTIFY changed)
+    Q_PROPERTY(QVariantList yearRows READ yearRows NOTIFY changed)
+    // Spending by category, this year (to date) against last year:
+    // [{ category, thisYearText, lastYearText, diffText, diffColor }],
+    // the most spending first
+    Q_PROPERTY(QVariantList categoryComparison READ categoryComparison NOTIFY changed)
 
 public:
     explicit NetWorthController(QObject* parent = nullptr);
@@ -56,6 +69,9 @@ public:
     [[nodiscard]] double maxTotal()  const { return m_maxTotal; }
     [[nodiscard]] double minTimeMs() const { return m_minTimeMs; }
     [[nodiscard]] double maxTimeMs() const { return m_maxTimeMs; }
+    [[nodiscard]] QStringList yearLabels() const { return m_yearLabels; }
+    [[nodiscard]] QVariantList yearRows() const { return m_yearRows; }
+    [[nodiscard]] QVariantList categoryComparison() const { return m_categoryComparison; }
 
     // Stacked area boundaries (cumulative, bottom → top: day-to-day,
     // savings, investments).
@@ -70,10 +86,13 @@ signals:
     void changed();
 
 private:
+    void buildYearSummary(const QVector<NetWorthScope::ScopeAccount>& scope, const QDate& today);
+
     bool m_hasData = false;
     QVariantList m_kpis, m_allocation, m_netGains, m_netLosses;
     QVariantList m_timestamps, m_dayToDayBound, m_savingsBound, m_investmentsBound;
-    QStringList  m_monthLabels;
+    QStringList  m_monthLabels, m_yearLabels;
+    QVariantList m_yearRows, m_categoryComparison;
     double m_minTotal = 0, m_maxTotal = 0, m_minTimeMs = 0, m_maxTimeMs = 0;
     double m_netChangeMax = 0, m_netChangeMin = 0;
 };

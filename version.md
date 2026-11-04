@@ -62,6 +62,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   value at a date is the last valuation plus the deposits and withdrawals after it; the rest of
   the change is the gain or loss of the period. The same calculation gives the value of every
   account for the net worth pages.
+- Yearly summary on the Overview (#212): this year (to date) against the 2 years before —
+  income, spending, savings, savings rate, gains and other changes, change of the net worth and
+  the net worth at the end — and the spending by category, this year against last year. Savings
+  + gains = change of the net worth.
 
 ### Changed
 - The Overview shows real data (#209): the net worth today, its change this month and over 12

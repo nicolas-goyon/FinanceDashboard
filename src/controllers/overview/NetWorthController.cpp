@@ -13,6 +13,9 @@
 #include <QVector>
 #include <QtMinMax>
 
+#include <QHash>
+
+#include <algorithm>
 #include <array>
 
 namespace {
@@ -161,5 +164,97 @@ void NetWorthController::reload()
                 {"label", names.at(g)}, {"value", Money::fromCents(value)}, {"color", colors.at(g)}});
         }
     }
+    buildYearSummary(scope, today);
     emit changed();
+}
+
+void NetWorthController::buildYearSummary(const QVector<NetWorthScope::ScopeAccount>& scope, const QDate& today)
+{
+    constexpr int kYears = 3;
+    const QVector<NetWorthCalc::AccountHistory> histories = NetWorthScope::histories(scope);
+    QVector<NetWorthCalc::Period> periods;
+    m_yearLabels.clear();
+    for (int y = kYears - 1; y >= 0; --y) {
+        const int year = today.year() - y;
+        const QDate end = y == 0 ? today : QDate(year, 12, 31);
+        periods.append(NetWorthCalc::period(histories, QDate(year, 1, 1), end));
+        m_yearLabels.append(y == 0 ? QStringLiteral("%1 (to date)").arg(year) : QString::number(year));
+    }
+
+    const auto row = [&periods](const QString& label, const auto& valueOf, bool signedColors) {
+        QVariantList texts;
+        QVariantList colors;
+        for (const NetWorthCalc::Period& period : periods) {
+            const qint64 cents = valueOf(period);
+            texts.append(Fmt::money(Money::fromCents(cents), signedColors));
+            colors.append(!signedColors ? QStringLiteral("#cdd6f4") : (cents >= 0 ? kGreen : kRed));
+        }
+        return QVariantMap{{"label", label}, {"values", texts}, {"colors", colors}};
+    };
+    m_yearRows = {
+        row(QStringLiteral("Income"), [](const NetWorthCalc::Period& p) { return p.flows.incomeCents; }, false),
+        row(QStringLiteral("Spending"), [](const NetWorthCalc::Period& p) { return p.flows.spendingCents; }, false),
+        row(QStringLiteral("Savings"), [](const NetWorthCalc::Period& p) { return p.flows.savingsCents(); }, true),
+        row(QStringLiteral("Gains, losses and other changes"), [](const NetWorthCalc::Period& p) { return p.gainsCents(); }, true),
+        row(QStringLiteral("Change of the net worth"), [](const NetWorthCalc::Period& p) { return p.changeCents(); },
+            true),
+        row(QStringLiteral("Net worth at the end"), [](const NetWorthCalc::Period& p) { return p.endValueCents; },
+            false),
+    };
+    // The savings rate: savings / income.
+    QVariantList rates;
+    QVariantList rateColors;
+    for (const NetWorthCalc::Period& period : periods) {
+        if (period.flows.incomeCents > 0) {
+            const double rate = static_cast<double>(period.flows.savingsCents())
+                                / static_cast<double>(period.flows.incomeCents) * kPercent;
+            rates.append(QStringLiteral("%1 %").arg(rate, 0, 'f', 1));
+            rateColors.append(rate >= 0 ? kGreen : kRed);
+        } else {
+            rates.append(QStringLiteral("—"));
+            rateColors.append(QStringLiteral("#cdd6f4"));
+        }
+    }
+    m_yearRows.insert(3, QVariantMap{{"label", QStringLiteral("Savings rate")}, {"values", rates}, {"colors", rateColors}});
+
+    // Spending by category: this year (to date) against last year.
+    QHash<QString, qint64> thisYear;
+    QHash<QString, qint64> lastYear;
+    for (const NetWorthScope::ScopeAccount& account : scope) {
+        for (const Data::Transaction& transaction : account.history.rows) {
+            const QDate booked = Data::bookingDate(transaction);
+            if (!booked.isValid() || booked > today || Data::isInternalTransfer(transaction) || transaction.debit <= 0.0) {
+                continue;
+            }
+            const QString category = transaction.category.isEmpty() ? QStringLiteral("Uncategorized") : transaction.category;
+            if (booked.year() == today.year()) {
+                thisYear[category] += Money::toCents(transaction.debit);
+            } else if (booked.year() == today.year() - 1) {
+                lastYear[category] += Money::toCents(transaction.debit);
+            }
+        }
+    }
+    QStringList categories = thisYear.keys();
+    for (const QString& category : lastYear.keys()) {
+        if (!categories.contains(category)) {
+            categories.append(category);
+        }
+    }
+    std::sort(categories.begin(), categories.end(), [&](const QString& a, const QString& b) {
+        const qint64 va = qMax(thisYear.value(a), lastYear.value(a));
+        const qint64 vb = qMax(thisYear.value(b), lastYear.value(b));
+        return va != vb ? va > vb : a < b;
+    });
+    m_categoryComparison.clear();
+    for (const QString& category : std::as_const(categories)) {
+        const qint64 diff = thisYear.value(category) - lastYear.value(category);
+        m_categoryComparison.append(QVariantMap{
+            {"category", category},
+            {"thisYearText", Fmt::money(Money::fromCents(thisYear.value(category)))},
+            {"lastYearText", Fmt::money(Money::fromCents(lastYear.value(category)))},
+            {"diffText", Fmt::money(Money::fromCents(diff), true)},
+            // Less spending is green.
+            {"diffColor", diff <= 0 ? kGreen : kRed},
+        });
+    }
 }
