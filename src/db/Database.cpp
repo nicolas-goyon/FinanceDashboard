@@ -288,7 +288,8 @@ bool Database::openFile(const QString& path)
         if (stats.removedWithOtherValues > 0) {
             m_upgradeReport += QStringLiteral("\n\n%1 of the removed copies had another category, "
                                               "subcategory, label, date or balance. The copy from before "
-                                              "the upgrade keeps them, and the application log lists them.")
+                                              "the upgrade keeps them, and the application log gives the ids "
+                                              "of the removed and the kept transactions.")
                                    .arg(stats.removedWithOtherValues);
         }
         if (stats.reusedReferences > 0) {
@@ -309,8 +310,7 @@ bool Database::openFile(const QString& path)
         if (stats.removedGenericRules > 0) {
             m_upgradeReport += QStringLiteral("\n\n%1 category rule(s) were removed: their label had only "
                                               "generic words (such as \"CARD PAYMENT\"), so they also matched "
-                                              "other merchants. Teach them again from an import; the "
-                                              "application log lists them.")
+                                              "other merchants. Teach them again from an import.")
                                    .arg(stats.removedGenericRules);
         }
         if (stats.rewrittenRules > 0 || stats.mergedRules > 0) {
@@ -326,16 +326,11 @@ bool Database::openFile(const QString& path)
                                               "have one label (such as \"TRANSFER TO JOHN DOE\" and \"RECEIVED "
                                               "FROM JOHN DOE\": both are \"JOHN DOE\" now). One rule cannot "
                                               "give two categories. Teach the correct rule again from an "
-                                              "import; the application log lists them.")
+                                              "import.")
                                    .arg(stats.conflictingRules);
         }
-        if (stats.removedHashLinks > 0) {
-            m_upgradeReport += QStringLiteral("\n\n%1 link(s) of an account hash to another account were "
-                                              "removed. A hash now belongs to one account only: its most "
-                                              "recent link stays. The application log lists the accounts; "
-                                              "check their hashes in Account Management.")
-                                   .arg(stats.removedHashLinks);
-        }
+        // stats.removedHashLinks (step 5) is not reported: step 7 removes
+        // every account hash (#203).
         qInfo().noquote() << "[Database]" << m_upgradeReport;
     }
     return true;
@@ -876,14 +871,10 @@ bool Database::migrateTo2(UpgradeStats& stats)
                 differ.value(2).toString() != differ.value(9).toString()) {
                 ++stats.reusedReferences;
             }
+            // Ids only: no statement data in the log (#205).
             qInfo().noquote() << QStringLiteral("[Database] duplicate transaction %1 removed (transaction %2 "
-                                                "stays): %3 \"%4\", category \"%5\", subcategory \"%6\", "
-                                                "label \"%7\", confirmation date %8, balance after %9")
-                                     .arg(differ.value(0).toString(), differ.value(1).toString(),
-                                          differ.value(2).toString(), differ.value(3).toString(),
-                                          differ.value(4).toString(), differ.value(5).toString(),
-                                          differ.value(6).toString(), differ.value(7).toString(),
-                                          differ.value(8).toString());
+                                                "stays)")
+                                     .arg(differ.value(0).toString(), differ.value(1).toString());
         }
     }
 
@@ -1030,16 +1021,8 @@ bool Database::migrateTo5(UpgradeStats& stats)
 
     // Count and log the links to other accounts that go: only the
     // fingerprints (a typed value that is not one never matched), with the
-    // names of the accounts and without the hashes.
-    QHash<int, QString> names;
+    // ids of the accounts and without the hashes (#205).
     QSqlQuery query(m_db);
-    if (!query.exec(QStringLiteral("SELECT id, name FROM accounts;"))) {
-        m_lastError = sqlText(query.lastError());
-        return false;
-    }
-    while (query.next()) {
-        names.insert(query.value(0).toInt(), query.value(1).toString());
-    }
     if (!query.exec(QStringLiteral("SELECT account_id, %1 FROM account_hashes ORDER BY id;").arg(stored))) {
         m_lastError = sqlText(query.lastError());
         return false;
@@ -1061,8 +1044,8 @@ bool Database::migrateTo5(UpgradeStats& stats)
             continue;
         }
         removed.insert(link);
-        qInfo().noquote() << "[Database] migration step 5: the account" << names.value(account)
-                          << "loses an account hash that the account" << names.value(kept) << "keeps";
+        qInfo().noquote() << "[Database] migration step 5: the account" << account
+                          << "loses an account hash that the account" << kept << "keeps";
     }
     stats.removedHashLinks = static_cast<int>(removed.size());
 
@@ -1092,15 +1075,6 @@ struct StoredRule {
     QString subcategory;
     QString normalized; // normalize() of the pattern
 };
-
-// For the log of step 6: "TRANSFER TO JOHN DOE" (Housing / Rent).
-QString describeRule(const StoredRule& rule)
-{
-    const QString target = rule.subcategory.isEmpty()
-                               ? rule.category
-                               : rule.category + QStringLiteral(" / ") + rule.subcategory;
-    return QStringLiteral("\"%1\" (%2)").arg(rule.pattern, target);
-}
 
 // The writes of step 6: the rules in `removed` go, the rules in `rewritten`
 // get their normalized pattern. On a failure, `error` is the SQLite error.
@@ -1160,7 +1134,7 @@ bool writeRuleChanges(QSqlQuery& query, const QVector<qint64>& removed, const QV
 //     give two categories, and the most recent rule would give its category
 //     to the rows of the other one, with full confidence;
 //   - another result: the pattern is rewritten.
-// The application log lists each change. The step calls the normalizer of
+// The application log gives the id of each changed rule. The step calls the normalizer of
 // the build that runs it, so the patterns are the keys of that build: a rule
 // that the user teaches after the upgrade gets the same pattern. A later
 // change of the keys needs a new step that does this again, for the files
@@ -1194,7 +1168,7 @@ bool Database::migrateTo6(UpgradeStats& stats)
         if (rule.normalized.isEmpty()) {
             removed.append(rule.id);
             ++stats.removedGenericRules;
-            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.pattern
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.id
                               << "is removed: it has only generic words";
             continue;
         }
@@ -1206,18 +1180,18 @@ bool Database::migrateTo6(UpgradeStats& stats)
         if (!oneCategory) {
             removed.append(rule.id);
             ++stats.conflictingRules;
-            qInfo().noquote() << "[Database] migration step 6: the category rule" << describeRule(rule)
-                              << "is removed: a rule with another category also becomes" << rule.normalized;
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.id
+                              << "is removed: a rule with another category gets the same pattern";
         } else if (newest.id != rule.id) {
             removed.append(rule.id);
             ++stats.mergedRules;
-            qInfo().noquote() << "[Database] migration step 6: the category rule" << describeRule(rule)
-                              << "is merged with the newer rule" << describeRule(newest) << "for" << rule.normalized;
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.id
+                              << "is merged with the newer rule" << newest.id;
         } else if (rule.normalized != rule.pattern) {
             rewritten.append(&rule);
             ++stats.rewrittenRules;
-            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.pattern
-                              << "becomes" << rule.normalized;
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.id
+                              << "gets a new pattern";
         }
     }
     return writeRuleChanges(query, removed, rewritten, m_lastError);
@@ -1512,7 +1486,7 @@ bool Database::removeLegacyHash(int accountId, const QString& legacyHash)
     }
     if (owner != accountId) {
         qInfo().noquote() << "[Database] the old account fingerprint (from before #50) moves from the account"
-                          << accountName(owner) << "to the account" << accountName(accountId);
+                          << owner << "to the account" << accountId;
     }
     return true;
 }

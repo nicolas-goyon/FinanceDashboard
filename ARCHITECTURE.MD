@@ -118,6 +118,10 @@ database, the files and the logs must see nothing more than the user sees in the
   `VACUUM` follows, so the old values are not in the free pages of the file.
 - Merchant and counterparty names stay (maintainer decision of 2026-11-04).
 - The app must work the same with fictitious test data and with real data.
+- The application log (stderr) gives counts, ids and steps. It does not give a description, a
+  name, a label, a rule pattern, an account name, a bank reference, an amount or a date of a
+  row (#205). `db_migration_test` and `bankIdentifiersAreNeverStored` capture the log and check
+  it.
 
 ### Transactions and writes
 
@@ -226,7 +230,7 @@ when it closes.
   step normalizes the stored patterns again, as step 6 does (#40, #55).
 - In that step, a rule with only generic words goes. Rules that get one key merge when they give
   one category. They go when they give different categories, because one rule cannot give two.
-- The upgrade message gives the counts. The log names each rule.
+- The upgrade message gives the counts. The log gives the id of each rule.
 - Such a step calls the normalizer of the build that runs it. So `normalize()` of a key must give
   the same key. `tools/predictor_selftest.cpp` checks it.
 - A key has no direction words ("TRANSFER TO", "RECEIVED FROM"). A rule does not look at the

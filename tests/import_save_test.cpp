@@ -73,6 +73,7 @@
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QStringEncoder>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTest>
 #include <QThreadPool>
@@ -1054,8 +1055,35 @@ void ImportSaveTest::refInTheFreeTextStaysInTheName()
 
 // The privacy rule (#202): no bank identifier leaves the template, so none
 // reaches the database. Every value below is made up.
+namespace {
+// The messages of the app during bankIdentifiersAreNeverStored() (#205).
+QStringList& capturedLog()
+{
+    static QStringList log;
+    return log;
+}
+QtMessageHandler& forwardHandler()
+{
+    static QtMessageHandler handler = nullptr;
+    return handler;
+}
+void captureMessage(QtMsgType type, const QMessageLogContext& context, const QString& message)
+{
+    capturedLog().append(message);
+    if (forwardHandler() != nullptr) {
+        forwardHandler()(type, context, message);
+    }
+}
+} // namespace
+
 void ImportSaveTest::bankIdentifiersAreNeverStored()
 {
+    capturedLog().clear();
+    forwardHandler() = qInstallMessageHandler(captureMessage);
+    const auto restoreHandler = qScopeGuard([] {
+        qInstallMessageHandler(forwardHandler());
+        forwardHandler() = nullptr;
+    });
     QByteArray csv = "Pr\xC3\xA9nom Nom,Jeanne Exemple\nAccount number,98765432101\nClient code,CL7788990011\n";
     csv += statement("From 03/01/2026 to 03/31/2026", "03/01/2026,1000.00 \xE2\x82\xAC", "03/31/2026,394.00 \xE2\x82\xAC",
         "03/02,03/02,\"Card payment 1234: SAMPLE STORE\nExternal ref.: 123456789012345\n"
@@ -1117,6 +1145,12 @@ void ImportSaveTest::bankIdentifiersAreNeverStored()
     parse(again, csv);
     again.save(m_account, QStringLiteral("Checking"));
     QCOMPARE(transactionCount(), 5);
+
+    // The application log has no identifier, and no merchant either (#205).
+    for (const QString& message : capturedLog()) {
+        check(QStringLiteral("application log"), message);
+        QVERIFY2(!message.contains(QStringLiteral("SAMPLE")), qPrintable(message));
+    }
 }
 
 void ImportSaveTest::nameFallsBackToTheFirstLine()
