@@ -14,6 +14,8 @@
 //         accounts of the net worth, 3 days apart or less, are one transfer
 //   #208  NetWorthCalc: the value of an investment account between two
 //         valuations, and savings + gains = change of the net worth
+//   #211  SavingsCalc: the ceilings of the regulated accounts, the rows of
+//         interest
 //   #33   Money: whole cents (half away from zero), the amounts that the app
 //         can store, and cents that survive a round trip through a double
 
@@ -21,6 +23,7 @@
 #include "ProjectsController.h"
 #include "calc/CashFlowCalc.h"
 #include "calc/NetWorthCalc.h"
+#include "calc/SavingsCalc.h"
 #include "calc/TransferMatcher.h"
 #include "utils/Formatter.h"
 #include "utils/Money.h"
@@ -111,6 +114,7 @@ private slots:
     void transferPairsTakeTheSmallestGap();
     void valueBetweenTwoValuations();
     void savingsPlusGainsIsTheChangeOfTheNetWorth();
+    void savingsCeilingsAndInterest();
 };
 
 namespace {
@@ -516,6 +520,29 @@ void CalcTest::savingsPlusGainsIsTheChangeOfTheNetWorth()
     QCOMPARE(year.endValueCents, qint64(1620000));
     QCOMPARE(year.gainsCents(), qint64(60000));         // the PEA
     QCOMPARE(year.flows.savingsCents() + year.gainsCents(), year.changeCents());
+}
+
+void CalcTest::savingsCeilingsAndInterest()
+{
+    QCOMPARE(SavingsCalc::ceilingCents(QStringLiteral("Livret A")), qint64(2295000));
+    QCOMPARE(SavingsCalc::ceilingCents(QStringLiteral("ldds")), qint64(1200000));
+    QCOMPARE(SavingsCalc::ceilingCents(QStringLiteral("CCP")), qint64(0));
+
+    Data::Transaction interest = row(1, 1, QDate(2026, 12, 31), 0.0, 150.0);
+    interest.name = QStringLiteral("INTERETS 2026");
+    QVERIFY(SavingsCalc::isInterest(interest));
+    interest.name = QStringLiteral("Int\u00e9r\u00eats cr\u00e9diteurs");
+    QVERIFY(SavingsCalc::isInterest(interest));
+    interest.name = QStringLiteral("TRANSFER");
+    interest.category = QStringLiteral("Interest");
+    QVERIFY(SavingsCalc::isInterest(interest));
+    // A debit is not interest; neither is a word that only contains it.
+    Data::Transaction fee = row(2, 1, QDate(2026, 12, 31), 10.0, 0.0);
+    fee.name = QStringLiteral("INTERETS DEBITEURS");
+    QVERIFY(!SavingsCalc::isInterest(fee));
+    Data::Transaction other = row(3, 1, QDate(2026, 12, 31), 0.0, 10.0);
+    other.name = QStringLiteral("DISINTERESTED");
+    QVERIFY(!SavingsCalc::isInterest(other));
 }
 
 QTEST_GUILESS_MAIN(CalcTest)

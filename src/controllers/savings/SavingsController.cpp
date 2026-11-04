@@ -1,111 +1,151 @@
 #include "SavingsController.h"
+
+#include "calc/NetWorthCalc.h"
+#include "calc/SavingsCalc.h"
+#include "controllers/common/NetWorthScope.h"
 #include "utils/Formatter.h"
+#include "utils/Money.h"
 
 #include <QDate>
 #include <QDateTime>
-#include <QObject>
 #include <QString>
+#include <QVariantMap>
 #include <QtMinMax>
 
+#include <algorithm>
 #include <array>
 
 namespace {
-constexpr double kBalanceAxisHeadroom = 1.15;   // 15% headroom above the max balance for the chart axis
-constexpr double kInterestAxisHeadroom = 1.25;  // 25% headroom above the max interest for the chart axis
-constexpr double kMockAddedThisYear = 4300.0;   // MOCK: hardcoded "Added This Year" KPI display value
-constexpr double kLivretACeiling = 22950.0;
-constexpr double kLddsCeiling = 12000.0;
-constexpr double kAssuranceVieCeiling = 20000.0;
+constexpr double kBalanceAxisHeadroom = 1.15;  // 15% headroom above the max balance for the chart axis
+constexpr double kInterestAxisHeadroom = 1.25; // 25% headroom above the max interest for the chart axis
+constexpr double kPercent = 100.0;
+// Theme.blue, green, yellow, peach: the colours of the slots.
+const std::array<const char*, SavingsController::kSlots> kSlotColors = {"#89b4fa", "#a6e3a1", "#f9e2af", "#fab387"};
+const QString kKpiText = QStringLiteral("#cdd6f4");
+const QString kGreen = QStringLiteral("#a6e3a1");
 } // namespace
 
 SavingsController::SavingsController(QObject* parent)
     : QObject(parent)
 {
-    // MOCK: monthly balances (Livret A / LDDS / Assurance Vie)
-    const std::array<std::array<double, kMonths>, kAccounts> balances = {{
-        { 15200, 15600, 16000, 16450, 16900, 17300, 17750, 18150, 18550, 18900, 19200, 19500 },
-        {  8100,  8300,  8500,  8650,  8800,  9000,  9200,  9350,  9500,  9700,  9850, 10000 },
-        { 12100, 12250, 12150, 12400, 12600, 12550, 12800, 13000, 13150, 13400, 13650, 13900 },
-    }};
-    // MOCK: interest / gains per year (2023–2025)
-    const std::array<std::array<double, kYears>, kAccounts> interest = {{
-        { 380, 465, 510 },
-        { 190, 240, 265 },
-        { 310, 420, 505 },
-    }};
+    reload();
+}
 
-    for (int accIdx = 0; accIdx < kAccounts; ++accIdx) {
-        for (int monthIdx = 0; monthIdx < kMonths; ++monthIdx) {
-            m_balances.at(accIdx).at(monthIdx) = balances.at(accIdx).at(monthIdx);
-            m_balanceMax = qMax(m_balanceMax, balances.at(accIdx).at(monthIdx));
-        }
-        for (int yearIdx = 0; yearIdx < kYears; ++yearIdx) {
-            m_interest.at(accIdx).at(yearIdx) = interest.at(accIdx).at(yearIdx);
-            m_interestMax = qMax(m_interestMax, interest.at(accIdx).at(yearIdx));
+void SavingsController::reload()
+{
+    QVector<NetWorthScope::ScopeAccount> savings;
+    for (const NetWorthScope::ScopeAccount& account : NetWorthScope::load()) {
+        if (account.group == NetWorthScope::Group::Savings) {
+            savings.append(account);
         }
     }
-    m_balanceMax  *= kBalanceAxisHeadroom;
-    m_interestMax *= kInterestAxisHeadroom;
-
+    m_hasData = !savings.isEmpty();
     const QDate today = QDate::currentDate();
-    const QDate firstMonth = QDate(today.year(), today.month(), 1).addMonths(-11);
-    for (int monthIdx = 0; monthIdx < kMonths; ++monthIdx) {
-        m_timestamps.append(static_cast<double>(firstMonth.addMonths(monthIdx)
-                                       .startOfDay().toMSecsSinceEpoch()));
+
+    // The accounts with the highest balance first.
+    std::sort(savings.begin(), savings.end(), [&today](const auto& a, const auto& b) {
+        return NetWorthCalc::valueCentsAt(a.history, today) > NetWorthCalc::valueCentsAt(b.history, today);
+    });
+
+    // ── KPIs ──────────────────────────────────────────────────────────────────
+    qint64 totalCents = 0;
+    qint64 interestThisYear = 0;
+    const QDate yearStart(today.year(), 1, 1);
+    for (const NetWorthScope::ScopeAccount& account : savings) {
+        totalCents += NetWorthCalc::valueCentsAt(account.history, today);
+        for (const Data::Transaction& row : account.history.rows) {
+            const QDate booked = Data::bookingDate(row);
+            if (booked.isValid() && booked >= yearStart && booked <= today && SavingsCalc::isInterest(row)) {
+                interestThisYear += Money::toCents(row.credit);
+            }
+        }
+    }
+    const qint64 startOfYear = NetWorthCalc::period(NetWorthScope::histories(savings), yearStart, today).startValueCents;
+    const qint64 added = totalCents - startOfYear - interestThisYear;
+    m_kpis = {
+        QVariantMap{{"label", QStringLiteral("Total Savings")}, {"value", Fmt::money(Money::fromCents(totalCents))},
+                    {"sub", QStringLiteral("%1 account(s)").arg(savings.size())}, {"color", kKpiText}},
+        QVariantMap{{"label", QStringLiteral("Added This Year")}, {"value", Fmt::money(Money::fromCents(added), true)},
+                    {"sub", QStringLiteral("deposits − withdrawals since 1 January")},
+                    {"color", added >= 0 ? kGreen : QStringLiteral("#f38ba8")}},
+        QVariantMap{{"label", QStringLiteral("Interest This Year")},
+                    {"value", Fmt::money(Money::fromCents(interestThisYear))},
+                    {"sub", QStringLiteral("the rows of interest")}, {"color", kGreen}},
+    };
+
+    // ── Ceilings ─────────────────────────────────────────────────────────────
+    m_goals.clear();
+    for (qsizetype i = 0; i < savings.size(); ++i) {
+        const qint64 ceiling = SavingsCalc::ceilingCents(savings.at(i).account.type);
+        if (ceiling <= 0) {
+            continue;
+        }
+        const qint64 value = NetWorthCalc::valueCentsAt(savings.at(i).history, today);
+        const double pct = qBound(0.0, static_cast<double>(value) / static_cast<double>(ceiling), 1.0);
+        m_goals.append(QVariantMap{
+            {"label", QStringLiteral("%1 (%2 %)").arg(savings.at(i).account.name).arg(pct * kPercent, 0, 'f', 0)},
+            {"currentText", Fmt::money(Money::fromCents(value))},
+            {"targetText", Fmt::money(Money::fromCents(ceiling))},
+            {"pct", pct},
+            {"color", QString::fromLatin1(kSlotColors.at(static_cast<std::size_t>(i % kSlots)))},
+        });
+    }
+
+    // ── Slots: balance lines and interest bars ───────────────────────────────
+    const QDate firstMonth = QDate(today.year(), today.month(), 1).addMonths(-(kMonths - 1));
+    m_timestamps.clear();
+    for (int m = 0; m < kMonths; ++m) {
+        m_timestamps.append(static_cast<double>(firstMonth.addMonths(m).startOfDay().toMSecsSinceEpoch()));
     }
     m_minTimeMs = m_timestamps.first().toDouble();
     m_maxTimeMs = m_timestamps.last().toDouble();
-
-    const int startYear = today.year() - 3;
-    m_yearLabels = { QString::number(startYear), QString::number(startYear + 1),
-                     QString::number(startYear + 2) };
-
-    // ── KPIs ──────────────────────────────────────────────────────────────────
-    // MOCK: "Blended Yield" and "Added This Year" are hardcoded display values
-    const double total = balances.at(0).at(kMonths - 1) + balances.at(1).at(kMonths - 1) + balances.at(2).at(kMonths - 1);
-    m_kpis = {
-        QVariantMap{ { "label", "Total Savings" }, { "value", Fmt::money(total) },
-                     { "sub", "" }, { "color", "#cdd6f4" } },
-        QVariantMap{ { "label", "Blended Yield" }, { "value", "2.9 %" },
-                     { "sub", "across all accounts" }, { "color", "#a6e3a1" } },
-        QVariantMap{ { "label", "Added This Year" }, { "value", Fmt::money(kMockAddedThisYear, true) },
-                     { "sub", "deposits, excl. interest" }, { "color", "#a6e3a1" } },
-    };
-
-    // ── Ceilings / goals ──────────────────────────────────────────────────────
-    auto goal = [](const QString& label, double current, double target,
-                   const QString& color) {
-        return QVariantMap{
-            { "label", label },
-            { "currentText", Fmt::money(current) },
-            { "targetText",  Fmt::money(target) },
-            { "pct", qMin(current / target, 1.0) },
-            { "color", color },
-        };
-    };
-    m_goals = {
-        goal("Livret A — ceiling",       balances.at(0).at(kMonths - 1), kLivretACeiling, "#89b4fa"),
-        goal("LDDS — ceiling",           balances.at(1).at(kMonths - 1), kLddsCeiling, "#a6e3a1"),
-        goal("Assurance Vie — personal", balances.at(2).at(kMonths - 1), kAssuranceVieCeiling, "#f9e2af"),
-    };
+    m_yearLabels.clear();
+    for (int y = kYears - 1; y >= 0; --y) {
+        m_yearLabels.append(QString::number(today.year() - y));
+    }
+    m_slots.clear();
+    m_balances = QVector<QVariantList>(kSlots);
+    m_interest = QVector<QVariantList>(kSlots);
+    m_balanceMax = 0;
+    m_interestMax = 0;
+    for (int slot = 0; slot < kSlots; ++slot) {
+        if (slot >= savings.size()) {
+            m_slots.append(QVariantMap{{"name", QString()}, {"color", QString::fromLatin1(kSlotColors.at(slot))}});
+            continue;
+        }
+        const NetWorthScope::ScopeAccount& account = savings.at(slot);
+        m_slots.append(QVariantMap{{"name", account.account.name}, {"color", QString::fromLatin1(kSlotColors.at(slot))}});
+        for (int m = 0; m < kMonths; ++m) {
+            const QDate month = firstMonth.addMonths(m);
+            const QDate end = m == kMonths - 1 ? today : month.addMonths(1).addDays(-1);
+            const double value = Money::fromCents(NetWorthCalc::valueCentsAt(account.history, end));
+            m_balances[slot].append(value);
+            m_balanceMax = qMax(m_balanceMax, value);
+        }
+        for (int y = kYears - 1; y >= 0; --y) {
+            const int year = today.year() - y;
+            qint64 cents = 0;
+            for (const Data::Transaction& row : account.history.rows) {
+                const QDate booked = Data::bookingDate(row);
+                if (booked.isValid() && booked.year() == year && SavingsCalc::isInterest(row)) {
+                    cents += Money::toCents(row.credit);
+                }
+            }
+            m_interest[slot].append(Money::fromCents(cents));
+            m_interestMax = qMax(m_interestMax, Money::fromCents(cents));
+        }
+    }
+    m_balanceMax = m_balanceMax > 0 ? m_balanceMax * kBalanceAxisHeadroom : 1.0;
+    m_interestMax = m_interestMax > 0 ? m_interestMax * kInterestAxisHeadroom : 1.0;
+    emit changed();
 }
 
 QVariantList SavingsController::accountValues(int index) const
 {
-    QVariantList result;
-    if (index < 0 || index >= kAccounts) { return result; }
-    for (int monthIdx = 0; monthIdx < kMonths; ++monthIdx) {
-        result.append(m_balances.at(index).at(monthIdx));
-    }
-    return result;
+    return index >= 0 && index < m_balances.size() ? m_balances.at(index) : QVariantList();
 }
 
 QVariantList SavingsController::interestValues(int index) const
 {
-    QVariantList result;
-    if (index < 0 || index >= kAccounts) { return result; }
-    for (int yearIdx = 0; yearIdx < kYears; ++yearIdx) {
-        result.append(m_interest.at(index).at(yearIdx));
-    }
-    return result;
+    return index >= 0 && index < m_interest.size() ? m_interest.at(index) : QVariantList();
 }

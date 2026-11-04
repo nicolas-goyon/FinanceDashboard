@@ -211,6 +211,8 @@ qt_add_executable(calc_test
     ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.cpp
     ${CMAKE_SOURCE_DIR}/src/calc/CashFlowCalc.h
     ${CMAKE_SOURCE_DIR}/src/calc/CashFlowCalc.cpp
+    ${CMAKE_SOURCE_DIR}/src/calc/SavingsCalc.h
+    ${CMAKE_SOURCE_DIR}/src/calc/SavingsCalc.cpp
     ${CMAKE_SOURCE_DIR}/src/controllers/investments/InvestmentsController.h
     ${CMAKE_SOURCE_DIR}/src/controllers/investments/InvestmentsController.cpp
     ${CMAKE_SOURCE_DIR}/src/models/Transaction.h
