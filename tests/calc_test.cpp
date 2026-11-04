@@ -5,6 +5,7 @@
 //         negative
 //   #42   Cash Flow: the two sides of the money flow have the same total, also
 //         when the spending is more than the income
+//   #210  Cash Flow on real data: no internal transfer, the top 5 categories
 //   #56   Cash Flow: the 3-month average starts at the third month;
 //         Investments: the deposit of the month is not performance
 //   #48   Fmt::money(): rounded to cents before the sign, "—" for NaN and
@@ -16,9 +17,9 @@
 //   #33   Money: whole cents (half away from zero), the amounts that the app
 //         can store, and cents that survive a round trip through a double
 
-#include "CashFlowController.h"
 #include "InvestmentsController.h"
 #include "ProjectsController.h"
+#include "calc/CashFlowCalc.h"
 #include "calc/NetWorthCalc.h"
 #include "calc/TransferMatcher.h"
 #include "utils/Formatter.h"
@@ -97,6 +98,7 @@ private slots:
     void moneyFlowTotalsMatchWithAnOverspend();
     void moneyFlowSavesTheLeftover();
     void rollingAverageStartsAtTheThirdMonth();
+    void cashFlowLeavesTheTransfersOut();
     void monthlyPerformanceLeavesTheDepositOut();
     void moneyIsRoundedBeforeItsSign();
     void moneyOfNotANumberIsADash();
@@ -200,33 +202,43 @@ void CalcTest::projectWithATinyContributionStaysInRange()
     QVERIFY(controller.addProject(QStringLiteral("Ok"), 1000.0, 6, 0.0, 10.0));
 }
 
+namespace {
+QVector<CashFlowCalc::Part> parts(const QVector<double>& values)
+{
+    const QStringList kNames = {QStringLiteral("Rent"), QStringLiteral("Groceries"), QStringLiteral("Transport"),
+                                QStringLiteral("Utilities"), QStringLiteral("Leisure"), QStringLiteral("Other")};
+    QVector<CashFlowCalc::Part> result;
+    for (qsizetype i = 0; i < values.size(); ++i) {
+        result.append(CashFlowCalc::Part{kNames.at(i), values.at(i), QStringLiteral("#ffffff")});
+    }
+    return result;
+}
+} // namespace
+
 void CalcTest::moneyFlowTotalsMatchWithAnOverspend()
 {
     // 2 300 € spent with an income of 2 000 €: 300 € come from the savings.
-    const std::array<double, CashFlowController::kCategories> spending = {950, 450, 150, 180, 320, 250};
-    const CashFlowController::FlowSides sides = CashFlowController::moneyFlow(2000.0, spending);
+    const CashFlowCalc::FlowSides sides = CashFlowCalc::moneyFlow(2000.0, parts({950, 450, 150, 180, 320, 250}));
 
     QCOMPARE(total(sides.inputs), 2300.0);
     QCOMPARE(total(sides.outputs), 2300.0);
-    QCOMPARE(names(sides.inputs), QStringList({QStringLiteral("Salary"), QStringLiteral("Overspend")}));
+    QCOMPARE(names(sides.inputs), QStringList({QStringLiteral("Income"), QStringLiteral("Overspend")}));
     QCOMPARE(sides.inputs.last().toMap().value(QStringLiteral("value")).toDouble(), 300.0);
     QVERIFY(!names(sides.outputs).contains(QStringLiteral("Savings")));
 }
 
 void CalcTest::moneyFlowSavesTheLeftover()
 {
-    const std::array<double, CashFlowController::kCategories> spending = {950, 450, 150, 180, 320, 250};
-    const CashFlowController::FlowSides sides = CashFlowController::moneyFlow(3000.0, spending);
+    const CashFlowCalc::FlowSides sides = CashFlowCalc::moneyFlow(3000.0, parts({950, 450, 150, 180, 320, 250}));
 
     QCOMPARE(total(sides.inputs), 3000.0);
     QCOMPARE(total(sides.outputs), 3000.0);
-    QCOMPARE(names(sides.inputs), QStringList({QStringLiteral("Salary")}));
+    QCOMPARE(names(sides.inputs), QStringList({QStringLiteral("Income")}));
     QCOMPARE(names(sides.outputs).last(), QStringLiteral("Savings"));
     QCOMPARE(sides.outputs.last().toMap().value(QStringLiteral("value")).toDouble(), 700.0);
 
-    // A refund (a negative value) is not drawn, and not counted.
-    const std::array<double, CashFlowController::kCategories> withRefund = {950, -100, 0, 0, 0, 0};
-    const CashFlowController::FlowSides refund = CashFlowController::moneyFlow(1000.0, withRefund);
+    // A negative value is not drawn, and not counted.
+    const CashFlowCalc::FlowSides refund = CashFlowCalc::moneyFlow(1000.0, parts({950, -100, 0, 0, 0, 0}));
     QCOMPARE(total(refund.inputs), 1000.0);
     QCOMPARE(total(refund.outputs), 1000.0);
     QCOMPARE(names(refund.outputs), QStringList({QStringLiteral("Rent"), QStringLiteral("Savings")}));
@@ -234,21 +246,47 @@ void CalcTest::moneyFlowSavesTheLeftover()
 
 void CalcTest::rollingAverageStartsAtTheThirdMonth()
 {
-    CashFlowController controller;
-    const QVariantList timestamps = controller.rollingTimestamps();
-    const QVariantList values = controller.rollingValues();
-    const QVariantList expenses = controller.expenseValues();
+    // 100, 200, 300, … of spending in the 12 months.
+    const QDate today(2026, 11, 4);
+    QVector<Data::Transaction> rows;
+    for (int m = 0; m < CashFlowCalc::kMonths; ++m) {
+        rows.append(row(m + 1, 1, QDate(2025, 12, 10).addMonths(m), 100.0 * (m + 1), 0.0));
+    }
+    const CashFlowCalc::Result result = CashFlowCalc::compute(rows, today);
+    QCOMPARE(result.months.first(), QDate(2025, 12, 1));
+    QCOMPARE(result.months.last(), QDate(2026, 11, 1));
+    QCOMPARE(result.spendingCents.first(), qint64(10000));
+    QCOMPARE(result.rolling.size(), qsizetype(10));
+    QCOMPARE(result.rolling.first(), 200.0); // (100 + 200 + 300) / 3
+    QCOMPARE(result.rolling.last(), 1100.0); // (1000 + 1100 + 1200) / 3
+}
 
-    QCOMPARE(expenses.size(), qsizetype(12));
-    QCOMPARE(timestamps.size(), qsizetype(10));
-    QCOMPARE(values.size(), qsizetype(10));
-    // The first point is the third month, with the mean of the first three.
-    const QDate first = QDateTime::fromMSecsSinceEpoch(qint64(controller.minTimeMs())).date();
-    QCOMPARE(QDateTime::fromMSecsSinceEpoch(qint64(timestamps.first().toDouble())).date(), first.addMonths(2));
-    const double mean = (expenses.at(0).toDouble() + expenses.at(1).toDouble() + expenses.at(2).toDouble()) / 3.0;
-    QCOMPARE(values.first().toDouble(), mean);
-    QCOMPARE(QDateTime::fromMSecsSinceEpoch(qint64(timestamps.last().toDouble())).date(),
-             QDateTime::fromMSecsSinceEpoch(qint64(controller.maxTimeMs())).date());
+void CalcTest::cashFlowLeavesTheTransfersOut()
+{
+    // #210: a transfer to the Livret A is not spending; a row older than the
+    // 12 months is not counted; the 6th category and after go to "Other".
+    const QDate today(2026, 11, 4);
+    Data::Transaction salary = row(1, 1, QDate(2026, 11, 1), 0.0, 2500.0);
+    salary.category = QStringLiteral("Income");
+    Data::Transaction toLivret = row(2, 1, QDate(2026, 11, 2), 1000.0, 0.0, 2);
+    QVector<Data::Transaction> rows = {salary, toLivret, row(3, 1, QDate(2025, 11, 30), 999.0, 0.0)};
+    const QStringList categories = {QStringLiteral("A"), QStringLiteral("B"), QStringLiteral("C"),
+                                    QStringLiteral("D"), QStringLiteral("E"), QStringLiteral("F"),
+                                    QStringLiteral("G")};
+    for (qsizetype i = 0; i < categories.size(); ++i) {
+        Data::Transaction spent = row(int(10 + i), 1, QDate(2026, 11, 3), 70.0 - (10.0 * double(i)), 0.0);
+        spent.category = categories.at(i);
+        rows.append(spent);
+    }
+    const CashFlowCalc::Result result = CashFlowCalc::compute(rows, today);
+    QCOMPARE(result.incomeCents.last(), qint64(250000));
+    QCOMPARE(result.spendingCents.last(), qint64(28000)); // 70 + 60 + … + 10, no transfer
+    QCOMPARE(result.spendingCents.first(), qint64(0));    // 30/11/2025 is before the 12 months
+    QCOMPARE(result.stackedNames, QStringList({QStringLiteral("A"), QStringLiteral("B"), QStringLiteral("C"),
+                                               QStringLiteral("D"), QStringLiteral("E"), QStringLiteral("Other")}));
+    QCOMPARE(result.stackedCents.at(5).last(), qint64(3000)); // F (20) + G (10)
+    QCOMPARE(result.biggest.last().size(), qsizetype(CashFlowCalc::kBiggestRows));
+    QCOMPARE(result.biggest.last().first().category, QStringLiteral("A"));
 }
 
 void CalcTest::monthlyPerformanceLeavesTheDepositOut()

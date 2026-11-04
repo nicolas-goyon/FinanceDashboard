@@ -197,8 +197,8 @@ set_tests_properties(update_test PROPERTIES
 
 # calc_test
 #   The calculations behind the texts and charts of the pages: the Projects page
-#   (#41), the money flow and the rolling average of the Cash Flow page (#42,
-#   #56), the performance of the Investments page (#56), the money format
+#   (#41), the money flow, the rolling average and the figures of the Cash Flow page
+#   (#42, #56, #210), the performance of the Investments page (#56), the money format
 #   (#48), the whole cents of Money (#33) and the internal transfers that
 #   TransferMatcher finds (#207). No database. It compiles the page
 #   controllers that it tests.
@@ -209,8 +209,8 @@ qt_add_executable(calc_test
     ${CMAKE_SOURCE_DIR}/src/utils/Money.h
     ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.h
     ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.cpp
-    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow/CashFlowController.h
-    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow/CashFlowController.cpp
+    ${CMAKE_SOURCE_DIR}/src/calc/CashFlowCalc.h
+    ${CMAKE_SOURCE_DIR}/src/calc/CashFlowCalc.cpp
     ${CMAKE_SOURCE_DIR}/src/controllers/investments/InvestmentsController.h
     ${CMAKE_SOURCE_DIR}/src/controllers/investments/InvestmentsController.cpp
     ${CMAKE_SOURCE_DIR}/src/models/Transaction.h
@@ -223,7 +223,6 @@ qt_add_executable(calc_test
 target_include_directories(calc_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/controllers/projects
-    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow
     ${CMAKE_SOURCE_DIR}/src/controllers/investments
 )
 # Qt6::Qml for the QML_ELEMENT macros in the controller headers.

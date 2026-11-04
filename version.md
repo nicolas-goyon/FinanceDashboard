@@ -69,6 +69,11 @@ builds, source archives). Then CI opens a pull request that merges the release b
   last 12 months by group of accounts (day-to-day, savings, investments), the allocation today
   and the change of each month. It reads the data again each time the page is shown. The [MOCK]
   badge is gone from this page.
+- Cash Flow shows real data (#210): income and spending of the last 12 months, the 3-month
+  average, the money flow, the spending by category and the biggest expenses of a month, from
+  the accounts of the net worth. The internal transfers are left out: a transfer to the Livret
+  A is not spending. The categories are your own (the stacked bars show the 5 with the most
+  spending, then "Other"). The [MOCK] badge is gone from this page.
 
 ### Fixed
 - The application log no longer shows statement data (#205): the upgrade steps and the import
