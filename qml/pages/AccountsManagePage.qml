@@ -230,7 +230,13 @@ Item {
                                 Layout.leftMargin: 4
                                 spacing: 8
 
-                                Text { text: "Balance checkpoints:"; font.pixelSize: 12; color: Theme.overlay0 }
+                                // #208: on an investment account, a checkpoint is a valuation
+                                // (the value of the holdings at a date).
+                                Text {
+                                    text: accRow.modelData.isInvestment ? "Valuations:" : "Balance checkpoints:"
+                                    font.pixelSize: 12
+                                    color: Theme.overlay0
+                                }
 
                                 Flow {
                                     Layout.fillWidth: true
@@ -278,7 +284,7 @@ Item {
                                 }
 
                                 GhostButton {
-                                    text: "＋ Add checkpoint"
+                                    text: accRow.modelData.isInvestment ? "＋ Add valuation" : "＋ Add checkpoint"
                                     textColor: Theme.yellow
                                     onClicked: addCheckpointDialog.openFor(accRow.index)
                                 }
@@ -514,14 +520,16 @@ Item {
     // AccountController::addBalanceCheckpoint().
     FormDialog {
         id: addCheckpointDialog
-        dialogTitle: "Add a balance checkpoint"
+        dialogTitle: addCheckpointDialog.investment ? "Add a valuation" : "Add a balance checkpoint"
         saveText: "Add"
         width: 420
 
         property int accountIndex: -1
+        property bool investment: false
 
         function openFor(idx) {
             accountIndex = idx
+            investment = idx >= 0 && idx < AccountController.accounts.length && AccountController.accounts[idx].isInvestment
             checkpointDateRow.text = ""
             checkpointBalanceRow.text = ""
             checkpointNoteRow.text = ""
@@ -531,15 +539,24 @@ Item {
         Text {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: "Record a known balance for this account on a given date — used to validate a "
-                + "statement import's declared opening balance when full transaction history since "
-                + "account opening hasn't been imported (see the import review screen's "
-                + "reconciliation check)."
+            text: addCheckpointDialog.investment
+                ? "Enter the value of the account on a date, from the statement of your bank. Between two "
+                  + "valuations, the value is the last valuation plus the deposits and withdrawals after it. "
+                  + "The change that is not a deposit is the gain or loss of the period."
+                : "Record a known balance for this account on a given date — used to validate a "
+                  + "statement import's declared opening balance when full transaction history since "
+                  + "account opening hasn't been imported (see the import review screen's "
+                  + "reconciliation check)."
             font.pixelSize: 13
             color: Theme.overlay0
         }
         FormRow { id: checkpointDateRow; label: "Date"; labelWidth: 70; placeholderText: "yyyy-MM-dd" }
-        FormRow { id: checkpointBalanceRow; label: "Balance"; labelWidth: 70; placeholderText: "e.g. 1250.00" }
+        FormRow {
+            id: checkpointBalanceRow
+            label: addCheckpointDialog.investment ? "Value" : "Balance"
+            labelWidth: 70
+            placeholderText: "e.g. 1250.00"
+        }
         FormRow { id: checkpointNoteRow; label: "Note"; labelWidth: 70; placeholderText: "optional" }
 
         onSaveClicked: {

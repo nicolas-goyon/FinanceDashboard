@@ -143,6 +143,7 @@ QVariantList AccountController::accounts() const
             { "hashCount", acc.hashes.size() },
             { "linked",    !acc.hashes.isEmpty() },
             { "inNetWorth", acc.inNetWorth },
+            { "isInvestment", Data::isInvestment(acc) },
         });
     }
     return out;

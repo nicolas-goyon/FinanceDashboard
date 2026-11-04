@@ -59,6 +59,23 @@ struct Account {
     // SnapshotImportController.
 };
 
+// An investment account (#208): its value changes with the market, so its
+// balance checkpoints are valuations that the user enters from the statement
+// of the bank. The account category "Investments", or a type of the default
+// list for investments.
+[[nodiscard]] inline bool isInvestment(const Account& account)
+{
+    if (account.category.compare(QLatin1String("Investments"), Qt::CaseInsensitive) == 0) {
+        return true;
+    }
+    for (const char* type : {"PEA", "CTO", "Assurance Vie"}) {
+        if (account.type.compare(QLatin1String(type), Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
 struct AccountCategory {
     int     id = -1;
     QString name;

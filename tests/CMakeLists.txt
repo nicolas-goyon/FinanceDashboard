@@ -216,6 +216,9 @@ qt_add_executable(calc_test
     ${CMAKE_SOURCE_DIR}/src/models/Transaction.h
     ${CMAKE_SOURCE_DIR}/src/calc/TransferMatcher.h
     ${CMAKE_SOURCE_DIR}/src/calc/TransferMatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/calc/NetWorthCalc.h
+    ${CMAKE_SOURCE_DIR}/src/calc/NetWorthCalc.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/Account.h
 )
 target_include_directories(calc_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src

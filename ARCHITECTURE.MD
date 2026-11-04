@@ -38,7 +38,7 @@ src/db/               Database (connection, transactions, upgrades) and tables/ 
 src/models/           Plain data structs (Account, Transaction, Category, …).
 src/import/           Statement templates (ImportTemplate, SumeriaCcpCsvExtractionTemplate).
 src/predict/          Category prediction (CategoryPredictor, LabelNormalizer).
-src/calc/             Calculations with no database and no Qt Quick (TransferMatcher).
+src/calc/             Calculations with no database and no Qt Quick (TransferMatcher, NetWorthCalc).
 src/update/           Release list, versions and SHA256SUMS parsing, with no network.
 src/startup/          Start-up checks (StartupChecks) and the QML network block (LocalOnlyNetwork).
 src/utils/            Money, AccountHashing and other helpers.
@@ -225,8 +225,16 @@ when it closes.
   (`Data::isInternalTransfer()`).
 - Money that goes to an account outside the net worth (a joint account, the account of a
   child) is spending.
-- The savings of a period are the external income minus the external spending. The change of
-  the net worth is the savings plus the gains and losses of the investments (#208).
+- `NetWorthCalc` (`src/calc/`) calculates in whole cents, with no database (#208):
+  - The value of an account at the end of a day: the latest balance checkpoint on or before the
+    day, plus the rows booked after it. With no checkpoint: the balance before the first row,
+    plus the rows.
+  - On an investment account (`Data::isInvestment()`), a checkpoint is a valuation, from the
+    statement of the bank. The UI calls it "Valuation".
+  - The savings of a period: the income minus the spending of the accounts of the net worth,
+    without the internal transfers.
+  - The change of the net worth = the savings + the gains. The gains are the rest: valuations,
+    interest that is not in a row, corrections, a transfer with one side only.
 
 ### Account tags
 
