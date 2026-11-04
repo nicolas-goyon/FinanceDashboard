@@ -144,9 +144,15 @@ Item {
                                 StatusBadge {
                                     variant: accRow.modelData.linked ? "success" : "warning"
                                     pillHeight: 20
-                                    text: accRow.modelData.linked
-                                        ? ("✓ linked · " + accRow.modelData.hashCount + " hash" + (accRow.modelData.hashCount === 1 ? "" : "es"))
-                                        : "⚠ not linked"
+                                    text: accRow.modelData.linked ? "✓ linked" : "⚠ not linked"
+                                }
+                                // #206: an account outside the net worth (a joint
+                                // account, the account of a child).
+                                StatusBadge {
+                                    visible: !accRow.modelData.inNetWorth
+                                    variant: "warning"
+                                    pillHeight: 20
+                                    text: "outside net worth"
                                 }
                                 Item { Layout.fillWidth: true }
 
@@ -336,6 +342,7 @@ Item {
             accCategoryBox.currentIndex = -1
             accCurrencyBox.currentIndex = 0
             accNotesRow.text = ""
+            inNetWorthBox.checked = true
             open()
         }
 
@@ -353,6 +360,7 @@ Item {
             accCategoryBox.currentIndex = ci
             accCurrencyBox.currentIndex = currencyIndexForCode(acc.currency)
             accNotesRow.text = acc.notes
+            inNetWorthBox.checked = acc.inNetWorth
             open()
         }
 
@@ -401,6 +409,22 @@ Item {
             }
         }
         FormRow { id: accNotesRow; label: "Notes"; labelWidth: 70; placeholderText: "optional" }
+        // #206: a move between two accounts of the net worth is neither
+        // income nor spending.
+        CheckBox {
+            id: inNetWorthBox
+            checked: true
+            text: "Part of my net worth"
+            palette.windowText: Theme.text
+        }
+        Text {
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            text: "Turn it off for an account that you only follow (a joint account, the account of a "
+                + "child): the money that goes to it then counts as spending."
+            font.pixelSize: 12
+            color: Theme.overlay0
+        }
 
         onSaveClicked: {
             var trimmed = accNameRow.text.trim()
@@ -422,9 +446,13 @@ Item {
             var currency = cu >= 0 && cu < accountDialog.currencyOptions.length
                 ? accountDialog.currencyOptions[cu].code : (current ? current.currency : "EUR")
             if (editIndex < 0) {
+                var before = AccountController.accounts.length
                 AccountController.addAccount(trimmed, type, category, currency, accNotesRow.text.trim())
+                if (AccountController.accounts.length > before)
+                    AccountController.setInNetWorth(AccountController.accounts.length - 1, inNetWorthBox.checked)
             } else {
                 AccountController.updateAccount(editIndex, trimmed, type, category, currency, accNotesRow.text.trim())
+                AccountController.setInNetWorth(editIndex, inNetWorthBox.checked)
             }
             close()
         }

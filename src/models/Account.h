@@ -45,6 +45,11 @@ struct Account {
     QString category;   // e.g. "Day-to-day", "Savings" — DB-managed list (account_categories)
     QString currency;   // "EUR" or "USD" — see AccountsManagePage.qml's currency selector
     QString notes;
+    // Part of the net worth (#206): the accounts of the user (checking,
+    // savings, investments). A move between two of them is neither income
+    // nor spending. Off for an account that the user only follows (a joint
+    // account, the account of a child): money that goes to it is spending.
+    bool    inNetWorth = true;
     QVector<AccountHash> hashes;
     // No iban/bic/number: deliberately NOT stored, the app does not keep them
     // (see ARCHITECTURE.MD § Account Management) — removed after having been MOCK

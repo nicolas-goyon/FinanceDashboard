@@ -15,6 +15,16 @@ Personal finance analytics app for:
 
 ---
 
+## Net worth
+
+The user thinks in **net worth** ("patrimoine"): a set of accounts (checking, livrets, investments).
+
+- A move of money **inside** the set is neither income nor spending: checking → Livret A, or a sale of shares followed by a purchase. The net worth does not change.
+- Each account has a flag "part of my net worth" (on by default). An account that the user only follows (a joint account, the account of a child) is outside: money that goes to it is spending.
+- The questions the app answers: **how much did I save this year?** (external income − external spending) and **how did my net worth change since last year?** (savings + gains and losses of the investments, from manual valuations).
+
+---
+
 ## Pages
 
 ### 1. Overview (Net Worth)

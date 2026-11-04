@@ -142,6 +142,7 @@ QVariantList AccountController::accounts() const
             { "hashes",    hashes },
             { "hashCount", acc.hashes.size() },
             { "linked",    !acc.hashes.isEmpty() },
+            { "inNetWorth", acc.inNetWorth },
         });
     }
     return out;
@@ -270,6 +271,25 @@ void AccountController::removeAccount(int index)
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
 // positionally from AccountTypesCategoriesPage.qml.
+void AccountController::setInNetWorth(int index, bool inNetWorth)
+{
+    if (index < 0 || index >= m_accounts.size()) {
+        return;
+    }
+    // index bounds-checked above; QList's at() is const-only, so mutating
+    // through operator[] is genuinely required here.
+    Data::Account& acc = m_accounts[index]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
+    if (acc.inNetWorth == inNetWorth) {
+        return;
+    }
+    if (!Database::instance().setAccountInNetWorth(acc.id, inNetWorth)) {
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not change the net worth of the account"));
+        return;
+    }
+    acc.inNetWorth = inNetWorth;
+    emit accountsChanged();
+}
+
 void AccountController::addAccountCategory(const QString& name, const QString& color)
 {
     const QString trimmed = name.trimmed();

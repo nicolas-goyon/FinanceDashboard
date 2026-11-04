@@ -206,6 +206,17 @@ when it closes.
   Examples: the reconciliation of an import, a running balance, a total.
 - Do not add doubles for these. In a double, 0.10 + 0.20 is not 0.30.
 
+### Net worth
+
+- The net worth is a set of accounts: the accounts with `accounts.in_net_worth = 1` (#206). A
+  new account is in it. Schema step 8 adds the column, on for every account.
+- A move of money between two accounts of the net worth is an internal transfer. It is not
+  income and not spending (#207).
+- Money that goes to an account outside the net worth (a joint account, the account of a
+  child) is spending.
+- The savings of a period are the external income minus the external spending. The change of
+  the net worth is the savings plus the gains and losses of the investments (#208).
+
 ### Account tags
 
 - An account tag (`account_hashes`) links the statements of a bank account to an account of

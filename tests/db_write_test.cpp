@@ -138,6 +138,7 @@ private slots:
     void amountsAreWrittenToTheCent();
     void invalidAmountsAreRefused();
     void tagCanBeOnTwoAccounts();
+    void netWorthFlagIsSaved();
 
 private:
     QTemporaryDir m_dir;
@@ -729,6 +730,27 @@ void DbWriteTest::tagCanBeOnTwoAccounts()
     QVERIFY(!db.accountHasHash(checking, QStringLiteral("a7")));
     QVERIFY(db.accountHasHash(savings, QStringLiteral("0c")));
     QVERIFY(!controller.accounts().at(checkingIndex).toMap().value(QStringLiteral("linked")).toBool());
+}
+
+void DbWriteTest::netWorthFlagIsSaved()
+{
+    // #206: an account is in the net worth by default; the flag is saved.
+    Database& db = Database::instance();
+    const int joint = db.addAccount(QStringLiteral("Joint"), QStringLiteral("CCP"), QStringLiteral(""),
+                                    QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(joint >= 0);
+    QVERIFY(db.loadAccounts().constLast().inNetWorth);
+    QVERIFY2(db.setAccountInNetWorth(joint, false), qPrintable(db.lastError()));
+    QVERIFY(!db.loadAccounts().constLast().inNetWorth);
+    QVERIFY(!db.setAccountInNetWorth(joint + 100, false)); // no such account
+
+    AccountController controller;
+    const int index = indexOfName(controller.accounts(), QStringLiteral("Joint"));
+    QVERIFY(index >= 0);
+    QVERIFY(!controller.accounts().at(index).toMap().value(QStringLiteral("inNetWorth")).toBool());
+    controller.setInNetWorth(index, true);
+    QVERIFY(controller.accounts().at(index).toMap().value(QStringLiteral("inNetWorth")).toBool());
+    QVERIFY(db.loadAccounts().constLast().inNetWorth);
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)
