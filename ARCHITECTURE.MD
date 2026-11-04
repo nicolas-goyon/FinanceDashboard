@@ -38,7 +38,8 @@ src/db/               Database (connection, transactions, upgrades) and tables/ 
 src/models/           Plain data structs (Account, Transaction, Category, …).
 src/import/           Statement templates (ImportTemplate, SumeriaCcpCsvExtractionTemplate).
 src/predict/          Category prediction (CategoryPredictor, LabelNormalizer).
-src/calc/             Calculations with no database and no Qt Quick (TransferMatcher, NetWorthCalc).
+src/calc/             Calculations with no database and no Qt Quick (TransferMatcher, NetWorthCalc,
+                      CashFlowCalc). calc_test checks them.
 src/update/           Release list, versions and SHA256SUMS parsing, with no network.
 src/startup/          Start-up checks (StartupChecks) and the QML network block (LocalOnlyNetwork).
 src/utils/            Money, AccountHashing and other helpers.
@@ -238,6 +239,9 @@ when it closes.
 - `NetWorthScope` (`src/controllers/common/`) reads the accounts of the net worth, with their
   rows and checkpoints, in one pass. It puts each account in a group: day-to-day, savings
   (`Data::isSavings()`), investments (`Data::isInvestment()`).
+- `CashFlowCalc` (`src/calc/`) gives the figures of the Cash Flow page (#210): income and
+  spending of the last 12 months, by category, without the internal transfers. The stacked bars
+  show the 5 categories with the most spending and "Other".
 - A page on real data reads the database again when it is shown (`onVisibleChanged` →
   `reload()`): the pages stay loaded in the StackLayout. It clears its series before it fills
   them again.

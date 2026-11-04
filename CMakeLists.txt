@@ -156,6 +156,8 @@ set(FD_CORE_SOURCES
     src/calc/TransferMatcher.cpp
     src/calc/NetWorthCalc.h
     src/calc/NetWorthCalc.cpp
+    src/calc/CashFlowCalc.h
+    src/calc/CashFlowCalc.cpp
     src/utils/StatusMessage.h
     src/utils/StatusMessage.cpp
     # Category prediction (see docs/category-prediction.md). UI-independent
