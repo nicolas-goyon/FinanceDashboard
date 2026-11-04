@@ -295,6 +295,137 @@ Item {
                 }
             }
 
+            // ── Yearly summary (#212) ─────────────────────────────────────────
+            // "How much did I save this year?" and "how did my net worth
+            // change since last year?". Savings + gains and losses = change
+            // of the net worth.
+            ChartCard {
+                Layout.fillWidth: true
+                implicitHeight: yearCol.implicitHeight + 50
+                title: "This year against the last years"
+
+                ColumnLayout {
+                    id: yearCol
+                    anchors.fill: parent
+                    spacing: 0
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 30
+                        spacing: 10
+                        Text { Layout.fillWidth: true; text: ""; font.pixelSize: 13 }
+                        Repeater {
+                            model: controller.yearLabels
+                            delegate: Text {
+                                required property string modelData
+                                Layout.preferredWidth: 160
+                                text: modelData
+                                font.pixelSize: 13
+                                font.bold: true
+                                color: Theme.overlay0
+                                horizontalAlignment: Text.AlignRight
+                            }
+                        }
+                    }
+                    Repeater {
+                        model: controller.yearRows
+                        delegate: Rectangle {
+                            id: yearRow
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 34
+                            color: index % 2 === 0 ? "transparent" : Theme.mantle
+                            radius: 4
+
+                            RowLayout {
+                                anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                spacing: 10
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: yearRow.modelData.label
+                                    font.pixelSize: 15
+                                    color: Theme.text
+                                }
+                                Repeater {
+                                    model: yearRow.modelData.values
+                                    delegate: Text {
+                                        required property string modelData
+                                        required property int index
+                                        Layout.preferredWidth: 160
+                                        text: modelData
+                                        font.pixelSize: 15
+                                        font.bold: true
+                                        color: yearRow.modelData.colors[index]
+                                        horizontalAlignment: Text.AlignRight
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 8
+                        wrapMode: Text.WordWrap
+                        text: "Savings = income − spending of the accounts of your net worth, without the internal "
+                            + "transfers. Savings + gains, losses and other changes = change of the net worth. The "
+                            + "other changes are the valuations of the investments, interest that is not in a "
+                            + "transaction, a corrected balance, and the opening balance of an account whose first "
+                            + "statement is in the year."
+                        font.pixelSize: 12
+                        color: Theme.overlay0
+                    }
+                }
+            }
+
+            ChartCard {
+                Layout.fillWidth: true
+                implicitHeight: categoryCol.implicitHeight + 50
+                title: "Spending by category — this year (to date) against last year"
+
+                ColumnLayout {
+                    id: categoryCol
+                    anchors.fill: parent
+                    spacing: 0
+
+                    EmptyState {
+                        visible: controller.categoryComparison.length === 0
+                        message: "No spending this year or last year."
+                    }
+                    RowLayout {
+                        visible: controller.categoryComparison.length > 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 30
+                        spacing: 10
+                        Text { Layout.fillWidth: true; text: "CATEGORY"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                        Text { Layout.preferredWidth: 140; text: "LAST YEAR"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                        Text { Layout.preferredWidth: 140; text: "THIS YEAR"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                        Text { Layout.preferredWidth: 140; text: "DIFFERENCE"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                    }
+                    Repeater {
+                        model: controller.categoryComparison
+                        delegate: Rectangle {
+                            id: categoryRow
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 32
+                            color: index % 2 === 0 ? "transparent" : Theme.mantle
+                            radius: 4
+
+                            RowLayout {
+                                anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                spacing: 10
+                                Text { Layout.fillWidth: true; text: categoryRow.modelData.category; font.pixelSize: 15; color: Theme.text; elide: Text.ElideRight }
+                                Text { Layout.preferredWidth: 140; text: categoryRow.modelData.lastYearText; font.pixelSize: 15; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 140; text: categoryRow.modelData.thisYearText; font.pixelSize: 15; color: Theme.text; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 140; text: categoryRow.modelData.diffText; font.pixelSize: 15; color: categoryRow.modelData.diffColor; horizontalAlignment: Text.AlignRight }
+                            }
+                        }
+                    }
+                }
+            }
+
             Item { Layout.preferredHeight: 8 }
         }
     }

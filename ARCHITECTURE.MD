@@ -247,6 +247,9 @@ when it closes.
   "interest" or "intérêts" in its category, name or description). A chart has 4 fixed series:
   the 4 accounts with the highest balance. A series with no account has an empty name and is
   hidden.
+- The yearly summary of the Overview (#212) shows this year (to date) and the 2 years before:
+  income, spending, savings, savings rate, gains and other changes, change of the net worth,
+  and the spending by category against last year (`NetWorthController::buildYearSummary()`).
 - A page on real data reads the database again when it is shown (`onVisibleChanged` →
   `reload()`): the pages stay loaded in the StackLayout. It clears its series before it fills
   them again.
