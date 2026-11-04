@@ -538,9 +538,21 @@ QVariantList AccountController::transactionsForAccount(int accountIndex) const
             { "balanceText",        Fmt::money(transaction.balanceAfter, unit) },
             { "category",           transaction.category },
             { "subcategory",        transaction.subcategory },
+            { "internalTransfer",   Data::isInternalTransfer(transaction) },
         });
     }
     return rows;
+}
+
+bool AccountController::setInternalTransfer(int transactionId, bool on)
+{
+    if (!Database::instance().setInternalTransfer(transactionId, on)) {
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not change the transaction"));
+        return false;
+    }
+    setStatus(StatusMessage::Level::Success,
+              on ? QStringLiteral("✓  Internal transfer") : QStringLiteral("✓  Not an internal transfer"));
+    return true;
 }
 
 int AccountController::transactionCountForAccount(int accountIndex) const

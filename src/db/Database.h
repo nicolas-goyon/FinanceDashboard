@@ -71,7 +71,7 @@ public:
     // ── Schema version (PRAGMA user_version) ─────────────────────────────────
     // The schema version that this app writes. Each version after 0 is one
     // ordered migration step in upgrade().
-    static constexpr int kSchemaVersion = 8;
+    static constexpr int kSchemaVersion = 9;
     // The schema version from which the database holds no bank identifier (#204).
     static constexpr int kPrivacyVersion = 7;
     [[nodiscard]] int schemaVersion() const;
@@ -227,6 +227,20 @@ public:
     // src/predict/CategoryPredictor.h for what it does with them).
     [[nodiscard]] QVector<Data::Transaction> allCategorizedTransactions() const;
 
+    // ── Internal transfers (#207, see Data::Transaction::transferId) ────────────
+
+    // Every transaction of every account, oldest first.
+    [[nodiscard]] QVector<Data::Transaction> allTransactions() const;
+    // The two rows become one transfer (the id of the debit row). One SQL
+    // transaction.
+    bool confirmTransfer(int debitId, int creditId);
+    // The two rows are not a transfer: the app does not suggest them again.
+    bool refuseTransfer(int debitId, int creditId);
+    // Marks one row by hand. On: the row becomes a transfer, alone when it
+    // is not one yet. Off: the row, and the other side of its transfer, are
+    // not a transfer any more.
+    bool setInternalTransfer(int transactionId, bool on);
+
     // ── Category rules (top rung of category prediction — see
     //    docs/category-prediction.md) ─────────────────────────────────────────
 
@@ -349,6 +363,7 @@ private:
     bool migrateTo6(UpgradeStats& stats); // category rules: the label keys of #40 and #55
     bool migrateTo7(UpgradeStats& stats); // privacy: no bank identifier, one-byte account tags (#203, #204)
     bool migrateTo8(UpgradeStats& stats); // accounts.in_net_worth (#206)
+    bool migrateTo9(UpgradeStats& stats); // transactions.transfer_id (#207)
     // The clean-up of step 7 on `db` (the database, or the copy made before
     // the upgrade): see migrateTo7(). `error` gets the SQLite message.
     static bool removeBankIdentifiers(QSqlDatabase& db, UpgradeStats& stats, QString& error);

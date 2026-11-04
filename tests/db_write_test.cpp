@@ -26,6 +26,7 @@
 #include "AccountController.h"
 #include "CategoryController.h"
 #include "DatabaseManagementController.h"
+#include "TransfersController.h"
 #include "db/Database.h"
 #include "models/Account.h"
 #include "models/AssetEntry.h"
@@ -139,6 +140,7 @@ private slots:
     void invalidAmountsAreRefused();
     void tagCanBeOnTwoAccounts();
     void netWorthFlagIsSaved();
+    void transferIsConfirmedRefusedAndMarked();
 
 private:
     QTemporaryDir m_dir;
@@ -751,6 +753,73 @@ void DbWriteTest::netWorthFlagIsSaved()
     controller.setInNetWorth(index, true);
     QVERIFY(controller.accounts().at(index).toMap().value(QStringLiteral("inNetWorth")).toBool());
     QVERIFY(db.loadAccounts().constLast().inNetWorth);
+}
+
+void DbWriteTest::transferIsConfirmedRefusedAndMarked()
+{
+    // #207: the transfer_id of the rows.
+    Database& db = Database::instance();
+    const int checking = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
+                                       QStringLiteral("EUR"), QStringLiteral(""));
+    const int livret = db.addAccount(QStringLiteral("Livret A"), QStringLiteral("Livret A"), QStringLiteral(""),
+                                     QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(checking >= 0 && livret >= 0);
+    const auto make = [](const QDate& date, double debit, double credit) {
+        Data::Transaction transaction;
+        transaction.operationDate = date;
+        transaction.confirmationDate = date;
+        transaction.name = QStringLiteral("TRANSFER");
+        transaction.debit = debit;
+        transaction.credit = credit;
+        return transaction;
+    };
+    const QDate day(2026, 3, 10);
+    QVERIFY(db.insertTransactions(checking, {make(day, 500.0, 0.0), make(day, 20.0, 0.0)}));
+    QVERIFY(db.insertTransactions(livret, {make(day.addDays(2), 0.0, 500.0), make(day, 0.0, 20.0)}));
+    const auto idOf = [&](int account, double amount) {
+        for (const Data::Transaction& transaction : db.transactionsForAccount(account)) {
+            if (transaction.debit == amount || transaction.credit == amount) {
+                return transaction.id;
+            }
+        }
+        return -1;
+    };
+    const int debit = idOf(checking, 500.0);
+    const int credit = idOf(livret, 500.0);
+    const auto transferIdOf = [&](int id) {
+        for (const Data::Transaction& transaction : db.allTransactions()) {
+            if (transaction.id == id) {
+                return transaction.transferId;
+            }
+        }
+        return -99;
+    };
+    QCOMPARE(transferIdOf(debit), 0);
+
+    QVERIFY2(db.confirmTransfer(debit, credit), qPrintable(db.lastError()));
+    QCOMPARE(transferIdOf(debit), debit);
+    QCOMPARE(transferIdOf(credit), debit);
+
+    QVERIFY(db.refuseTransfer(idOf(checking, 20.0), idOf(livret, 20.0)));
+    QCOMPARE(transferIdOf(idOf(checking, 20.0)), Data::kNotATransfer);
+
+    // Off on one side: both sides are not a transfer any more.
+    QVERIFY(db.setInternalTransfer(credit, false));
+    QCOMPARE(transferIdOf(debit), Data::kNotATransfer);
+    QCOMPARE(transferIdOf(credit), Data::kNotATransfer);
+    // On alone: the row is its own transfer.
+    QVERIFY(db.setInternalTransfer(credit, true));
+    QCOMPARE(transferIdOf(credit), credit);
+    QVERIFY(!db.setInternalTransfer(999999, true));
+
+    // The controller of the page: no suggestion is left (all decided).
+    TransfersController controller;
+    controller.refresh();
+    QCOMPARE(controller.suggestions().size(), qsizetype(0));
+    QCOMPARE(controller.transfers().size(), qsizetype(1));
+    QVERIFY(!controller.transfers().first().toMap().value(QStringLiteral("complete")).toBool());
+    QVERIFY(controller.cancelTransfer(credit));
+    QCOMPARE(controller.transfers().size(), qsizetype(0));
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)

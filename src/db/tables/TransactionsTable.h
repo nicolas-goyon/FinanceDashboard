@@ -134,6 +134,15 @@ public:
 
     [[nodiscard]] int countForAccount(int accountId) const;
 
+    // Every transaction, oldest operation date first (the internal transfers
+    // and the pages of the net worth, #207).
+    [[nodiscard]] QVector<Data::Transaction> all() const;
+    // The transfer_id of one row (#207, see Data::Transaction::transferId).
+    // False when no row changes.
+    bool setTransferId(int transactionId, int transferId);
+    // The rows of transfer `transferId` become Data::kNotATransfer.
+    bool clearTransfer(int transferId);
+
     // Every *categorized* transaction across every account, oldest first.
     // Rows with an empty category are excluded in SQL rather than filtered by
     // the caller — they carry no signal and there can be a lot of them.
@@ -166,6 +175,8 @@ public:
     // closer AccountBalanceCheckpoint (see ARCHITECTURE.MD § Statement
     // Import — reconciliation).
     [[nodiscard]] std::optional<Data::Transaction> latestOnOrBefore(int accountId, const QDate& date) const;
+    // The row with this id, or nothing.
+    [[nodiscard]] std::optional<Data::Transaction> byId(int transactionId) const;
 
 private:
     [[nodiscard]] QSqlDatabase db() const;

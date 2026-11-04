@@ -501,6 +501,7 @@ bool Database::upgrade(int from, UpgradeStats& stats)
         case 6: ok = migrateTo6(stats); break;
         case 7: ok = migrateTo7(stats); break;
         case 8: ok = migrateTo8(stats); break;
+        case 9: ok = migrateTo9(stats); break;
         default: m_lastError = QStringLiteral("there is no migration step %1.").arg(step); break;
         }
         // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
@@ -735,6 +736,28 @@ bool Database::migrateTo8(UpgradeStats& stats)
         }
     }
     if (!query.exec(QStringLiteral("ALTER TABLE accounts ADD COLUMN in_net_worth INTEGER NOT NULL DEFAULT 1;"))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    return true;
+}
+
+// Version 9 — internal transfers (#207): the column transactions.transfer_id
+// (0: not decided, -1: not a transfer, > 0: the id of the transfer).
+bool Database::migrateTo9(UpgradeStats& stats)
+{
+    Q_UNUSED(stats)
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("PRAGMA table_info(transactions);"))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    while (query.next()) {
+        if (query.value(1).toString() == QLatin1String("transfer_id")) {
+            return true; // already there (a file of this version with an older user_version)
+        }
+    }
+    if (!query.exec(QStringLiteral("ALTER TABLE transactions ADD COLUMN transfer_id INTEGER NOT NULL DEFAULT 0;"))) {
         m_lastError = sqlText(query.lastError());
         return false;
     }
@@ -1780,6 +1803,59 @@ std::optional<Data::Transaction> Database::latestTransactionOnOrBefore(int accou
 {
     if (!isOpen()) { return std::nullopt; }
     return m_transactionsTable.latestOnOrBefore(accountId, date);
+}
+
+QVector<Data::Transaction> Database::allTransactions() const
+{
+    if (!isOpen()) { return {}; }
+    return m_transactionsTable.all();
+}
+
+bool Database::confirmTransfer(int debitId, int creditId)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return inTransaction(QStringLiteral("confirmTransfer"), [&]() {
+        if (!m_transactionsTable.setTransferId(debitId, debitId) || !m_transactionsTable.setTransferId(creditId, debitId)) {
+            m_lastError = QStringLiteral("Could not save the transfer.");
+            return false;
+        }
+        return true;
+    });
+}
+
+bool Database::refuseTransfer(int debitId, int creditId)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return inTransaction(QStringLiteral("refuseTransfer"), [&]() {
+        if (!m_transactionsTable.setTransferId(debitId, Data::kNotATransfer)
+            || !m_transactionsTable.setTransferId(creditId, Data::kNotATransfer)) {
+            m_lastError = QStringLiteral("Could not save the answer.");
+            return false;
+        }
+        return true;
+    });
+}
+
+bool Database::setInternalTransfer(int transactionId, bool on)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    const std::optional<Data::Transaction> row = m_transactionsTable.byId(transactionId);
+    if (!row) {
+        m_lastError = QStringLiteral("The transaction does not exist.");
+        return false;
+    }
+    bool done = true;
+    if (on) {
+        done = Data::isInternalTransfer(*row) || m_transactionsTable.setTransferId(transactionId, transactionId);
+    } else if (Data::isInternalTransfer(*row)) {
+        done = m_transactionsTable.clearTransfer(row->transferId);
+    } else {
+        done = m_transactionsTable.setTransferId(transactionId, Data::kNotATransfer);
+    }
+    if (!done) {
+        m_lastError = QStringLiteral("Could not change the transaction.");
+    }
+    return done;
 }
 
 QVector<Data::Transaction> Database::allCategorizedTransactions() const

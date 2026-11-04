@@ -344,6 +344,8 @@ void DbMigrationTest::oldDatabaseIsUpgraded()
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM accounts;")), 2);
     // #206: every account of an old file is in the net worth.
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM accounts WHERE in_net_worth = 1;")), 2);
+    // #207: no row of an old file is a transfer yet.
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE transfer_id <> 0;")), 0);
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM accounts WHERE id = 1 AND name = 'Checking'"
                                   " AND type = 'CCP' AND currency = 'EUR' AND notes = 'main';")), 1);
 

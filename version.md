@@ -51,6 +51,12 @@ builds, source archives). Then CI opens a pull request that merges the release b
   in its dialog, and the accounts outside the net worth show a badge. A move between two
   accounts of the net worth will not count as income or spending. Schema step 8 adds the flag,
   on for every existing account.
+- Internal transfers (#207): a new page, Transactions → Internal Transfers, suggests the moves
+  of money between two accounts of the net worth (a debit and a credit of the same amount, 3
+  days apart or less, found without any bank identifier). Confirm or refuse each one, or all at
+  once; cancel a confirmed transfer. On the transactions page, "✎ Edit" can mark one row as an
+  internal transfer, and these rows show "⇄ Internal transfer" in place of a category. Schema
+  step 9 stores the answer.
 
 ### Fixed
 - The application log no longer shows statement data (#205): the upgrade steps and the import

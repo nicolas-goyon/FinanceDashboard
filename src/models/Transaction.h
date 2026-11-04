@@ -36,6 +36,12 @@ struct Transaction {
                                  // that the import read from the raw text (#202). The
                                  // fingerprint uses it; when empty, it reads the reference
                                  // from `description` (rows saved before #202).
+    // Internal transfer (#207): a move of money between two accounts of the
+    // net worth, not income or spending. 0: not decided; kNotATransfer: the
+    // user said no (the app does not suggest it again); > 0: a transfer. The
+    // two rows of one transfer have the same value (the id of the debit
+    // row); a row without its other side has its own id.
+    int     transferId{0};
     QString fingerprint;       // identity of the row in its statement — see
                                  // TransactionsTable::fingerprints(). Set by the import
                                  // before it filters the rows; empty: insertBatch()
@@ -51,6 +57,13 @@ struct Transaction {
 // The booking date of a row: its confirmation date, else its operation date.
 // The running balance of the bank (balanceAfter) follows the booking order, not
 // the operation date (#36, #133).
+inline constexpr int kNotATransfer = -1;
+
+[[nodiscard]] inline bool isInternalTransfer(const Transaction& transaction)
+{
+    return transaction.transferId > 0;
+}
+
 [[nodiscard]] inline QDate bookingDate(const Transaction& transaction)
 {
     return transaction.confirmationDate.isValid() ? transaction.confirmationDate : transaction.operationDate;
