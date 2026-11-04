@@ -29,7 +29,8 @@
               "title": null,
               "entries": [
                 "The Overview shows real data (#209): the net worth today, its change this month and over 12 months, the savings rate of the month (without the internal transfers), the net worth of the last 12 months by group of accounts (day-to-day, savings, investments), the allocation today and the change of each month. It reads the data again each time the page is shown. The [MOCK] badge is gone from this page.",
-                "Cash Flow shows real data (#210): income and spending of the last 12 months, the 3-month average, the money flow, the spending by category and the biggest expenses of a month, from the accounts of the net worth. The internal transfers are left out: a transfer to the Livret A is not spending. The categories are your own (the stacked bars show the 5 with the most spending, then \"Other\"). The [MOCK] badge is gone from this page."
+                "Cash Flow shows real data (#210): income and spending of the last 12 months, the 3-month average, the money flow, the spending by category and the biggest expenses of a month, from the accounts of the net worth. The internal transfers are left out: a transfer to the Livret A is not spending. The categories are your own (the stacked bars show the 5 with the most spending, then \"Other\"). The [MOCK] badge is gone from this page.",
+                "Savings shows real data (#211): the savings accounts of the net worth (category \"Savings\", or a type such as Livret A, LDDS, LEP, PEL), their total, what was added and the interest of this year, the balance of each account over 12 months, the progress toward the ceiling of each regulated account (Livret A 22 950 €, LDDS 12 000 €, …) and the interest of the last 3 years (the credits that say \"interest\" or \"intérêts\"). The [MOCK] badge is gone from this page."
               ]
             }
           ]

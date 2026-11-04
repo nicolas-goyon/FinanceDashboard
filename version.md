@@ -74,6 +74,12 @@ builds, source archives). Then CI opens a pull request that merges the release b
   the accounts of the net worth. The internal transfers are left out: a transfer to the Livret
   A is not spending. The categories are your own (the stacked bars show the 5 with the most
   spending, then "Other"). The [MOCK] badge is gone from this page.
+- Savings shows real data (#211): the savings accounts of the net worth (category "Savings", or
+  a type such as Livret A, LDDS, LEP, PEL), their total, what was added and the interest of
+  this year, the balance of each account over 12 months, the progress toward the ceiling of
+  each regulated account (Livret A 22 950 €, LDDS 12 000 €, …) and the interest of the last 3
+  years (the credits that say "interest" or "intérêts"). The [MOCK] badge is gone from this
+  page.
 
 ### Fixed
 - The application log no longer shows statement data (#205): the upgrade steps and the import
