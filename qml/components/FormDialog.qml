@@ -19,7 +19,7 @@ Popup {
     modal: true
 
     property string dialogTitle: ""
-    property string saveText: "Save"
+    property string saveText: qsTr("Save")
     property bool saveEnabled: true
     default property alias content: formColumn.data
 
@@ -46,7 +46,7 @@ Popup {
         RowLayout {
             Layout.topMargin: 6
             Item { Layout.fillWidth: true }
-            PillButton { text: "Cancel"; variant: "neutral"; onClicked: root.close() }
+            PillButton { text: qsTr("Cancel"); variant: "neutral"; onClicked: root.close() }
             PillButton {
                 text: root.saveText
                 variant: "primary"

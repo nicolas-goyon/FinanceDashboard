@@ -11,7 +11,7 @@ Item {
 
     property var inputs: []
     property var outputs: []
-    property string centreName: "Budget"
+    property string centreName: qsTr("Budget")
 
     function sum(arr) {
         var t = 0

@@ -45,7 +45,7 @@ Item {
 
             PageHeader {
                 showBack: true
-                title: "Account Types & Categories"
+                title: qsTr("Account Types & Categories")
                 onBackClicked: page.closeRequested()
 
                 // A rename to a name that exists is refused with a message (#34).
@@ -55,12 +55,12 @@ Item {
                     variant: AccountController.statusLevel
                 }
                 PillButton {
-                    text: "＋  Add type"
+                    text: qsTr("＋  Add type")
                     variant: "primary"
                     onClicked: typeDialog.openFor(-1, "")
                 }
                 PillButton {
-                    text: "＋  Add category"
+                    text: qsTr("＋  Add category")
                     variant: "primary"
                     onClicked: categoryDialog.openFor(-1, "", page.defaultNewColor)
                 }
@@ -69,10 +69,10 @@ Item {
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: "Types are the actual banking/financial products an account can be (CCP, Livret A, "
+                text: qsTr("Types are the actual banking/financial products an account can be (CCP, Livret A, "
                     + "Assurance Vie, …). Categories are the usage bucket (Day-to-day, Savings, Investments, "
                     + "Urgent savings, …) and drive the badge color shown on account rows. Both are picked "
-                    + "per-account on Manage Accounts."
+                    + "per-account on Manage Accounts.")
                 font.pixelSize: 14
                 color: Theme.overlay0
             }
@@ -81,7 +81,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: typesCol.implicitHeight + 50
-                title: "Account types (" + AccountController.accountTypes.length + ")"
+                title: qsTr("Account types (%1)").arg(AccountController.accountTypes.length)
 
                 ColumnLayout {
                     id: typesCol
@@ -90,7 +90,7 @@ Item {
 
                     EmptyState {
                         visible: AccountController.accountTypes.length === 0
-                        message: "No account types yet — add one above."
+                        message: qsTr("No account types yet — add one above.")
                     }
 
                     Flow {
@@ -139,7 +139,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: catsCol.implicitHeight + 50
-                title: "Account categories (" + AccountController.accountCategories.length + ")"
+                title: qsTr("Account categories (%1)").arg(AccountController.accountCategories.length)
 
                 ColumnLayout {
                     id: catsCol
@@ -148,7 +148,7 @@ Item {
 
                     EmptyState {
                         visible: AccountController.accountCategories.length === 0
-                        message: "No account categories yet — add one above."
+                        message: qsTr("No account categories yet — add one above.")
                     }
 
                     Flow {
@@ -205,15 +205,15 @@ Item {
     // ── Add / edit type dialog ────────────────────────────────────────────────
     FormDialog {
         id: typeDialog
-        dialogTitle: typeDialog.editIndex < 0 ? "New account type" : "Edit account type"
-        saveText: typeDialog.editIndex < 0 ? "Add" : "Save"
+        dialogTitle: typeDialog.editIndex < 0 ? qsTr("New account type") : qsTr("Edit account type")
+        saveText: typeDialog.editIndex < 0 ? qsTr("Add") : qsTr("Save")
         width: 360
 
         property int editIndex: -1
 
         function openFor(idx, name) { editIndex = idx; typeNameRow.text = name; open() }
 
-        FormRow { id: typeNameRow; label: "Name"; labelWidth: 50; placeholderText: "e.g. PEA" }
+        FormRow { id: typeNameRow; label: qsTr("Name"); labelWidth: 50; placeholderText: qsTr("e.g. PEA") }
 
         onSaveClicked: {
             var trimmed = typeNameRow.text.trim()
@@ -231,15 +231,15 @@ Item {
     // ── Delete type confirmation ──────────────────────────────────────────────
     ConfirmDialog {
         id: deleteTypeDialog
-        dialogTitle: "Delete account type?"
-        confirmText: "Delete"
+        dialogTitle: qsTr("Delete account type?")
+        confirmText: qsTr("Delete")
 
         property int typeIndex: -1
 
         function openFor(idx, name) {
             typeIndex = idx
-            message = "This removes “" + name + "” from the list. Accounts already using "
-                + "it keep the name as plain text. This cannot be undone."
+            message = qsTr("This removes “%1” from the list. Accounts already using "
+                + "it keep the name as plain text. This cannot be undone.").arg(name)
             open()
         }
 
@@ -249,8 +249,8 @@ Item {
     // ── Add / edit category dialog ──────────────────────────────────────────
     FormDialog {
         id: categoryDialog
-        dialogTitle: categoryDialog.editIndex < 0 ? "New account category" : "Edit account category"
-        saveText: categoryDialog.editIndex < 0 ? "Add" : "Save"
+        dialogTitle: categoryDialog.editIndex < 0 ? qsTr("New account category") : qsTr("Edit account category")
+        saveText: categoryDialog.editIndex < 0 ? qsTr("Add") : qsTr("Save")
 
         property int editIndex: -1
 
@@ -261,12 +261,12 @@ Item {
             open()
         }
 
-        FormRow { id: catNameRow; label: "Name"; labelWidth: 50; placeholderText: "e.g. Urgent savings" }
+        FormRow { id: catNameRow; label: qsTr("Name"); labelWidth: 50; placeholderText: qsTr("e.g. Urgent savings") }
 
         ColumnLayout {
             spacing: 8
-            Text { text: "Color"; font.pixelSize: 15; color: Theme.overlay0 }
-            ColorPickerRow { id: colorRow; dialogTitle: "Choose category color" }
+            Text { text: qsTr("Color"); font.pixelSize: 15; color: Theme.overlay0 }
+            ColorPickerRow { id: colorRow; dialogTitle: qsTr("Choose category color") }
         }
 
         onSaveClicked: {
@@ -286,15 +286,15 @@ Item {
     // ── Delete category confirmation ────────────────────────────────────────
     ConfirmDialog {
         id: deleteCategoryDialog
-        dialogTitle: "Delete account category?"
-        confirmText: "Delete"
+        dialogTitle: qsTr("Delete account category?")
+        confirmText: qsTr("Delete")
 
         property int categoryIndex: -1
 
         function openFor(idx, name) {
             categoryIndex = idx
-            message = "This removes “" + name + "” from the list. Accounts already using it "
-                + "keep the name as plain text. This cannot be undone."
+            message = qsTr("This removes “%1” from the list. Accounts already using it "
+                + "keep the name as plain text. This cannot be undone.").arg(name)
             open()
         }
 

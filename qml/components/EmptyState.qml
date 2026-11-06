@@ -6,7 +6,7 @@ import QtQuick
 // Transactions, the import review table). Style was already 100% consistent
 // across every instance — this just removes the copy-paste.
 Text {
-    property string message: "Nothing here yet."
+    property string message: qsTr("Nothing here yet.")
     text: message
     font.pixelSize: 15
     color: Theme.overlay0

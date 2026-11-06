@@ -194,14 +194,14 @@ void AccountController::addAccount(const QString& name, const QString& type, con
     }
     for (const Data::Account& acc : m_accounts) {
         if (acc.name.compare(trimmed, Qt::CaseInsensitive) == 0) {
-            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  An account with this name already exists"));
+            setStatus(StatusMessage::Level::Warning, tr("⚠  An account with this name already exists"));
             return;
         }
     }
 
     const int accountId = Database::instance().addAccount(trimmed, type, category, currency, notes);
     if (accountId < 0) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the account"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not save the account"));
         return;
     }
 
@@ -215,7 +215,7 @@ void AccountController::addAccount(const QString& name, const QString& type, con
 
     m_accounts.append(acc);
     emit accountsChanged();
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account added"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Account added"));
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
@@ -233,13 +233,13 @@ void AccountController::updateAccount(int index, const QString& name, const QStr
     }
     for (int i = 0; i < m_accounts.size(); ++i) {
         if (i != index && m_accounts.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
-            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  An account with this name already exists"));
+            setStatus(StatusMessage::Level::Warning, tr("⚠  An account with this name already exists"));
             return;
         }
     }
 
     if (!Database::instance().updateAccount(m_accounts.at(index).id, trimmed, type, category, currency, notes)) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the account"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not save the account"));
         return;
     }
 
@@ -253,7 +253,7 @@ void AccountController::updateAccount(int index, const QString& name, const QStr
     acc.notes    = notes;
 
     emit accountsChanged();
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account updated"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Account updated"));
 }
 
 void AccountController::removeAccount(int index)
@@ -262,12 +262,12 @@ void AccountController::removeAccount(int index)
         return;
     }
     if (!Database::instance().removeAccount(m_accounts.at(index).id)) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not remove the account"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not remove the account"));
         return;
     }
     m_accounts.removeAt(index);
     emit accountsChanged();
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account removed"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Account removed"));
 }
 
 // NOLINTNEXTLINE(bugprone-easily-swappable-parameters) — Q_INVOKABLE, called
@@ -284,7 +284,7 @@ void AccountController::setInNetWorth(int index, bool inNetWorth)
         return;
     }
     if (!Database::instance().setAccountInNetWorth(acc.id, inNetWorth)) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not change the net worth of the account"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not change the net worth of the account"));
         return;
     }
     acc.inNetWorth = inNetWorth;
@@ -325,13 +325,13 @@ void AccountController::renameAccountCategory(int index, const QString& newName)
     // Same check as addAccountCategory() (#34). A change of case only is a rename.
     for (qsizetype i = 0; i < m_accountCategories.size(); ++i) {
         if (i != index && m_accountCategories.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
-            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  An account category with this name already exists"));
+            setStatus(StatusMessage::Level::Warning, tr("⚠  An account category with this name already exists"));
             return;
         }
     }
     // The rename also reaches the accounts in this category.
     if (!Database::instance().renameAccountCategory(m_accountCategories.at(index).id, trimmed)) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the account category"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not rename the account category"));
         return;
     }
     // index bounds-checked above; QList's at() is const-only, so mutating
@@ -344,7 +344,7 @@ void AccountController::renameAccountCategory(int index, const QString& newName)
     }
     emit accountCategoriesChanged();
     emit accountsChanged();
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account category renamed"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Account category renamed"));
 }
 
 void AccountController::setAccountCategoryColor(int index, const QString& color)
@@ -413,13 +413,13 @@ void AccountController::renameAccountType(int index, const QString& newName)
     // Same check as addAccountType() (#34). A change of case only is a rename.
     for (qsizetype i = 0; i < m_accountTypes.size(); ++i) {
         if (i != index && m_accountTypes.at(i).name.compare(trimmed, Qt::CaseInsensitive) == 0) {
-            setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  An account type with this name already exists"));
+            setStatus(StatusMessage::Level::Warning, tr("⚠  An account type with this name already exists"));
             return;
         }
     }
     // The rename also reaches the accounts of this type.
     if (!Database::instance().renameAccountType(m_accountTypes.at(index).id, trimmed)) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not rename the account type"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not rename the account type"));
         return;
     }
     // index bounds-checked above; QList's at() is const-only, so mutating
@@ -432,7 +432,7 @@ void AccountController::renameAccountType(int index, const QString& newName)
     }
     emit accountTypesChanged();
     emit accountsChanged();
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account type renamed"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Account type renamed"));
 }
 
 void AccountController::removeAccountType(int index)
@@ -452,7 +452,7 @@ QString AccountController::nameOfAccount(int accountId) const
 {
     const auto account = std::find_if(m_accounts.cbegin(), m_accounts.cend(),
                                       [accountId](const Data::Account& candidate) { return candidate.id == accountId; });
-    return account != m_accounts.cend() ? account->name : QStringLiteral("another account");
+    return account != m_accounts.cend() ? account->name : tr("another account");
 }
 
 bool AccountController::linkAccountHash(int accountIndex, const QString& hash)
@@ -468,11 +468,11 @@ bool AccountController::linkAccountHash(int accountIndex, const QString& hash)
     }
     // A tag can be on two accounts (#203): the other accounts keep it.
     if (!Database::instance().linkAccountHash(account.id, hash, QStringLiteral("auto"))) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not link the account"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not link the account"));
         return false;
     }
     reload();
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Account linked"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Account linked"));
     return true;
 }
 
@@ -488,14 +488,14 @@ void AccountController::forgetImportLink(int accountIndex)
     Data::Account& acc = m_accounts[accountIndex]; // NOLINT(cppcoreguidelines-pro-bounds-avoid-unchecked-container-access)
     while (!acc.hashes.isEmpty()) {
         if (!Database::instance().removeAccountHash(acc.hashes.constFirst().id)) {
-            setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not remove the import link"));
+            setStatus(StatusMessage::Level::Danger, tr("⚠  Could not remove the import link"));
             emit accountsChanged();
             return;
         }
         acc.hashes.removeFirst();
     }
     emit accountsChanged();
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Import link removed"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Import link removed"));
 }
 
 bool AccountController::accountHasHash(int accountIndex, const QString& hash) const
@@ -548,11 +548,11 @@ QVariantList AccountController::transactionsForAccount(int accountIndex) const
 bool AccountController::setInternalTransfer(int transactionId, bool on)
 {
     if (!Database::instance().setInternalTransfer(transactionId, on)) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not change the transaction"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not change the transaction"));
         return false;
     }
     setStatus(StatusMessage::Level::Success,
-              on ? QStringLiteral("✓  Internal transfer") : QStringLiteral("✓  Not an internal transfer"));
+              on ? tr("✓  Internal transfer") : tr("✓  Not an internal transfer"));
     return true;
 }
 
@@ -574,7 +574,7 @@ bool AccountController::updateTransaction(int transactionId, const QString& conf
         return false;
     }
     if (!Money::isValid(debit) || !Money::isValid(credit)) {
-        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  The amount is not a number, or it is too large"));
+        setStatus(StatusMessage::Level::Warning, tr("⚠  The amount is not a number, or it is too large"));
         return false;
     }
 
@@ -590,10 +590,10 @@ bool AccountController::updateTransaction(int transactionId, const QString& conf
     tx.subcategory      = subcategory;
 
     if (!Database::instance().updateTransaction(tx)) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the transaction"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not save the transaction"));
         return false;
     }
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Transaction updated"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Transaction updated"));
     return true;
 }
 
@@ -625,19 +625,19 @@ bool AccountController::addBalanceCheckpoint(int accountIndex, const QString& da
     }
     const QDate date = QDate::fromString(dateIso, Qt::ISODate);
     if (!date.isValid()) {
-        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  Invalid date — use yyyy-MM-dd"));
+        setStatus(StatusMessage::Level::Warning, tr("⚠  Invalid date — use yyyy-MM-dd"));
         return false;
     }
     if (!Money::isValid(balance)) {
-        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  The balance is not a number, or it is too large"));
+        setStatus(StatusMessage::Level::Warning, tr("⚠  The balance is not a number, or it is too large"));
         return false;
     }
     const int checkpointId = Database::instance().addBalanceCheckpoint(m_accounts.at(accountIndex).id, date, balance, note);
     if (checkpointId < 0) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the checkpoint"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not save the checkpoint"));
         return false;
     }
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Balance checkpoint added"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Balance checkpoint added"));
     return true;
 }
 
@@ -653,7 +653,7 @@ void AccountController::removeBalanceCheckpoint(int accountIndex, int checkpoint
     if (!Database::instance().removeBalanceCheckpoint(checkpoints.at(checkpointIndex).id)) {
         return;
     }
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Balance checkpoint removed"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Balance checkpoint removed"));
 }
 
 QVariantList AccountController::accountBalanceHistory(int accountIndex) const
@@ -789,7 +789,7 @@ QVariantMap AccountController::accountCategoryBreakdown(int accountIndex) const
     QMap<QString, QMap<QString, qint64>> expenseSubTotals;
 
     for (const Data::Transaction& transaction : txs) {
-        const QString category    = transaction.category.isEmpty() ? QStringLiteral("Uncategorized") : transaction.category;
+        const QString category    = transaction.category.isEmpty() ? tr("Uncategorized") : transaction.category;
         const QString subcategory = transaction.subcategory.isEmpty() ? QStringLiteral("—") : transaction.subcategory;
 
         const qint64 credit = Money::toCents(transaction.credit);

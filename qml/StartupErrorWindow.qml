@@ -22,7 +22,7 @@ ApplicationWindow {
     // The title ends with the name of the app (#130): on Windows and Linux, Qt
     // adds the name (QGuiApplication::applicationDisplayName, set by main.cpp)
     // at the end of a window title that does not end with it.
-    title: "Can't start — " + Application.displayName
+    title: qsTr("Can't start — %1").arg(Application.displayName)
     color: Theme.crust
 
     ColumnLayout {
@@ -32,14 +32,14 @@ ApplicationWindow {
 
         Text {
             Layout.fillWidth: true
-            text: Application.displayName + " can't start"
+            text: qsTr("%1 can't start").arg(Application.displayName)
             color: Theme.red
             font.pixelSize: 22
             font.bold: true
         }
         Text {
             Layout.fillWidth: true
-            text: "One or more requirements below are not met. Fix the ones marked ✘ and start the app again."
+            text: qsTr("One or more requirements below are not met. Fix the ones marked ✘ and start the app again.")
             color: Theme.text
             font.pixelSize: 14
             wrapMode: Text.WordWrap
@@ -85,8 +85,9 @@ ApplicationWindow {
 
                                 Text {
                                     Layout.fillWidth: true
-                                    text: row.modelData.name
-                                          + (!row.modelData.ok && !row.modelData.fatal ? "  (warning)" : "")
+                                    text: !row.modelData.ok && !row.modelData.fatal
+                                          ? qsTr("%1  (warning)").arg(row.modelData.name)
+                                          : row.modelData.name
                                     color: Theme.text
                                     font.pixelSize: 15
                                     font.bold: true
@@ -101,7 +102,7 @@ ApplicationWindow {
                                 Text {
                                     Layout.fillWidth: true
                                     visible: !row.modelData.ok && row.modelData.hint !== ""
-                                    text: "Fix: " + row.modelData.hint
+                                    text: qsTr("Fix: %1").arg(row.modelData.hint)
                                     color: Theme.yellow
                                     font.pixelSize: 13
                                     wrapMode: Text.WordWrap
@@ -115,7 +116,7 @@ ApplicationWindow {
 
         Button {
             Layout.alignment: Qt.AlignRight
-            text: "Quit"
+            text: qsTr("Quit")
             onClicked: Qt.quit()
         }
     }

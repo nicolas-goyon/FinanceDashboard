@@ -23,15 +23,15 @@ Item {
         width: parent.width - 40
         spacing: 12
 
-        PageHeader { title: "Transactions" }
+        PageHeader { title: qsTr("Transactions") }
 
         Text {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: "Use the sidebar actions to work with transactions: \"Import Transactions\" to bring in "
+            text: qsTr("Use the sidebar actions to work with transactions: \"Import Transactions\" to bring in "
                 + "a bank statement file, \"Categories & Subcategories\" to edit the category list used to "
                 + "classify them, or \"View & Edit Transactions\" to see and fix the saved transaction "
-                + "table for any account. Expand this category in the sidebar (the arrow) to see all three."
+                + "table for any account. Expand this category in the sidebar (the arrow) to see all three.")
             font.pixelSize: 15
             color: Theme.overlay0
         }
