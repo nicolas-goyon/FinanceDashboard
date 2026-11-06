@@ -89,6 +89,9 @@ builds, source archives). Then CI opens a pull request that merges the release b
 - The application log no longer shows statement data (#205): the upgrade steps and the import
   log ids and counts, not the descriptions, labels, rule patterns or account names. The tests
   capture the log and check it.
+- The mouse wheel over a wide table scrolls the page again (#224): the import review, the
+  transactions page and the account history. A sideways wheel (Shift + wheel, touchpad) still
+  scrolls the table. New Qt Quick test (qml_test).
 
 ---
 

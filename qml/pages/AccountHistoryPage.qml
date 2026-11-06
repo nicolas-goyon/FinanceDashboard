@@ -722,7 +722,8 @@ Item {
                     implicitHeight: txCol.implicitHeight + 50
                     title: "Transaction history"
 
-                    ScrollView {
+                    // TableScrollView: a vertical wheel over the table scrolls the page.
+                    TableScrollView {
                         anchors.fill: parent
                         ScrollBar.vertical.policy: ScrollBar.AlwaysOff
                         ScrollBar.horizontal.policy: ScrollBar.AsNeeded

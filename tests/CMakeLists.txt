@@ -237,6 +237,23 @@ set_tests_properties(calc_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# qml_test
+#   The QML tests of tests/qml (Qt Quick Test): TableScrollView lets a vertical
+#   wheel over a wide table scroll the page. The tests import the components
+#   by path, so the app module is not needed.
+
+find_package(Qt6 REQUIRED COMPONENTS QuickTest)
+
+qt_add_executable(qml_test qml_test_main.cpp)
+target_link_libraries(qml_test PRIVATE Qt6::QuickTest Qt6::Quick)
+set_target_properties(qml_test PROPERTIES WIN32_EXECUTABLE OFF)
+
+add_test(NAME qml_test COMMAND qml_test -input ${CMAKE_CURRENT_SOURCE_DIR}/qml)
+set_tests_properties(qml_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Every test target, so that CI and a local build need one target name:
 #   cmake --build build --target fd_tests
-add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test db_copy_test update_test calc_test)
+add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test db_copy_test update_test calc_test qml_test)
