@@ -30,10 +30,10 @@ void DatabaseManagementController::resetDatabase()
     if (!Database::instance().resetAll()) {
         // The status says "see application log": the log has the cause (#49).
         qWarning().noquote() << "[DatabaseManagementController] reset failed:" << Database::instance().lastError();
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Reset failed — see application log"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Reset failed — see application log"));
         return;
     }
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Database reset — everything cleared"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Database reset — everything cleared"));
     emit databaseReset();
 }
 
@@ -42,27 +42,27 @@ void DatabaseManagementController::resetToMock()
     if (!Database::instance().resetAll()) {
         // The status says "see application log": the log has the cause (#49).
         qWarning().noquote() << "[DatabaseManagementController] reset failed:" << Database::instance().lastError();
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Reset failed — see application log"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Reset failed — see application log"));
         return;
     }
     if (!seedMockData()) {
         // The reset is done: the pages reload what was written.
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not write all the mock data — see application log"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not write all the mock data — see application log"));
         emit databaseReset();
         return;
     }
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Database reset to mock data"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Database reset to mock data"));
     emit databaseReset();
 }
 
 void DatabaseManagementController::resetCategories()
 {
-    replaceCategories({}, QStringLiteral("✓  Categories removed"));
+    replaceCategories({}, tr("✓  Categories removed"));
 }
 
 void DatabaseManagementController::resetCategoriesToDefaults()
 {
-    replaceCategories(Data::defaultCategories(), QStringLiteral("✓  Categories reset to the defaults"));
+    replaceCategories(Data::defaultCategories(), tr("✓  Categories reset to the defaults"));
 }
 
 void DatabaseManagementController::replaceCategories(const QVector<Data::DefaultCategory>& categories,
@@ -72,14 +72,14 @@ void DatabaseManagementController::replaceCategories(const QVector<Data::Default
     if (!Database::instance().replaceCategories(categories, stats)) {
         qWarning().noquote() << "[DatabaseManagementController] category reset failed:"
                              << Database::instance().lastError();
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Category reset failed — see application log"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Category reset failed — see application log"));
         return;
     }
     QString text = doneText;
     if (stats.uncategorizedTransactions > 0 || stats.removedRules > 0) {
-        text += QStringLiteral(" — %1 transaction(s) uncategorized, %2 rule(s) removed")
-                    .arg(stats.uncategorizedTransactions)
-                    .arg(stats.removedRules);
+        text = tr("%1 — %2 transaction(s) uncategorized, %3 rule(s) removed")
+                   .arg(doneText, QString::number(stats.uncategorizedTransactions),
+                        QString::number(stats.removedRules));
     }
     setStatus(StatusMessage::Level::Success, text);
     emit databaseReset();
@@ -91,10 +91,10 @@ bool DatabaseManagementController::clearTransactionsForAccount(int accountId)
         return false;
     }
     if (!Database::instance().clearTransactionsForAccount(accountId)) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not clear transactions for this account"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not clear transactions for this account"));
         return false;
     }
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Cleared transactions for this account"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Cleared transactions for this account"));
     return true;
 }
 
@@ -119,7 +119,7 @@ QString DatabaseManagementController::prodDatabaseText() const
     }
     const QString path = QDir::toNativeSeparators(m_prodDatabasePath);
     if (!prodDatabaseFound()) {
-        return QStringLiteral("There is no prod database at %1. Start Finance Dashboard once, then come back "
+        return tr("There is no prod database at %1. Start Finance Dashboard once, then come back "
                               "to this page.")
             .arg(path);
     }
@@ -129,7 +129,7 @@ QString DatabaseManagementController::prodDatabaseText() const
     if (wal.exists() && wal.size() > 0 && wal.lastModified() > changed) {
         changed = wal.lastModified();
     }
-    return QStringLiteral("Prod database: %1 — last change on %2")
+    return tr("Prod database: %1 — last change on %2")
         .arg(path, changed.toString(QStringLiteral("yyyy-MM-dd HH:mm")));
 }
 
@@ -148,16 +148,16 @@ void DatabaseManagementController::copyProdDatabase()
     m_copyFailed = !database.replaceWithCopyOf(m_prodDatabasePath, keptPath);
     if (m_copyFailed) {
         m_copyReport = database.lastError();
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  The copy failed — see below"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  The copy failed — see below"));
     } else {
-        m_copyReport = QStringLiteral("The Test app now uses a copy of the prod database.\n\n"
+        m_copyReport = tr("The Test app now uses a copy of the prod database.\n\n"
                                       "The Test data from before the copy is in:\n%1")
                            .arg(QDir::toNativeSeparators(keptPath));
         const QString upgrade = database.upgradeReport();
         if (!upgrade.isEmpty()) {
             m_copyReport += QStringLiteral("\n\n") + upgrade;
         }
-        setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Prod database copied"));
+        setStatus(StatusMessage::Level::Success, tr("✓  Prod database copied"));
     }
     emit copyReportChanged();
     emit prodDatabaseChanged();

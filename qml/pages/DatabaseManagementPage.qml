@@ -66,7 +66,7 @@ Item {
             spacing: 16
 
             PageHeader {
-                title: "Database Management"
+                title: qsTr("Database Management")
 
                 StatusBadge {
                     visible: controller.statusText.length > 0
@@ -80,7 +80,7 @@ Item {
                 visible: page.prodDatabasePath.length > 0
                 Layout.fillWidth: true
                 implicitHeight: copyCol.implicitHeight + 50
-                title: "Test app"
+                title: qsTr("Test app")
 
                 ColumnLayout {
                     id: copyCol
@@ -93,14 +93,14 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Copy my prod database"; font.pixelSize: 16; font.bold: true; color: Theme.text }
+                            Text { text: qsTr("Copy my prod database"); font.pixelSize: 16; font.bold: true; color: Theme.text }
                             Text {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
-                                text: "Replaces the data of this Test app with a copy of the data of Finance Dashboard. "
+                                text: qsTr("Replaces the data of this Test app with a copy of the data of Finance Dashboard. "
                                     + "The prod database is only read: it does not change. If the copy has an older "
                                     + "schema, the Test app upgrades it, as a new version of the prod app would. The "
-                                    + "Test data from before the copy is kept in a file."
+                                    + "Test data from before the copy is kept in a file.")
                                 font.pixelSize: 13
                                 color: Theme.overlay0
                             }
@@ -114,7 +114,7 @@ Item {
                             }
                         }
                         PillButton {
-                            text: "Copy my prod database"
+                            text: qsTr("Copy my prod database")
                             variant: "primary"
                             Layout.preferredHeight: 32
                             enabled: controller.prodDatabaseFound
@@ -137,8 +137,8 @@ Item {
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: "Both actions wipe every table in the local SQLite database. Useful when the schema "
-                    + "changes during development, or to start over. Neither action can be undone."
+                text: qsTr("Both actions wipe every table in the local SQLite database. Useful when the schema "
+                    + "changes during development, or to start over. Neither action can be undone.")
                 font.pixelSize: 15
                 color: Theme.overlay0
             }
@@ -146,7 +146,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: actionsCol.implicitHeight + 50
-                title: "Reset actions"
+                title: qsTr("Reset actions")
 
                 ColumnLayout {
                     id: actionsCol
@@ -159,18 +159,18 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Reset Database"; font.pixelSize: 16; font.bold: true; color: Theme.text }
+                            Text { text: qsTr("Reset Database"); font.pixelSize: 16; font.bold: true; color: Theme.text }
                             Text {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
-                                text: "Clears everything — accounts, categories, hashes, transactions. Starts from a "
-                                    + "completely blank database."
+                                text: qsTr("Clears everything — accounts, categories, hashes, transactions. Starts from a "
+                                    + "completely blank database.")
                                 font.pixelSize: 13
                                 color: Theme.overlay0
                             }
                         }
                         PillButton {
-                            text: "Reset Database"
+                            text: qsTr("Reset Database")
                             variant: "danger"
                             Layout.preferredHeight: 32
                             onClicked: confirmDialog.openFor("reset")
@@ -185,18 +185,18 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Reset to Mock Data"; font.pixelSize: 16; font.bold: true; color: Theme.text }
+                            Text { text: qsTr("Reset to Mock Data"); font.pixelSize: 16; font.bold: true; color: Theme.text }
                             Text {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
-                                text: "Clears everything, then reseeds the default categories, account categories, "
-                                    + "account types, demo accounts, and a few sample transactions."
+                                text: qsTr("Clears everything, then reseeds the default categories, account categories, "
+                                    + "account types, demo accounts, and a few sample transactions.")
                                 font.pixelSize: 13
                                 color: Theme.overlay0
                             }
                         }
                         PillButton {
-                            text: "Reset to Mock Data"
+                            text: qsTr("Reset to Mock Data")
                             variant: "primary"
                             Layout.preferredHeight: 32
                             onClicked: confirmDialog.openFor("mock")
@@ -211,7 +211,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: categoryActionsCol.implicitHeight + 50
-                title: "Categories"
+                title: qsTr("Categories")
 
                 ColumnLayout {
                     id: categoryActionsCol
@@ -224,18 +224,18 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Reset categories to the defaults"; font.pixelSize: 16; font.bold: true; color: Theme.text }
+                            Text { text: qsTr("Reset categories to the defaults"); font.pixelSize: 16; font.bold: true; color: Theme.text }
                             Text {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
-                                text: "Removes every category and subcategory, then adds back the default ones "
-                                    + "(income, housing, subscriptions, investments…). Accounts and transactions stay."
+                                text: qsTr("Removes every category and subcategory, then adds back the default ones "
+                                    + "(income, housing, subscriptions, investments…). Accounts and transactions stay.")
                                 font.pixelSize: 13
                                 color: Theme.overlay0
                             }
                         }
                         PillButton {
-                            text: "Reset to defaults"
+                            text: qsTr("Reset to defaults")
                             variant: "primary"
                             Layout.preferredHeight: 32
                             onClicked: confirmDialog.openFor("categoryDefaults")
@@ -250,18 +250,18 @@ Item {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            Text { text: "Remove all categories"; font.pixelSize: 16; font.bold: true; color: Theme.text }
+                            Text { text: qsTr("Remove all categories"); font.pixelSize: 16; font.bold: true; color: Theme.text }
                             Text {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
-                                text: "Removes every category and subcategory, to build your own list. Accounts "
-                                    + "and transactions stay; the transactions become uncategorized."
+                                text: qsTr("Removes every category and subcategory, to build your own list. Accounts "
+                                    + "and transactions stay; the transactions become uncategorized.")
                                 font.pixelSize: 13
                                 color: Theme.overlay0
                             }
                         }
                         PillButton {
-                            text: "Remove all"
+                            text: qsTr("Remove all")
                             variant: "danger"
                             Layout.preferredHeight: 32
                             onClicked: confirmDialog.openFor("categories")
@@ -280,7 +280,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: cleanupCol.implicitHeight + 50
-                title: "Per-account cleanup"
+                title: qsTr("Per-account cleanup")
 
                 ColumnLayout {
                     id: cleanupCol
@@ -290,15 +290,15 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
-                        text: "Remove data for a single account instead of resetting the whole database. Both "
-                            + "actions below are irreversible."
+                        text: qsTr("Remove data for a single account instead of resetting the whole database. Both "
+                            + "actions below are irreversible.")
                         font.pixelSize: 13
                         color: Theme.overlay0
                     }
 
                     EmptyState {
                         visible: AccountController.accounts.length === 0
-                        message: "No accounts yet."
+                        message: qsTr("No accounts yet.")
                     }
 
                     RowLayout {
@@ -316,7 +316,7 @@ Item {
                         Item { Layout.fillWidth: true }
 
                         PillButton {
-                            text: "Clear transactions"
+                            text: qsTr("Clear transactions")
                             variant: "neutral"
                             Layout.preferredHeight: 32
                             enabled: cleanupAccountBox.currentIndex >= 0
@@ -324,7 +324,7 @@ Item {
                             onClicked: clearTransactionsDialog.openFor(cleanupAccountBox.currentIndex)
                         }
                         PillButton {
-                            text: "Delete account"
+                            text: qsTr("Delete account")
                             variant: "danger"
                             Layout.preferredHeight: 32
                             enabled: cleanupAccountBox.currentIndex >= 0
@@ -342,8 +342,8 @@ Item {
     // ── Clear transactions confirmation ───────────────────────────────────────
     ConfirmDialog {
         id: clearTransactionsDialog
-        dialogTitle: "Clear transactions?"
-        confirmText: "Clear transactions"
+        dialogTitle: qsTr("Clear transactions?")
+        confirmText: qsTr("Clear transactions")
         width: 380
 
         // The id, not the index: the list can change while the dialog is open (#67).
@@ -354,9 +354,9 @@ Item {
             if (!acc)
                 return
             accountId = acc.id
-            message = "This permanently deletes every saved transaction for “" + acc.name
-                + "”. The account itself, its hashes, and its balance checkpoints are kept. "
-                + "This cannot be undone."
+            message = qsTr("This permanently deletes every saved transaction for “%1”. "
+                + "The account itself, its hashes, and its balance checkpoints are kept. "
+                + "This cannot be undone.").arg(acc.name)
             open()
         }
 
@@ -369,8 +369,8 @@ Item {
     // ── Delete account confirmation ───────────────────────────────────────────
     ConfirmDialog {
         id: deleteAccountDialog
-        dialogTitle: "Delete account?"
-        confirmText: "Delete"
+        dialogTitle: qsTr("Delete account?")
+        confirmText: qsTr("Delete")
         width: 380
 
         // The id, not the index: removeAccount() takes an index, and the list can
@@ -383,8 +383,8 @@ Item {
             if (!acc)
                 return
             accountId = acc.id
-            message = "This permanently deletes “" + acc.name + "”, all of its stored hash links, "
-                + "balance checkpoints, and saved transactions. This cannot be undone."
+            message = qsTr("This permanently deletes “%1”, all of its stored hash links, "
+                + "balance checkpoints, and saved transactions. This cannot be undone.").arg(acc.name)
             open()
         }
 
@@ -403,11 +403,11 @@ Item {
     ConfirmDialog {
         id: copyDialog
         width: 400
-        dialogTitle: "Copy the prod database?"
-        message: "The data of this Test app is replaced with a copy of the prod database. The prod "
+        dialogTitle: qsTr("Copy the prod database?")
+        message: qsTr("The data of this Test app is replaced with a copy of the prod database. The prod "
             + "database does not change. The Test data from before is kept in a file next to the "
-            + "Test database."
-        confirmText: "Copy"
+            + "Test database.")
+        confirmText: qsTr("Copy")
         confirmVariant: "primary"
         onConfirmed: controller.copyProdDatabase()
     }
@@ -422,24 +422,24 @@ Item {
         function openFor(m) {
             mode = m
             if (m === "reset") {
-                dialogTitle = "Reset the database?"
-                message = "This permanently deletes every account, category, hash, and transaction. This cannot be undone."
-                confirmText = "Reset"
+                dialogTitle = qsTr("Reset the database?")
+                message = qsTr("This permanently deletes every account, category, hash, and transaction. This cannot be undone.")
+                confirmText = qsTr("Reset")
             } else if (m === "mock") {
-                dialogTitle = "Reset to mock data?"
-                message = "This permanently deletes everything currently stored, then reloads the default demo data. This cannot be undone."
-                confirmText = "Reset to mock"
+                dialogTitle = qsTr("Reset to mock data?")
+                message = qsTr("This permanently deletes everything currently stored, then reloads the default demo data. This cannot be undone.")
+                confirmText = qsTr("Reset to mock")
             } else if (m === "categoryDefaults") {
-                dialogTitle = "Reset the categories to the defaults?"
-                message = "Every category and subcategory is replaced with the default ones. A transaction keeps its "
+                dialogTitle = qsTr("Reset the categories to the defaults?")
+                message = qsTr("Every category and subcategory is replaced with the default ones. A transaction keeps its "
                     + "category when a default category has the same name; the others become uncategorized. "
-                    + "The learned rules of a removed category are deleted. This cannot be undone."
-                confirmText = "Reset to defaults"
+                    + "The learned rules of a removed category are deleted. This cannot be undone.")
+                confirmText = qsTr("Reset to defaults")
             } else {
-                dialogTitle = "Remove all categories?"
-                message = "Every category and subcategory is deleted. All transactions become uncategorized, and the "
-                    + "learned category rules are deleted. Accounts and transactions stay. This cannot be undone."
-                confirmText = "Remove all"
+                dialogTitle = qsTr("Remove all categories?")
+                message = qsTr("Every category and subcategory is deleted. All transactions become uncategorized, and the "
+                    + "learned category rules are deleted. Accounts and transactions stay. This cannot be undone.")
+                confirmText = qsTr("Remove all")
             }
             open()
         }
