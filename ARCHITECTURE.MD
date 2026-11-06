@@ -174,6 +174,11 @@ database, the files and the logs must see nothing more than the user sees in the
   taxes…) and their subcategories. The first run, the mock data and the category resets use it.
 - The names are translated at the time of the write (context `DefaultCategories`). After that
   they are data: a change of language does not rename them.
+- The Database Management page has two category resets: "Reset to defaults" and "Remove all"
+  (`Database::replaceCategories()`, one SQL transaction). The accounts and the transactions
+  stay. A transaction keeps its category when a category of that name is in the new list, and
+  its subcategory when that category has it. Else it gets no category. A rule of a removed
+  category is deleted.
 - A subcategory gets a shade of the colour of its category: the same hue, another HSL
   lightness, from 95 to 215, and no two shades the same.
 
@@ -412,7 +417,7 @@ reason.
 | Categories, accounts, account types | `src/controllers/dataentry/CategoryController.h`, `AccountController.h` |
 | Net worth, internal transfers, Overview | `src/controllers/common/NetWorthScope.h`, `src/calc/NetWorthCalc.h`, `src/controllers/overview/NetWorthController.h`, `AccountController.h` (`setInNetWorth()`), `src/controllers/dataentry/TransfersController.h`, `src/calc/TransferMatcher.h`, `qml/pages/InternalTransfersPage.qml` |
 | Database, schema, upgrades | `src/db/Database.h`, `src/db/tables/` |
-| Database management (reset, demo data, clean-up) | `src/controllers/database/DatabaseManagementController.h` |
+| Database management (reset, demo data, category resets, clean-up) | `src/controllers/database/DatabaseManagementController.h` |
 | Update check and installation | `src/controllers/updates/UpdateController.h`, `UpdateInstaller.h`, `src/update/`, `packaging/windows/update-restart.iss`, `README.md` § Updates |
 | Start-up checks and the launcher | `src/startup/StartupChecks.h`, `launcher/` |
 | Docker build and requirement check | `README.md` § Building with Docker, `.env.example` |

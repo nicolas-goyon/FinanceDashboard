@@ -19,6 +19,8 @@
 #include <QLatin1Char>
 #include <QLatin1String>
 #include <QSet>
+
+#include <tuple>
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QString>
@@ -1965,6 +1967,121 @@ bool Database::writeDefaults(Defaults set, const std::function<bool()>& write)
 bool Database::recordDefaults(Defaults set)
 {
     return m_settingsTable.setValue(defaultsKey(set), QStringLiteral("1"));
+}
+
+bool Database::replaceCategories(const QVector<Data::DefaultCategory>& categories, CategoryResetStats& stats)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    stats = CategoryResetStats{};
+
+    // The names that stay, with their subcategories.
+    QHash<QString, QSet<QString>> kept;
+    for (const Data::DefaultCategory& category : categories) {
+        QSet<QString>& subs = kept[category.name];
+        for (const Data::DefaultSubcategory& sub : category.subcategories) {
+            subs.insert(sub.name);
+        }
+    }
+    // The category and subcategory of a row after the reset.
+    const auto after = [&kept](const QString& category, const QString& subcategory) {
+        const auto found = kept.constFind(category);
+        if (found == kept.cend()) {
+            return std::pair<QString, QString>{QString(), QString()};
+        }
+        return std::pair<QString, QString>{category, found->contains(subcategory) ? subcategory : QString()};
+    };
+
+    return inTransaction(QStringLiteral("replaceCategories"), [&]() {
+        QSqlQuery query(m_db);
+        if (!query.exec(QStringLiteral("DELETE FROM subcategories;")) || !query.exec(QStringLiteral("DELETE FROM categories;"))) {
+            m_lastError = sqlText(query.lastError());
+            return false;
+        }
+        for (const Data::DefaultCategory& category : categories) {
+            const int id = m_categoriesTable.insert(category.name, category.color);
+            if (id < 0) {
+                m_lastError = QStringLiteral("Could not add the category.");
+                return false;
+            }
+            for (const Data::DefaultSubcategory& sub : category.subcategories) {
+                if (m_subcategoriesTable.insert(id, sub.name, sub.color) < 0) {
+                    m_lastError = QStringLiteral("Could not add the subcategory.");
+                    return false;
+                }
+            }
+        }
+
+        // The transactions: one UPDATE for each pair (category, subcategory).
+        QVector<std::pair<QString, QString>> pairs;
+        if (!query.exec(QStringLiteral("SELECT DISTINCT category, subcategory FROM transactions "
+                                       "WHERE category <> '' OR subcategory <> '';"))) {
+            m_lastError = sqlText(query.lastError());
+            return false;
+        }
+        while (query.next()) {
+            pairs.append({query.value(0).toString(), query.value(1).toString()});
+        }
+        query.finish();
+        QSqlQuery update(m_db);
+        if (!update.prepare(QStringLiteral("UPDATE transactions SET category = ?, subcategory = ? "
+                                           "WHERE category = ? AND subcategory = ?;"))) {
+            m_lastError = sqlText(update.lastError());
+            return false;
+        }
+        for (const auto& [category, subcategory] : std::as_const(pairs)) {
+            const auto [newCategory, newSubcategory] = after(category, subcategory);
+            if (newCategory == category && newSubcategory == subcategory) {
+                continue;
+            }
+            update.addBindValue(Sql::text(newCategory));
+            update.addBindValue(Sql::text(newSubcategory));
+            update.addBindValue(Sql::text(category));
+            update.addBindValue(Sql::text(subcategory));
+            if (!update.exec()) {
+                m_lastError = sqlText(update.lastError());
+                return false;
+            }
+            if (newCategory.isEmpty()) {
+                stats.uncategorizedTransactions += update.numRowsAffected();
+            }
+        }
+
+        // The category rules.
+        QVector<std::tuple<int, QString, QString>> rules;
+        if (!query.exec(QStringLiteral("SELECT id, category, subcategory FROM category_rules;"))) {
+            m_lastError = sqlText(query.lastError());
+            return false;
+        }
+        while (query.next()) {
+            rules.append({query.value(0).toInt(), query.value(1).toString(), query.value(2).toString()});
+        }
+        query.finish();
+        QSqlQuery remove(m_db);
+        QSqlQuery fix(m_db);
+        if (!remove.prepare(QStringLiteral("DELETE FROM category_rules WHERE id = ?;"))
+            || !fix.prepare(QStringLiteral("UPDATE category_rules SET subcategory = '' WHERE id = ?;"))) {
+            m_lastError = sqlText(remove.lastError());
+            return false;
+        }
+        for (const auto& [id, category, subcategory] : std::as_const(rules)) {
+            const auto [newCategory, newSubcategory] = after(category, subcategory);
+            if (newCategory.isEmpty()) {
+                remove.addBindValue(id);
+                if (!remove.exec()) {
+                    m_lastError = sqlText(remove.lastError());
+                    return false;
+                }
+                ++stats.removedRules;
+            } else if (newSubcategory != subcategory) {
+                fix.addBindValue(id);
+                if (!fix.exec()) {
+                    m_lastError = sqlText(fix.lastError());
+                    return false;
+                }
+            }
+        }
+        return true;
+    });
 }
 
 bool Database::resetAll()

@@ -205,6 +205,71 @@ Item {
                 }
             }
 
+            // ── Category resets — the categories only; the accounts and the
+            //    transactions stay (DatabaseManagementController::
+            //    resetCategories(), Database::replaceCategories()).
+            ChartCard {
+                Layout.fillWidth: true
+                implicitHeight: categoryActionsCol.implicitHeight + 50
+                title: "Categories"
+
+                ColumnLayout {
+                    id: categoryActionsCol
+                    anchors.fill: parent
+                    spacing: 16
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 16
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text { text: "Reset categories to the defaults"; font.pixelSize: 16; font.bold: true; color: Theme.text }
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                text: "Removes every category and subcategory, then adds back the default ones "
+                                    + "(income, housing, subscriptions, investments…). Accounts and transactions stay."
+                                font.pixelSize: 13
+                                color: Theme.overlay0
+                            }
+                        }
+                        PillButton {
+                            text: "Reset to defaults"
+                            variant: "primary"
+                            Layout.preferredHeight: 32
+                            onClicked: confirmDialog.openFor("categoryDefaults")
+                        }
+                    }
+
+                    Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: Theme.surface0 }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 16
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text { text: "Remove all categories"; font.pixelSize: 16; font.bold: true; color: Theme.text }
+                            Text {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                text: "Removes every category and subcategory, to build your own list. Accounts "
+                                    + "and transactions stay; the transactions become uncategorized."
+                                font.pixelSize: 13
+                                color: Theme.overlay0
+                            }
+                        }
+                        PillButton {
+                            text: "Remove all"
+                            variant: "danger"
+                            Layout.preferredHeight: 32
+                            onClicked: confirmDialog.openFor("categories")
+                        }
+                    }
+                }
+            }
+
             // ── Per-account cleanup — remove specific data instead of wiping
             //    everything (see ARCHITECTURE.MD § Database Management). "Clear
             //    transactions" leaves the account/hashes/checkpoints in place;
@@ -347,28 +412,47 @@ Item {
         onConfirmed: controller.copyProdDatabase()
     }
 
-    // ── Confirmation dialog (shared by both actions) ──────────────────────────
+    // ── Confirmation dialog (shared by the four actions) ─────────────────────
     ConfirmDialog {
         id: confirmDialog
         width: 380
 
-        property string mode: "reset" // "reset" | "mock"
+        property string mode: "reset" // "reset" | "mock" | "categories" | "categoryDefaults"
 
         function openFor(m) {
             mode = m
-            dialogTitle = m === "reset" ? "Reset the database?" : "Reset to mock data?"
-            message = m === "reset"
-                ? "This permanently deletes every account, category, hash, and transaction. This cannot be undone."
-                : "This permanently deletes everything currently stored, then reloads the default demo data. This cannot be undone."
-            confirmText = m === "reset" ? "Reset" : "Reset to mock"
+            if (m === "reset") {
+                dialogTitle = "Reset the database?"
+                message = "This permanently deletes every account, category, hash, and transaction. This cannot be undone."
+                confirmText = "Reset"
+            } else if (m === "mock") {
+                dialogTitle = "Reset to mock data?"
+                message = "This permanently deletes everything currently stored, then reloads the default demo data. This cannot be undone."
+                confirmText = "Reset to mock"
+            } else if (m === "categoryDefaults") {
+                dialogTitle = "Reset the categories to the defaults?"
+                message = "Every category and subcategory is replaced with the default ones. A transaction keeps its "
+                    + "category when a default category has the same name; the others become uncategorized. "
+                    + "The learned rules of a removed category are deleted. This cannot be undone."
+                confirmText = "Reset to defaults"
+            } else {
+                dialogTitle = "Remove all categories?"
+                message = "Every category and subcategory is deleted. All transactions become uncategorized, and the "
+                    + "learned category rules are deleted. Accounts and transactions stay. This cannot be undone."
+                confirmText = "Remove all"
+            }
             open()
         }
 
         onConfirmed: {
             if (mode === "reset")
                 controller.resetDatabase()
-            else
+            else if (mode === "mock")
                 controller.resetToMock()
+            else if (mode === "categoryDefaults")
+                controller.resetCategoriesToDefaults()
+            else
+                controller.resetCategories()
         }
     }
 }
