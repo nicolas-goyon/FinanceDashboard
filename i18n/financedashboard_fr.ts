@@ -125,6 +125,73 @@
         </message>
     </context>
     <context>
+        <name>AccountFormDialog</name>
+        <message>
+            <source>New account</source>
+            <translation>Nouveau compte</translation>
+        </message>
+        <message>
+            <source>Edit account</source>
+            <translation>Modifier le compte</translation>
+        </message>
+        <message>
+            <source>Add</source>
+            <translation>Ajouter</translation>
+        </message>
+        <message>
+            <source>Save</source>
+            <translation>Enregistrer</translation>
+        </message>
+        <message>
+            <source>%1 (kept)</source>
+            <translation>%1 (conservé)</translation>
+        </message>
+        <message>
+            <source>(none)</source>
+            <translation>(aucun)</translation>
+        </message>
+        <message>
+            <source>Name</source>
+            <translation>Nom</translation>
+        </message>
+        <message>
+            <source>e.g. Livret Jeune</source>
+            <translation>ex. Livret Jeune</translation>
+        </message>
+        <message>
+            <source>Type</source>
+            <translation>Type</translation>
+        </message>
+        <message>
+            <source>There is no account type. The account is saved without a type. To add types, go to Account Management → "Account types &amp; categories".</source>
+            <translation>Il n'y a aucun type de compte. Le compte est enregistré sans type. Pour ajouter des types, allez dans Gestion des comptes → « Types et catégories de compte ».</translation>
+        </message>
+        <message>
+            <source>Category</source>
+            <translation>Catégorie</translation>
+        </message>
+        <message>
+            <source>Currency</source>
+            <translation>Devise</translation>
+        </message>
+        <message>
+            <source>Notes</source>
+            <translation>Notes</translation>
+        </message>
+        <message>
+            <source>optional</source>
+            <translation>facultatif</translation>
+        </message>
+        <message>
+            <source>Part of my net worth</source>
+            <translation>Inclus dans mon patrimoine</translation>
+        </message>
+        <message>
+            <source>Turn it off for an account that you only follow (a joint account, the account of a child): the money that goes to it then counts as spending.</source>
+            <translation>Désactivez-le pour un compte que vous suivez seulement (un compte joint, le compte d'un enfant) : l'argent qui y est versé compte alors comme une dépense.</translation>
+        </message>
+    </context>
+    <context>
         <name>AccountHistoryPage</name>
         <message>
             <source>Category</source>
@@ -591,68 +658,12 @@
             <translation>＋ Ajouter un point de solde</translation>
         </message>
         <message>
-            <source>New account</source>
-            <translation>Nouveau compte</translation>
-        </message>
-        <message>
-            <source>Edit account</source>
-            <translation>Modifier le compte</translation>
-        </message>
-        <message>
             <source>Add</source>
             <translation>Ajouter</translation>
         </message>
         <message>
-            <source>Save</source>
-            <translation>Enregistrer</translation>
-        </message>
-        <message>
-            <source>%1 (kept)</source>
-            <translation>%1 (conservé)</translation>
-        </message>
-        <message>
-            <source>(none)</source>
-            <translation>(aucun)</translation>
-        </message>
-        <message>
-            <source>Name</source>
-            <translation>Nom</translation>
-        </message>
-        <message>
-            <source>e.g. Livret Jeune</source>
-            <translation>ex. Livret Jeune</translation>
-        </message>
-        <message>
-            <source>Type</source>
-            <translation>Type</translation>
-        </message>
-        <message>
-            <source>There is no account type. The account is saved without a type. To add types, go to Account Management → "Account types &amp; categories".</source>
-            <translation>Il n'y a aucun type de compte. Le compte est enregistré sans type. Pour ajouter des types, allez dans Gestion des comptes → « Types et catégories de compte ».</translation>
-        </message>
-        <message>
-            <source>Category</source>
-            <translation>Catégorie</translation>
-        </message>
-        <message>
-            <source>Currency</source>
-            <translation>Devise</translation>
-        </message>
-        <message>
-            <source>Notes</source>
-            <translation>Notes</translation>
-        </message>
-        <message>
             <source>optional</source>
             <translation>facultatif</translation>
-        </message>
-        <message>
-            <source>Part of my net worth</source>
-            <translation>Inclus dans mon patrimoine</translation>
-        </message>
-        <message>
-            <source>Turn it off for an account that you only follow (a joint account, the account of a child): the money that goes to it then counts as spending.</source>
-            <translation>Désactivez-le pour un compte que vous suivez seulement (un compte joint, le compte d'un enfant) : l'argent qui y est versé compte alors comme une dépense.</translation>
         </message>
         <message>
             <source>Delete account?</source>
@@ -1996,6 +2007,14 @@ Les données de test d'avant la copie se trouvent dans :
         <message>
             <source>⚠ no automatic match — please pick the account</source>
             <translation>⚠ aucune correspondance automatique — choisissez le compte</translation>
+        </message>
+        <message>
+            <source>⚠ no account yet — create one</source>
+            <translation>⚠ aucun compte pour l'instant — créez-en un</translation>
+        </message>
+        <message>
+            <source>＋ New account</source>
+            <translation>＋ Nouveau compte</translation>
         </message>
         <message>
             <source>⚠ Not linked yet — Save links it</source>

@@ -428,9 +428,18 @@ Item {
                             }
                             Text {
                                 visible: page.matchedAccountIndex < 0
-                                text: qsTr("⚠ no automatic match — please pick the account")
+                                text: AccountController.accounts.length > 0
+                                      ? qsTr("⚠ no automatic match — please pick the account")
+                                      : qsTr("⚠ no account yet — create one")
                                 font.pixelSize: 13
                                 color: Theme.yellow
+                            }
+                            // No account fits the statement: create it here,
+                            // and it becomes the target account.
+                            GhostButton {
+                                visible: page.matchedAccountIndex < 0
+                                text: qsTr("＋ New account")
+                                onClicked: newAccountDialog.openForNew()
                             }
                         }
 
@@ -1360,5 +1369,13 @@ Item {
                 }
             }
         }
+    }
+
+    // ── New account from the review ──────────────────────────────────────────
+    // The same form as Manage Accounts. The new account becomes the target
+    // account; Save links the tag of the statement to it, as for any account.
+    AccountFormDialog {
+        id: newAccountDialog
+        onAccountAdded: (index) => page.selectAccountIndex(index)
     }
 }
