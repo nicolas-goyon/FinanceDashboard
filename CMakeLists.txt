@@ -264,6 +264,7 @@ qt_add_qml_module(FinanceDashboard
         qml/components/PillButton.qml
         qml/components/GhostButton.qml
         qml/components/StatusBadge.qml
+        qml/components/TableScrollView.qml
         qml/components/ColumnHeaderCell.qml
         qml/components/FormRow.qml
         qml/components/ColorPickerRow.qml

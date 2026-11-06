@@ -179,7 +179,8 @@ rounded to the cent and the account tags), `db_copy_test`
 (the copy of the prod database in the Test app), `update_test` (the versions, the update check and
 the installation, with a local test server instead of GitHub, and the QML engine that reads no
 file from the network) and `calc_test` (the calculations behind the texts and charts of the pages,
-the money format and the whole cents of `Money`).
+the money format and the whole cents of `Money`) and `qml_test` (the QML components, with Qt Quick
+Test: a wheel over a wide table scrolls the page).
 `cmake --build build --target fd_tests` builds only the tests. The release tools have their own
 tests: `python -m unittest discover -s tools -p "test_*.py"`.
 

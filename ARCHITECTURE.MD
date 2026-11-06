@@ -32,6 +32,8 @@ qml/Main.qml          The window, the sidebar and the navigation (currentViewId)
 qml/pages/            One file for each page. Display only.
 qml/components/       Shared QML components (ChartCard, PillButton, FormDialog, HoverPoint, …).
 qml/components/Theme.qml  Every colour of the QML (a singleton, `Theme.<name>`).
+qml/components/TableScrollView.qml  The ScrollView of a wide table in a page: a vertical wheel
+                      scrolls the page, a sideways wheel scrolls the table.
 src/controllers/      One subfolder for each domain. One controller class for each page.
 src/controllers/ui/   QML singletons with no page, for example Fonts (the fixed-pitch font).
 src/db/               Database (connection, transactions, upgrades) and tables/ (one class per table).
@@ -44,6 +46,7 @@ src/update/           Release list, versions and SHA256SUMS parsing, with no net
 src/startup/          Start-up checks (StartupChecks) and the QML network block (LocalOnlyNetwork).
 src/utils/            Money, AccountHashing and other helpers.
 tests/                The CTest suites. tests/CMakeLists.txt has one comment for each test.
+tests/qml/            The QML tests (Qt Quick Test, run by qml_test).
 tools/                version.py, release_flow.py, Docker wrappers, requirement checks, analyzers.
 launcher/             The start-up launcher (Windows exe, Linux script).
 packaging/            Icon, Linux metadata, Windows setup, AppImage and .deb scripts.

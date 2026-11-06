@@ -524,7 +524,8 @@ Item {
                         // The columns need more width than the card has at the default window
                         // size (1280 px), so the header and the rows scroll horizontally (#60).
                         // The rows fill the card when it is wider than the columns.
-                        ScrollView {
+                        // TableScrollView: a vertical wheel over the table scrolls the page.
+                        TableScrollView {
                             id: txScroll
                             Layout.fillWidth: true
                             // The layout gives the width, and the table scrolls in it. The
