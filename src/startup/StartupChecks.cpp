@@ -2,6 +2,7 @@
 
 #include "db/Database.h"
 
+#include <QCoreApplication>
 #include <QDir>
 #include <QStandardPaths>
 #include <QVariantMap>
@@ -53,10 +54,10 @@ QList<StartupStep> StartupChecks::runInitialization(QString& dbPath)
     dbPath = databasePath();
 
     StartupStep folder;
-    folder.name   = QStringLiteral("Data folder");
+    folder.name   = QCoreApplication::translate("StartupChecks", "Data folder");
     folder.ok     = QDir().mkpath(dbDir);
     folder.detail = dbDir;
-    folder.hint   = QStringLiteral("Check that this folder can be created and written to.");
+    folder.hint   = QCoreApplication::translate("StartupChecks", "Check that this folder can be created and written to.");
     steps.append(folder);
 
     // ── Database ─────────────────────────────────────────────────────────────
@@ -64,27 +65,27 @@ QList<StartupStep> StartupChecks::runInitialization(QString& dbPath)
     // dashboard without its database would only show empty pages and hide
     // the cause.
     StartupStep db;
-    db.name   = QStringLiteral("Database");
+    db.name   = QCoreApplication::translate("StartupChecks", "Database");
     db.fatal  = true;
     db.ok     = Database::instance().open(dbPath);
     db.detail = db.ok ? dbPath
                       : dbPath + QStringLiteral(" — ") + Database::instance().lastError();
     switch (Database::instance().openError()) {
     case Database::OpenError::NewerSchema:
-        db.hint = QStringLiteral("A newer version of the app saved this file. Install that version or a "
-                                 "later one. The file was not changed.");
+        db.hint = QCoreApplication::translate("StartupChecks", "A newer version of the app saved this file. Install that version or a "
+                                                               "later one. The file was not changed.");
         break;
     case Database::OpenError::UpgradeFailed:
-        db.hint = QStringLiteral("The file was not changed. If the disk is full, free some space, then "
-                                 "start the app again. If the upgrade fails again, send the application "
-                                 "log to the maintainer.");
+        db.hint = QCoreApplication::translate("StartupChecks", "The file was not changed. If the disk is full, free some space, then "
+                                                               "start the app again. If the upgrade fails again, send the application "
+                                                               "log to the maintainer.");
         break;
     case Database::OpenError::None:
     case Database::OpenError::CannotOpen:
-        db.hint = QStringLiteral("Check that the data folder above can be written to. If the file is "
-                                 "damaged, move it out of the folder (the app then starts with an empty "
-                                 "database), or put back a copy (finance_dashboard.backup-<date>.db, "
-                                 "renamed to finance_dashboard.db).");
+        db.hint = QCoreApplication::translate("StartupChecks", "Check that the data folder above can be written to. If the file is "
+                                                               "damaged, move it out of the folder (the app then starts with an empty "
+                                                               "database), or put back a copy (finance_dashboard.backup-<date>.db, "
+                                                               "renamed to finance_dashboard.db).");
         break;
     }
     steps.append(db);
@@ -95,7 +96,7 @@ QList<StartupStep> StartupChecks::runInitialization(QString& dbPath)
     const QString upgrade = Database::instance().upgradeReport();
     if (db.ok && !upgrade.isEmpty()) {
         StartupStep step;
-        step.name   = QStringLiteral("Database upgrade");
+        step.name   = QCoreApplication::translate("StartupChecks", "Database upgrade");
         step.ok     = true;
         step.detail = upgrade;
         steps.append(step);

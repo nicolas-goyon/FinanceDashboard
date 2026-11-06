@@ -257,3 +257,18 @@ set_tests_properties(qml_test PROPERTIES
 # Every test target, so that CI and a local build need one target name:
 #   cmake --build build --target fd_tests
 add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test db_copy_test update_test calc_test qml_test)
+
+# translations_test
+#   Every text of the app has a French translation: lupdate reads the sources
+#   into a copy of i18n/financedashboard_fr.ts, and the test fails when a
+#   message has no translation (a new qsTr()/tr() text that nobody translated).
+find_package(Qt6 REQUIRED COMPONENTS LinguistTools)
+add_test(NAME translations_test
+    COMMAND ${CMAKE_COMMAND}
+        -DLUPDATE=$<TARGET_FILE:Qt6::lupdate>
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DTS=${CMAKE_SOURCE_DIR}/i18n/financedashboard_fr.ts
+        -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/translations_test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_translations.cmake
+)
+set_tests_properties(translations_test PROPERTIES TIMEOUT 120)

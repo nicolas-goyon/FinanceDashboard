@@ -33,11 +33,11 @@ Item {
             spacing: 16
 
             PageHeader {
-                title: "Updates"
+                title: qsTr("Updates")
 
                 StatusBadge {
                     visible: UpdateController.updateAvailable
-                    text: "Version " + UpdateController.latestVersion + " available"
+                    text: qsTr("Version %1 available").arg(UpdateController.latestVersion)
                     variant: "success"
                 }
             }
@@ -46,7 +46,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: appCol.implicitHeight + 50
-                title: "This app"
+                title: qsTr("This app")
 
                 ColumnLayout {
                     id: appCol
@@ -56,7 +56,7 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
-                        text: Application.displayName + " — version " + UpdateController.currentVersion
+                        text: qsTr("%1 — version %2").arg(Application.displayName).arg(UpdateController.currentVersion)
                         font.pixelSize: 16
                         font.bold: true
                         color: Theme.text
@@ -66,7 +66,7 @@ Item {
                         Layout.fillWidth: true
                         spacing: 12
 
-                        Text { text: "Channel"; font.pixelSize: 14; color: Theme.subtext0 }
+                        Text { text: qsTr("Channel"); font.pixelSize: 14; color: Theme.subtext0 }
                         ComboBox {
                             id: channelBox
                             visible: UpdateController.testApp
@@ -79,7 +79,7 @@ Item {
                         }
                         Text {
                             visible: !UpdateController.testApp
-                            text: "Stable (the releases)"
+                            text: qsTr("Stable (the releases)")
                             font.pixelSize: 14
                             color: Theme.text
                         }
@@ -91,7 +91,7 @@ Item {
                     // Basic style shows the text in palette.windowText.
                     CheckBox {
                         Layout.fillWidth: true
-                        text: "Check for a new version when the app starts"
+                        text: qsTr("Check for a new version when the app starts")
                         font.pixelSize: 14
                         palette.windowText: Theme.text
                         leftPadding: 0
@@ -104,7 +104,7 @@ Item {
                         spacing: 12
 
                         PillButton {
-                            text: UpdateController.checking ? "Checking…" : "Check now"
+                            text: UpdateController.checking ? qsTr("Checking…") : qsTr("Check now")
                             variant: "primary"
                             Layout.preferredHeight: 32
                             enabled: !UpdateController.checking
@@ -139,28 +139,28 @@ Item {
                                 visible: UpdateController.updateAvailable
                                     && (UpdateController.installState === "idle"
                                         || UpdateController.installState === "failed")
-                                text: "Install version " + UpdateController.latestVersion
+                                text: qsTr("Install version %1").arg(UpdateController.latestVersion)
                                 variant: "primary"
                                 Layout.preferredHeight: 32
                                 onClicked: UpdateController.install()
                             }
                             PillButton {
                                 visible: UpdateController.installState === "ready"
-                                text: "Install and restart"
+                                text: qsTr("Install and restart")
                                 variant: "primary"
                                 Layout.preferredHeight: 32
                                 onClicked: UpdateController.restartNow()
                             }
                             PillButton {
                                 visible: UpdateController.installState === "installed"
-                                text: "Restart now"
+                                text: qsTr("Restart now")
                                 variant: "primary"
                                 Layout.preferredHeight: 32
                                 onClicked: UpdateController.restartNow()
                             }
                             GhostButton {
                                 visible: UpdateController.installState === "downloading"
-                                text: "Cancel"
+                                text: qsTr("Cancel")
                                 onClicked: UpdateController.cancelInstall()
                             }
                             // The download: a bar from 0 to 1.
@@ -204,7 +204,7 @@ Item {
                             }
                             GhostButton {
                                 visible: UpdateController.releases.length > 0
-                                text: "Release page"
+                                text: qsTr("Release page")
                                 onClicked: UpdateController.openPage(UpdateController.releases[0].page)
                             }
                         }
@@ -213,10 +213,10 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
-                        text: "The check asks GitHub (api.github.com) for the list of releases. GitHub sees "
+                        text: qsTr("The check asks GitHub (api.github.com) for the list of releases. GitHub sees "
                             + "the internet address of this computer and the version of this app; the app "
                             + "sends nothing else, and your data never leaves this computer. \"Install\" "
-                            + "downloads the new version from GitHub and checks its SHA-256 first."
+                            + "downloads the new version from GitHub and checks its SHA-256 first.")
                         font.pixelSize: 12
                         color: Theme.overlay0
                     }
@@ -227,7 +227,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: versionsCol.implicitHeight + 50
-                title: "Versions"
+                title: qsTr("Versions")
 
                 ColumnLayout {
                     id: versionsCol
@@ -236,9 +236,9 @@ Item {
 
                     EmptyState {
                         visible: UpdateController.releases.length === 0
-                        message: UpdateController.listRead ? "No version in this channel yet."
-                            : UpdateController.checking ? "Reading the list of versions…"
-                            : "Check for updates to see the versions."
+                        message: UpdateController.listRead ? qsTr("No version in this channel yet.")
+                            : UpdateController.checking ? qsTr("Reading the list of versions…")
+                            : qsTr("Check for updates to see the versions.")
                     }
 
                     Repeater {
@@ -265,8 +265,8 @@ Item {
                                 StatusBadge {
                                     visible: versionRow.modelData.relation !== ""
                                     pillHeight: 20
-                                    text: versionRow.modelData.relation === "newer" ? "newer"
-                                        : versionRow.modelData.relation === "current" ? "this version" : "older"
+                                    text: versionRow.modelData.relation === "newer" ? qsTr("newer")
+                                        : versionRow.modelData.relation === "current" ? qsTr("this version") : qsTr("older")
                                     variant: versionRow.modelData.relation === "newer" ? "success"
                                         : versionRow.modelData.relation === "current" ? "warning" : "neutral"
                                 }
@@ -278,11 +278,11 @@ Item {
                                 Item { Layout.fillWidth: true }
                                 GhostButton {
                                     visible: versionRow.modelData.notes.length > 0
-                                    text: versionRow.notesOpen ? "Hide the notes" : "Notes"
+                                    text: versionRow.notesOpen ? qsTr("Hide the notes") : qsTr("Notes")
                                     onClicked: versionRow.notesOpen = !versionRow.notesOpen
                                 }
                                 GhostButton {
-                                    text: "Release page"
+                                    text: qsTr("Release page")
                                     onClicked: UpdateController.openPage(versionRow.modelData.page)
                                 }
                             }

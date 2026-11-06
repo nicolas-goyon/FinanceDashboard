@@ -34,7 +34,7 @@ Item {
 
             PageHeader {
                 showBack: true
-                title: "Internal Transfers"
+                title: qsTr("Internal Transfers")
                 onBackClicked: page.closeRequested()
 
                 StatusBadge {
@@ -44,7 +44,7 @@ Item {
                 }
                 PillButton {
                     visible: transfers.suggestions.length > 0
-                    text: "Confirm all (" + transfers.suggestions.length + ")"
+                    text: qsTr("Confirm all (%1)").arg(transfers.suggestions.length)
                     variant: "primary"
                     onClicked: transfers.confirmAll()
                 }
@@ -53,10 +53,10 @@ Item {
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: "A move of money between two accounts of your net worth (for example from the checking "
+                text: qsTr("A move of money between two accounts of your net worth (for example from the checking "
                     + "account to the Livret A) is not income and not spending. The app suggests a debit and a "
                     + "credit of the same amount on two accounts of your net worth, 3 days apart or less. "
-                    + "Confirm or refuse each one. To choose the accounts of your net worth, go to Manage Accounts."
+                    + "Confirm or refuse each one. To choose the accounts of your net worth, go to Manage Accounts.")
                 font.pixelSize: 14
                 color: Theme.overlay0
             }
@@ -65,7 +65,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: suggestionsCol.implicitHeight + 50
-                title: "Suggestions (" + transfers.suggestions.length + ")"
+                title: qsTr("Suggestions (%1)").arg(transfers.suggestions.length)
 
                 ColumnLayout {
                     id: suggestionsCol
@@ -74,7 +74,7 @@ Item {
 
                     EmptyState {
                         visible: transfers.suggestions.length === 0
-                        message: "No transfer to confirm."
+                        message: qsTr("No transfer to confirm.")
                     }
 
                     Repeater {
@@ -109,17 +109,17 @@ Item {
                                 }
                                 Text {
                                     visible: suggestionRow.modelData.days > 0
-                                    text: suggestionRow.modelData.days + " day(s) apart"
+                                    text: qsTr("%1 day(s) apart").arg(suggestionRow.modelData.days)
                                     font.pixelSize: 12
                                     color: Theme.overlay0
                                 }
                                 GhostButton {
-                                    text: "✓ Confirm"
+                                    text: qsTr("✓ Confirm")
                                     textColor: Theme.green
                                     onClicked: transfers.confirm(suggestionRow.index)
                                 }
                                 GhostButton {
-                                    text: "Not a transfer"
+                                    text: qsTr("Not a transfer")
                                     variant: "danger"
                                     onClicked: transfers.refuse(suggestionRow.index)
                                 }
@@ -133,7 +133,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: transfersCol.implicitHeight + 50
-                title: "Confirmed transfers (" + transfers.transfers.length + ")"
+                title: qsTr("Confirmed transfers (%1)").arg(transfers.transfers.length)
 
                 ColumnLayout {
                     id: transfersCol
@@ -142,7 +142,7 @@ Item {
 
                     EmptyState {
                         visible: transfers.transfers.length === 0
-                        message: "No confirmed transfer yet."
+                        message: qsTr("No confirmed transfer yet.")
                     }
 
                     Repeater {
@@ -178,10 +178,10 @@ Item {
                                     visible: !transferRow.modelData.complete
                                     variant: "warning"
                                     pillHeight: 20
-                                    text: "one side only"
+                                    text: qsTr("one side only")
                                 }
                                 GhostButton {
-                                    text: "Cancel"
+                                    text: qsTr("Cancel")
                                     variant: "danger"
                                     onClicked: transfers.cancelTransfer(transferRow.modelData.transferId)
                                 }

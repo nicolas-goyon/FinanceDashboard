@@ -87,7 +87,7 @@ Item {
 
             PageHeader {
                 showBack: true
-                title: "Transactions" + (page.account !== null ? " — " + page.account.name : "")
+                title: page.account !== null ? qsTr("Transactions — %1").arg(page.account.name) : qsTr("Transactions")
                 onBackClicked: page.closeRequested()
 
                 // Account picker — only meaningful when there's more than one
@@ -104,19 +104,19 @@ Item {
                     onActivated: page.selectedAccountIndex = currentIndex
                 }
 
-                Text { text: page.rows.length + " row(s)"; font.pixelSize: 14; color: Theme.overlay0 }
+                Text { text: qsTr("%1 row(s)").arg(page.rows.length); font.pixelSize: 14; color: Theme.overlay0 }
             }
 
             Text {
                 visible: AccountController.accounts.length === 0
-                text: "No accounts yet — add one from Account Management → Manage Accounts."
+                text: qsTr("No accounts yet — add one from Account Management → Manage Accounts.")
                 font.pixelSize: 15
                 color: Theme.red
             }
 
             Text {
                 visible: AccountController.accounts.length > 0 && page.account === null
-                text: "This account is no longer available."
+                text: qsTr("This account is no longer available.")
                 font.pixelSize: 15
                 color: Theme.red
             }
@@ -126,7 +126,7 @@ Item {
                 visible: page.account !== null
                 Layout.fillWidth: true
                 implicitHeight: txCol.implicitHeight + 50
-                title: "All transactions"
+                title: qsTr("All transactions")
 
                 ColumnLayout {
                     id: txCol
@@ -176,20 +176,20 @@ Item {
                                 RowLayout {
                                     anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                     spacing: 8
-                                    Text { Layout.preferredWidth: 90;  text: "DATE";        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
-                                    Text { Layout.preferredWidth: 260; text: "NAME";        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 90;  text: qsTr("DATE");        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 260; text: qsTr("NAME");        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
                                     // Narrow column — rows only show a view-icon here (see
                                     // descriptionPopup below); the fillWidth spacer after it takes up
                                     // the space the old fillWidth DESCRIPTION text column used to, so
                                     // DEBIT/CREDIT/… stay pinned to the right — same pattern as
                                     // ImportSnapshotPage.qml's transaction table.
-                                    Text { Layout.preferredWidth: 44;  text: "DESC.";       font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 44;  text: qsTr("DESC.");       font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
                                     Item { Layout.fillWidth: true }
-                                    Text { Layout.preferredWidth: 90;  text: "DEBIT";       font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 90;  text: "CREDIT";      font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 100; text: "BALANCE";     font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 130; text: "CATEGORY";    font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
-                                    Text { Layout.preferredWidth: 130; text: "SUBCATEGORY"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 90;  text: qsTr("DEBIT");       font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 90;  text: qsTr("CREDIT");      font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 100; text: qsTr("BALANCE");     font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 130; text: qsTr("CATEGORY");    font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 130; text: qsTr("SUBCATEGORY"); font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
                                     Text { Layout.preferredWidth: 60;  text: "";            font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
                                 }
                             }
@@ -197,7 +197,7 @@ Item {
                             EmptyState {
                                 visible: page.rows.length === 0
                                 Layout.topMargin: 10
-                                message: "No transactions saved for this account yet."
+                                message: qsTr("No transactions saved for this account yet.")
                             }
 
                             Repeater {
@@ -245,7 +245,7 @@ Item {
                                             visible: txRow.modelData.internalTransfer
                                             pillHeight: 20
                                             variant: "success"
-                                            text: "⇄ Internal transfer"
+                                            text: qsTr("⇄ Internal transfer")
                                         }
                                         Rectangle {
                                             Layout.preferredWidth: 130
@@ -285,7 +285,7 @@ Item {
 
                                         GhostButton {
                                             Layout.preferredWidth: 60
-                                            text: "✎ Edit"
+                                            text: qsTr("✎ Edit")
                                             textColor: Theme.blue
                                             onClicked: editDialog.openFor(txRow.modelData)
                                         }
@@ -324,7 +324,7 @@ Item {
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text { text: "Full description"; font.pixelSize: 18; font.bold: true; color: Theme.text }
+            Text { text: qsTr("Full description"); font.pixelSize: 18; font.bold: true; color: Theme.text }
 
             ScrollView {
                 Layout.fillWidth: true
@@ -348,7 +348,7 @@ Item {
             RowLayout {
                 Layout.topMargin: 6
                 Item { Layout.fillWidth: true }
-                PillButton { text: "Close"; variant: "neutral"; onClicked: descriptionPopup.close() }
+                PillButton { text: qsTr("Close"); variant: "neutral"; onClicked: descriptionPopup.close() }
             }
         }
     }
@@ -373,8 +373,8 @@ Item {
     // pattern instead — set once in openFor(), read back in onSaveClicked.
     FormDialog {
         id: editDialog
-        dialogTitle: "Edit transaction"
-        saveText: "Save"
+        dialogTitle: qsTr("Edit transaction")
+        saveText: qsTr("Save")
         width: 460
 
         property int transactionId: -1
@@ -416,20 +416,20 @@ Item {
         Text {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: "Balance shown in the table is not recalculated after an edit — fix debit/credit "
-                + "here for categorization/bookkeeping, not to correct the bank's own running balance."
+            text: qsTr("Balance shown in the table is not recalculated after an edit — fix debit/credit "
+                + "here for categorization/bookkeeping, not to correct the bank's own running balance.")
             font.pixelSize: 12
             color: Theme.overlay0
         }
-        FormRow { id: editConfirmationDateRow; label: "Confirm. date"; labelWidth: 110; placeholderText: "yyyy-MM-dd" }
-        FormRow { id: editOperationDateRow; label: "Operation date"; labelWidth: 110; placeholderText: "yyyy-MM-dd" }
-        FormRow { id: editNameRow; label: "Name"; labelWidth: 110 }
-        FormRow { id: editDescriptionRow; label: "Description"; labelWidth: 110 }
-        FormRow { id: editDebitRow; label: "Debit"; labelWidth: 110; placeholderText: "0.00" }
-        FormRow { id: editCreditRow; label: "Credit"; labelWidth: 110; placeholderText: "0.00" }
+        FormRow { id: editConfirmationDateRow; label: qsTr("Confirm. date"); labelWidth: 110; placeholderText: qsTr("yyyy-MM-dd") }
+        FormRow { id: editOperationDateRow; label: qsTr("Operation date"); labelWidth: 110; placeholderText: qsTr("yyyy-MM-dd") }
+        FormRow { id: editNameRow; label: qsTr("Name"); labelWidth: 110 }
+        FormRow { id: editDescriptionRow; label: qsTr("Description"); labelWidth: 110 }
+        FormRow { id: editDebitRow; label: qsTr("Debit"); labelWidth: 110; placeholderText: "0.00" }
+        FormRow { id: editCreditRow; label: qsTr("Credit"); labelWidth: 110; placeholderText: "0.00" }
         RowLayout {
             spacing: 10
-            Text { Layout.preferredWidth: 110; text: "Category"; font.pixelSize: 15; color: Theme.overlay0 }
+            Text { Layout.preferredWidth: 110; text: qsTr("Category"); font.pixelSize: 15; color: Theme.overlay0 }
             ComboBox {
                 id: editCategoryBox
                 Layout.fillWidth: true
@@ -441,7 +441,7 @@ Item {
         }
         RowLayout {
             spacing: 10
-            Text { Layout.preferredWidth: 110; text: "Subcategory"; font.pixelSize: 15; color: Theme.overlay0 }
+            Text { Layout.preferredWidth: 110; text: qsTr("Subcategory"); font.pixelSize: 15; color: Theme.overlay0 }
             ComboBox {
                 id: editSubcategoryBox
                 Layout.fillWidth: true
@@ -452,7 +452,7 @@ Item {
         // cancels the other side of the transfer.
         CheckBox {
             id: editTransferBox
-            text: "Internal transfer (not income, not spending)"
+            text: qsTr("Internal transfer (not income, not spending)")
             palette.windowText: Theme.text
         }
 

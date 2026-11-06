@@ -58,7 +58,7 @@ Item {
 
             PageHeader {
                 showBack: true
-                title: "Manage Accounts"
+                title: qsTr("Manage Accounts")
                 onBackClicked: page.closeRequested()
 
                 StatusBadge {
@@ -67,7 +67,7 @@ Item {
                     variant: AccountController.statusLevel
                 }
                 PillButton {
-                    text: "＋  Add account"
+                    text: qsTr("＋  Add account")
                     variant: "primary"
                     onClicked: accountDialog.openForNew()
                 }
@@ -76,11 +76,11 @@ Item {
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: "Manage the accounts themselves here. Account types and categories are managed "
-                    + "from Account Management → \"Account types & categories\". Hashes are the "
-                    + "fingerprints statement import uses to auto-match an account — an account with "
-                    + "none yet shows as \"not linked\" during import. No IBAN, BIC, or account number "
-                    + "is stored on an account."
+                text: qsTr("Manage the accounts themselves here. Account types and categories are managed "
+                    + "from Account Management → \"Account types & categories\". The import link lets "
+                    + "the statement import suggest the account; an account without one shows as "
+                    + "\"not linked\" until its first import. No IBAN, BIC, or account number is stored "
+                    + "on an account.")
                 font.pixelSize: 14
                 color: Theme.overlay0
             }
@@ -89,7 +89,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: accsCol.implicitHeight + 50
-                title: "Accounts (" + AccountController.accounts.length + ")"
+                title: qsTr("Accounts (%1)").arg(AccountController.accounts.length)
 
                 ColumnLayout {
                     id: accsCol
@@ -98,7 +98,7 @@ Item {
 
                     EmptyState {
                         visible: AccountController.accounts.length === 0
-                        message: "No accounts yet — add one above."
+                        message: qsTr("No accounts yet — add one above.")
                     }
 
                     Repeater {
@@ -144,7 +144,7 @@ Item {
                                 StatusBadge {
                                     variant: accRow.modelData.linked ? "success" : "warning"
                                     pillHeight: 20
-                                    text: accRow.modelData.linked ? "✓ linked" : "⚠ not linked"
+                                    text: accRow.modelData.linked ? qsTr("✓ linked") : qsTr("⚠ not linked")
                                 }
                                 // #206: an account outside the net worth (a joint
                                 // account, the account of a child).
@@ -152,16 +152,16 @@ Item {
                                     visible: !accRow.modelData.inNetWorth
                                     variant: "warning"
                                     pillHeight: 20
-                                    text: "outside net worth"
+                                    text: qsTr("outside net worth")
                                 }
                                 Item { Layout.fillWidth: true }
 
                                 GhostButton {
-                                    text: "Transactions"
+                                    text: qsTr("Transactions")
                                     onClicked: page.viewTransactionsRequested(accRow.index)
                                 }
                                 GhostButton {
-                                    text: "✎ Edit"
+                                    text: qsTr("✎ Edit")
                                     textColor: Theme.blue
                                     onClicked: accountDialog.openForEdit(accRow.index)
                                 }
@@ -200,12 +200,12 @@ Item {
                                 Layout.leftMargin: 4
                                 spacing: 8
 
-                                Text { text: "Import:"; font.pixelSize: 12; color: Theme.overlay0 }
+                                Text { text: qsTr("Import:"); font.pixelSize: 12; color: Theme.overlay0 }
                                 Text {
                                     Layout.fillWidth: true
                                     text: accRow.modelData.linked
-                                          ? "linked — the import suggests this account for its statements"
-                                          : "not linked — the next import links it"
+                                          ? qsTr("linked — the import suggests this account for its statements")
+                                          : qsTr("not linked — the next import links it")
                                     font.pixelSize: 12
                                     color: accRow.modelData.linked ? Theme.subtext0 : Theme.surface1
                                     elide: Text.ElideRight
@@ -214,7 +214,7 @@ Item {
                                 // suggests this account by itself (#78).
                                 GhostButton {
                                     visible: accRow.modelData.linked
-                                    text: "Forget link"
+                                    text: qsTr("Forget link")
                                     variant: "danger"
                                     onClicked: forgetLinkDialog.openFor(accRow.modelData.id, accRow.modelData.name)
                                 }
@@ -233,7 +233,7 @@ Item {
                                 // #208: on an investment account, a checkpoint is a valuation
                                 // (the value of the holdings at a date).
                                 Text {
-                                    text: accRow.modelData.isInvestment ? "Valuations:" : "Balance checkpoints:"
+                                    text: accRow.modelData.isInvestment ? qsTr("Valuations:") : qsTr("Balance checkpoints:")
                                     font.pixelSize: 12
                                     color: Theme.overlay0
                                 }
@@ -284,7 +284,7 @@ Item {
                                 }
 
                                 GhostButton {
-                                    text: accRow.modelData.isInvestment ? "＋ Add valuation" : "＋ Add checkpoint"
+                                    text: accRow.modelData.isInvestment ? qsTr("＋ Add valuation") : qsTr("＋ Add checkpoint")
                                     textColor: Theme.yellow
                                     onClicked: addCheckpointDialog.openFor(accRow.index)
                                 }
@@ -303,8 +303,8 @@ Item {
     // ── Add / edit account dialog ─────────────────────────────────────────────
     FormDialog {
         id: accountDialog
-        dialogTitle: accountDialog.editIndex < 0 ? "New account" : "Edit account"
-        saveText: accountDialog.editIndex < 0 ? "Add" : "Save"
+        dialogTitle: accountDialog.editIndex < 0 ? qsTr("New account") : qsTr("Edit account")
+        saveText: accountDialog.editIndex < 0 ? qsTr("Add") : qsTr("Save")
         width: 440
 
         property int editIndex: -1
@@ -316,7 +316,7 @@ Item {
         property string keptCurrency: ""
 
         function keptText(value) {
-            return value.length > 0 ? value + " (kept)" : "(none)"
+            return value.length > 0 ? qsTr("%1 (kept)").arg(value) : qsTr("(none)")
         }
 
         readonly property var currencyOptions: [
@@ -370,10 +370,10 @@ Item {
             open()
         }
 
-        FormRow { id: accNameRow; label: "Name"; labelWidth: 70; placeholderText: "e.g. Livret Jeune" }
+        FormRow { id: accNameRow; label: qsTr("Name"); labelWidth: 70; placeholderText: qsTr("e.g. Livret Jeune") }
         RowLayout {
             spacing: 10
-            Text { Layout.preferredWidth: 70; text: "Type"; font.pixelSize: 15; color: Theme.overlay0 }
+            Text { Layout.preferredWidth: 70; text: qsTr("Type"); font.pixelSize: 15; color: Theme.overlay0 }
             ComboBox {
                 id: accTypeBox
                 Layout.fillWidth: true
@@ -387,14 +387,14 @@ Item {
             visible: AccountController.accountTypes.length === 0
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: "There is no account type. The account is saved without a type. To add types, go to "
-                + "Account Management → \"Account types & categories\"."
+            text: qsTr("There is no account type. The account is saved without a type. To add types, go to "
+                + "Account Management → \"Account types & categories\".")
             font.pixelSize: 13
             color: Theme.yellow
         }
         RowLayout {
             spacing: 10
-            Text { Layout.preferredWidth: 70; text: "Category"; font.pixelSize: 15; color: Theme.overlay0 }
+            Text { Layout.preferredWidth: 70; text: qsTr("Category"); font.pixelSize: 15; color: Theme.overlay0 }
             ComboBox {
                 id: accCategoryBox
                 Layout.fillWidth: true
@@ -405,7 +405,7 @@ Item {
         }
         RowLayout {
             spacing: 10
-            Text { Layout.preferredWidth: 70; text: "Currency"; font.pixelSize: 15; color: Theme.overlay0 }
+            Text { Layout.preferredWidth: 70; text: qsTr("Currency"); font.pixelSize: 15; color: Theme.overlay0 }
             ComboBox {
                 id: accCurrencyBox
                 Layout.preferredWidth: 140
@@ -414,20 +414,20 @@ Item {
                 displayText: currentIndex >= 0 ? currentText : accountDialog.keptText(accountDialog.keptCurrency)
             }
         }
-        FormRow { id: accNotesRow; label: "Notes"; labelWidth: 70; placeholderText: "optional" }
+        FormRow { id: accNotesRow; label: qsTr("Notes"); labelWidth: 70; placeholderText: qsTr("optional") }
         // #206: a move between two accounts of the net worth is neither
         // income nor spending.
         CheckBox {
             id: inNetWorthBox
             checked: true
-            text: "Part of my net worth"
+            text: qsTr("Part of my net worth")
             palette.windowText: Theme.text
         }
         Text {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: "Turn it off for an account that you only follow (a joint account, the account of a "
-                + "child): the money that goes to it then counts as spending."
+            text: qsTr("Turn it off for an account that you only follow (a joint account, the account of a "
+                + "child): the money that goes to it then counts as spending.")
             font.pixelSize: 12
             color: Theme.overlay0
         }
@@ -467,16 +467,16 @@ Item {
     // ── Delete account confirmation ───────────────────────────────────────────
     ConfirmDialog {
         id: deleteAccountDialog
-        dialogTitle: "Delete account?"
-        confirmText: "Delete"
+        dialogTitle: qsTr("Delete account?")
+        confirmText: qsTr("Delete")
         width: 360
 
         property int accountIndex: -1
 
         function openFor(idx, name) {
             accountIndex = idx
-            message = "This will remove “" + name + "”, all of its stored hash links, "
-                + "and all of its saved transactions. This cannot be undone."
+            message = qsTr("This will remove “%1”, all of its stored hash links, "
+                + "and all of its saved transactions. This cannot be undone.").arg(name)
             open()
         }
 
@@ -488,16 +488,16 @@ Item {
     // confirm.
     ConfirmDialog {
         id: forgetLinkDialog
-        dialogTitle: "Forget the import link?"
-        confirmText: "Forget"
+        dialogTitle: qsTr("Forget the import link?")
+        confirmText: qsTr("Forget")
         width: 380
 
         property int accountId: -1
 
         function openFor(accountId, accountName) {
             forgetLinkDialog.accountId = accountId
-            message = "The import then no longer suggests “" + accountName + "” by itself for the "
-                + "statements of this bank account. The next import that you save to it links it again."
+            message = qsTr("The import then no longer suggests “%1” by itself for the "
+                + "statements of this bank account. The next import that you save to it links it again.").arg(accountName)
             open()
         }
 
@@ -520,8 +520,8 @@ Item {
     // AccountController::addBalanceCheckpoint().
     FormDialog {
         id: addCheckpointDialog
-        dialogTitle: addCheckpointDialog.investment ? "Add a valuation" : "Add a balance checkpoint"
-        saveText: "Add"
+        dialogTitle: addCheckpointDialog.investment ? qsTr("Add a valuation") : qsTr("Add a balance checkpoint")
+        saveText: qsTr("Add")
         width: 420
 
         property int accountIndex: -1
@@ -540,24 +540,24 @@ Item {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             text: addCheckpointDialog.investment
-                ? "Enter the value of the account on a date, from the statement of your bank. Between two "
+                ? qsTr("Enter the value of the account on a date, from the statement of your bank. Between two "
                   + "valuations, the value is the last valuation plus the deposits and withdrawals after it. "
-                  + "The change that is not a deposit is the gain or loss of the period."
-                : "Record a known balance for this account on a given date — used to validate a "
+                  + "The change that is not a deposit is the gain or loss of the period.")
+                : qsTr("Record a known balance for this account on a given date — used to validate a "
                   + "statement import's declared opening balance when full transaction history since "
                   + "account opening hasn't been imported (see the import review screen's "
-                  + "reconciliation check)."
+                  + "reconciliation check).")
             font.pixelSize: 13
             color: Theme.overlay0
         }
-        FormRow { id: checkpointDateRow; label: "Date"; labelWidth: 70; placeholderText: "yyyy-MM-dd" }
+        FormRow { id: checkpointDateRow; label: qsTr("Date"); labelWidth: 70; placeholderText: "yyyy-MM-dd" }
         FormRow {
             id: checkpointBalanceRow
-            label: addCheckpointDialog.investment ? "Value" : "Balance"
+            label: addCheckpointDialog.investment ? qsTr("Value") : qsTr("Balance")
             labelWidth: 70
-            placeholderText: "e.g. 1250.00"
+            placeholderText: qsTr("e.g. 1250.00")
         }
-        FormRow { id: checkpointNoteRow; label: "Note"; labelWidth: 70; placeholderText: "optional" }
+        FormRow { id: checkpointNoteRow; label: qsTr("Note"); labelWidth: 70; placeholderText: qsTr("optional") }
 
         onSaveClicked: {
             var dateText = checkpointDateRow.text.trim()

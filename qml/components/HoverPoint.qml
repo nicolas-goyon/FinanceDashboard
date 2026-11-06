@@ -91,7 +91,8 @@ Item {
             }
             Text {
                 visible: root.xIsTime
-                text: Qt.formatDate(new Date(root.pointValueX), root.dateFormat)
+                // The default locale: the month names of the language of the app.
+                text: Qt.locale().toString(new Date(root.pointValueX), root.dateFormat)
                 font.pixelSize: 13
                 color: Theme.overlay0
             }

@@ -102,12 +102,12 @@ ApplicationWindow {
     // magic numbers.
     readonly property var categories: [
         {
-            id: "overview", label: "Overview",
+            id: "overview", label: qsTr("Overview"),
             actions: [
-                { id: "netWorthTrend", label: "Net Worth Trend" },
-                { id: "allocationBreakdown", label: "Allocation Breakdown" },
-                { id: "monthlyNetChange", label: "Monthly Net Change" },
-                { id: "kpiSummary", label: "KPI Summary" },
+                { id: "netWorthTrend", label: qsTr("Net Worth Trend") },
+                { id: "allocationBreakdown", label: qsTr("Allocation Breakdown") },
+                { id: "monthlyNetChange", label: qsTr("Monthly Net Change") },
+                { id: "kpiSummary", label: qsTr("KPI Summary") },
                 // Moved here from Account Management (2026-07-18) — this is a
                 // day-to-day "look at my data" view (per-account balance
                 // history/current balance), not an admin/CRUD operation like
@@ -115,41 +115,41 @@ ApplicationWindow {
                 // categories"), so it belongs with the other analysis pages
                 // rather than the account-admin category. See ARCHITECTURE.MD
                 // § Account History.
-                { id: "accountDetails", label: "Account Details" }
+                { id: "accountDetails", label: qsTr("Account Details") }
             ]
         },
         {
-            id: "cashflow", label: "Cash Flow",
+            id: "cashflow", label: qsTr("Cash Flow"),
             actions: [
-                { id: "incomeVsExpenses", label: "Income vs Expenses" },
-                { id: "spendingByCategory", label: "Spending by Category" },
-                { id: "categoryTrends", label: "Category Trends" },
-                { id: "biggestExpenses", label: "Biggest Expenses" }
+                { id: "incomeVsExpenses", label: qsTr("Income vs Expenses") },
+                { id: "spendingByCategory", label: qsTr("Spending by Category") },
+                { id: "categoryTrends", label: qsTr("Category Trends") },
+                { id: "biggestExpenses", label: qsTr("Biggest Expenses") }
             ]
         },
         {
-            id: "savings", label: "Savings",
+            id: "savings", label: qsTr("Savings"),
             actions: [
-                { id: "balanceHistory", label: "Balance History" },
-                { id: "livretCeilingsGoals", label: "Livret Ceilings & Goals" },
-                { id: "interestEarned", label: "Interest Earned" },
-                { id: "blendedYield", label: "Blended Yield" }
+                { id: "balanceHistory", label: qsTr("Balance History") },
+                { id: "livretCeilingsGoals", label: qsTr("Livret Ceilings & Goals") },
+                { id: "interestEarned", label: qsTr("Interest Earned") },
+                { id: "blendedYield", label: qsTr("Blended Yield") }
             ]
         },
         {
-            id: "investments", label: "Investments",
+            id: "investments", label: qsTr("Investments"),
             actions: [
-                { id: "portfolioVsDeposits", label: "Portfolio vs Deposits (P&L)" },
-                { id: "assetAllocation", label: "Asset Allocation" },
-                { id: "monthlyPerformance", label: "Monthly Performance" }
+                { id: "portfolioVsDeposits", label: qsTr("Portfolio vs Deposits (P&L)") },
+                { id: "assetAllocation", label: qsTr("Asset Allocation") },
+                { id: "monthlyPerformance", label: qsTr("Monthly Performance") }
             ]
         },
         {
-            id: "projects", label: "Projects",
+            id: "projects", label: qsTr("Projects"),
             actions: [
-                { id: "projectOverview", label: "Project Overview" },
-                { id: "loanSimulator", label: "Loan Simulator" },
-                { id: "saveVsBorrowComparison", label: "Save vs Borrow Comparison" }
+                { id: "projectOverview", label: qsTr("Project Overview") },
+                { id: "loanSimulator", label: qsTr("Loan Simulator") },
+                { id: "saveVsBorrowComparison", label: qsTr("Save vs Borrow Comparison") }
             ]
         },
         {
@@ -160,10 +160,10 @@ ApplicationWindow {
             // changed, same "label ≠ id/class name" precedent as
             // SnapshotImportController backing "Import Transactions" (see
             // ARCHITECTURE.MD § Sidebar Navigation).
-            id: "transactionsManagement", label: "Transactions",
+            id: "transactionsManagement", label: qsTr("Transactions"),
             actions: [
-                { id: "importTransactions", label: "Import Transactions" },
-                { id: "manageCategories", label: "Categories & Subcategories" },
+                { id: "importTransactions", label: qsTr("Import Transactions") },
+                { id: "manageCategories", label: qsTr("Categories & Subcategories") },
                 // Moved here from Account Management (2026-07-18, product
                 // feedback) — viewing/editing the saved transaction table is
                 // a transaction-domain action, not account-admin, so it now
@@ -174,9 +174,9 @@ ApplicationWindow {
                 // button) — see the dual return-view handling in the
                 // accountTransactions Loader/Component below and
                 // ARCHITECTURE.MD § Account Management.
-                { id: "accountTransactions", label: "View & Edit Transactions" },
+                { id: "accountTransactions", label: qsTr("View & Edit Transactions") },
                 // #207: the moves between two accounts of the net worth.
-                { id: "internalTransfers", label: "Internal Transfers" }
+                { id: "internalTransfers", label: qsTr("Internal Transfers") }
             ]
         },
         {
@@ -185,20 +185,26 @@ ApplicationWindow {
             // destructive/CRUD operations on the app's own data model, not
             // day-to-day analysis or data entry, per product feedback
             // (2026-07-18). See ARCHITECTURE.MD § Sidebar Navigation.
-            id: "accountManagement", label: "Account Management",
-            sectionLabel: "ADMIN",
+            id: "accountManagement", label: qsTr("Account Management"),
+            sectionLabel: qsTr("ADMIN"),
             actions: [
-                { id: "manageAccounts", label: "Manage Accounts" },
-                { id: "accountTypes", label: "Account types & categories" }
+                { id: "manageAccounts", label: qsTr("Manage Accounts") },
+                { id: "accountTypes", label: qsTr("Account types & categories") }
             ]
         },
         {
-            id: "databaseManagement", label: "Database Management",
+            id: "databaseManagement", label: qsTr("Database Management"),
             actions: []
         },
         {
             // The update check and the versions of the channel (#117).
-            id: "updates", label: "Updates",
+            id: "updates", label: qsTr("Updates"),
+            actions: []
+        },
+        {
+            // The language of the app, and the other preferences of this
+            // computer.
+            id: "settings", label: qsTr("Settings"),
             actions: []
         }
     ]
@@ -356,7 +362,7 @@ ApplicationWindow {
                 elide: Text.ElideRight
                 textFormat: Text.PlainText
                 text: UpdateController.installState === "idle"
-                    ? Application.displayName + " " + UpdateController.latestVersion + " is available."
+                    ? qsTr("%1 %2 is available.").arg(Application.displayName).arg(UpdateController.latestVersion)
                     : UpdateController.installState === "downloading"
                         ? UpdateController.installText + " " + Math.round(UpdateController.installProgress * 100) + " %"
                         : UpdateController.installText
@@ -365,7 +371,7 @@ ApplicationWindow {
             }
             PillButton {
                 visible: UpdateController.installState === "idle" && UpdateController.installsItself
-                text: "Install"
+                text: qsTr("Install")
                 variant: "primary"
                 fontSize: 13
                 Layout.preferredHeight: 28
@@ -373,7 +379,7 @@ ApplicationWindow {
             }
             PillButton {
                 visible: UpdateController.installState === "ready"
-                text: "Install and restart"
+                text: qsTr("Install and restart")
                 variant: "primary"
                 fontSize: 13
                 Layout.preferredHeight: 28
@@ -381,7 +387,7 @@ ApplicationWindow {
             }
             PillButton {
                 visible: UpdateController.installState === "installed"
-                text: "Restart now"
+                text: qsTr("Restart now")
                 variant: "primary"
                 fontSize: 13
                 Layout.preferredHeight: 28
@@ -389,12 +395,12 @@ ApplicationWindow {
             }
             GhostButton {
                 visible: UpdateController.installState === "downloading"
-                text: "Cancel"
+                text: qsTr("Cancel")
                 onClicked: UpdateController.cancelInstall()
             }
             PillButton {
                 visible: UpdateController.installState === "idle" || UpdateController.installState === "failed"
-                text: "See the versions"
+                text: qsTr("See the versions")
                 variant: UpdateController.installsItself ? "neutral" : "primary"
                 fontSize: 13
                 Layout.preferredHeight: 28
@@ -427,6 +433,7 @@ ApplicationWindow {
         AccountManagementLandingPage  {}
         DatabaseManagementPage        { prodDatabasePath: root.prodDatabasePath }
         UpdatesPage                   {}
+        SettingsPage                  {}
     }
 
     // ── Overlay — Import Transactions (see SidebarCategory.actionTriggered
@@ -613,7 +620,7 @@ ApplicationWindow {
             spacing: 14
 
             Text {
-                text: "Database upgraded"
+                text: qsTr("Database upgraded")
                 font.pixelSize: 19
                 font.bold: true
                 color: Theme.text
@@ -628,7 +635,7 @@ ApplicationWindow {
             RowLayout {
                 Layout.topMargin: 6
                 Item { Layout.fillWidth: true }
-                PillButton { text: "OK"; variant: "primary"; onClicked: databaseNoticePopup.close() }
+                PillButton { text: qsTr("OK"); variant: "primary"; onClicked: databaseNoticePopup.close() }
             }
         }
 

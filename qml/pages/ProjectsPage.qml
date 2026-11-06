@@ -63,11 +63,11 @@ Item {
             spacing: 16
 
             PageHeader {
-                title: "Projects"
+                title: qsTr("Projects")
                 mock: true
 
                 PillButton {
-                    text: "＋  New project"
+                    text: qsTr("＋  New project")
                     variant: "primary"
                     height: 32
                     onClicked: newProjectDialog.open()
@@ -121,7 +121,7 @@ Item {
                                     // Routing through StatusBadge fixes both.
                                     variant: projectCard.modelData.onTrack ? "success" : "danger"
                                     pillHeight: 20
-                                    text: projectCard.modelData.onTrack ? "on track" : "gap " + projectCard.modelData.gapText
+                                    text: projectCard.modelData.onTrack ? qsTr("on track") : qsTr("gap %1").arg(projectCard.modelData.gapText)
                                 }
                             }
 
@@ -154,13 +154,13 @@ Item {
                                 rowSpacing: 3
                                 columnSpacing: 16
 
-                                Text { text: "Target";     font.pixelSize: 13; color: Theme.overlay0 }
+                                Text { text: qsTr("Target");     font.pixelSize: 13; color: Theme.overlay0 }
                                 Text { text: projectCard.modelData.targetText;     font.pixelSize: 15; font.bold: true; color: Theme.text }
-                                Text { text: "Saved";      font.pixelSize: 13; color: Theme.overlay0 }
+                                Text { text: qsTr("Saved");      font.pixelSize: 13; color: Theme.overlay0 }
                                 Text { text: projectCard.modelData.earmarkedText + "   (" + projectCard.modelData.monthlyText + ")"; font.pixelSize: 15; color: Theme.text }
-                                Text { text: "Target date"; font.pixelSize: 13; color: Theme.overlay0 }
+                                Text { text: qsTr("Target date"); font.pixelSize: 13; color: Theme.overlay0 }
                                 Text { text: projectCard.modelData.targetDateText; font.pixelSize: 15; color: Theme.text }
-                                Text { text: "Completion"; font.pixelSize: 13; color: Theme.overlay0 }
+                                Text { text: qsTr("Completion"); font.pixelSize: 13; color: Theme.overlay0 }
                                 Text { text: projectCard.modelData.completionText; font.pixelSize: 15; color: projectCard.modelData.onTrack ? Theme.green : Theme.yellow }
                             }
                         }
@@ -187,7 +187,7 @@ Item {
             RowLayout {
                 spacing: 12
                 PillButton {
-                    text: "←  All projects"
+                    text: qsTr("←  All projects")
                     variant: "neutral"
                     onClicked: page.showDetail = false
                 }
@@ -221,7 +221,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 340
-                title: "Projected savings vs target (€)"
+                title: qsTr("Projected savings vs target (€)")
 
                 GraphsView {
                     anchors.fill: parent
@@ -233,7 +233,9 @@ Item {
                     axisX: DateTimeAxis {
                         min: new Date(controller.minTimeMs)
                         max: new Date(controller.maxTimeMs)
-                        labelFormat: "MMM yy"
+                        // Month names in the language of the app (DateAxisLabel).
+                        labelFormat: "yyyy-MM-dd"
+                        labelDelegate: Component { DateAxisLabel { displayFormat: "MMM yy" } }
                     }
                     axisY: ValueAxis {
                         min: 0
@@ -243,16 +245,16 @@ Item {
 
                     LineSeries {
                         id: projectionSeries
-                        name: "Projected savings"
+                        name: qsTr("Projected savings")
                         color: Theme.blue
                         width: 2.5
                         pointDelegate: Component {
-                            HoverPoint { seriesName: "Projected"; pointColor: Theme.blue }
+                            HoverPoint { seriesName: qsTr("Projected"); pointColor: Theme.blue }
                         }
                     }
                     LineSeries {
                         id: targetSeries
-                        name: "Target"
+                        name: qsTr("Target")
                         color: Theme.red
                         width: 2
                     }
@@ -263,7 +265,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: loanCol.implicitHeight + 50
-                title: "Loan simulator — funding the gap"
+                title: qsTr("Loan simulator — funding the gap")
 
                 ColumnLayout {
                     id: loanCol
@@ -272,7 +274,7 @@ Item {
 
                     RowLayout {
                         spacing: 10
-                        Text { text: "Annual rate:"; font.pixelSize: 15; color: Theme.overlay0 }
+                        Text { text: qsTr("Annual rate:"); font.pixelSize: 15; color: Theme.overlay0 }
                         // Set from the controller, not bound: a keystroke breaks a binding.
                         // After each edit the field shows the rate that the controller
                         // applies, so a refused value does not stay on screen (#66).
@@ -302,7 +304,7 @@ Item {
                                 }
                             }
                         }
-                        Text { text: "%   —   rates are entered manually (no market data)"; font.pixelSize: 14; color: Theme.overlay0 }
+                        Text { text: qsTr("%   —   rates are entered manually (no market data)"); font.pixelSize: 14; color: Theme.overlay0 }
                         Item { Layout.fillWidth: true }
                     }
 
@@ -313,10 +315,10 @@ Item {
                         radius: 4
                         RowLayout {
                             anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
-                            Text { Layout.preferredWidth: 180; text: "Scenario";        font.pixelSize: 14; font.bold: true; color: Theme.overlay0 }
-                            Text { Layout.fillWidth: true;     text: "Monthly payment"; font.pixelSize: 14; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
-                            Text { Layout.preferredWidth: 140; text: "Total interest";  font.pixelSize: 14; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
-                            Text { Layout.preferredWidth: 140; text: "Total cost";      font.pixelSize: 14; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                            Text { Layout.preferredWidth: 180; text: qsTr("Scenario");        font.pixelSize: 14; font.bold: true; color: Theme.overlay0 }
+                            Text { Layout.fillWidth: true;     text: qsTr("Monthly payment"); font.pixelSize: 14; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                            Text { Layout.preferredWidth: 140; text: qsTr("Total interest");  font.pixelSize: 14; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                            Text { Layout.preferredWidth: 140; text: qsTr("Total cost");      font.pixelSize: 14; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
                         }
                     }
                     Repeater {
@@ -364,15 +366,15 @@ Item {
     // ══════════════════════════ NEW PROJECT DIALOG ═══════════════════════════
     FormDialog {
         id: newProjectDialog
-        dialogTitle: "New project"
-        saveText: "Create"
+        dialogTitle: qsTr("New project")
+        saveText: qsTr("Create")
         width: 420
 
-        FormRow { id: fName;      label: "Name";                     labelWidth: 150; placeholderText: "e.g. House deposit" }
-        FormRow { id: fTarget;    label: "Target amount (€)";        labelWidth: 150; placeholderText: "40000" }
-        FormRow { id: fMonths;    label: "Months until target";      labelWidth: 150; placeholderText: "36" }
-        FormRow { id: fEarmarked; label: "Already saved (€)";        labelWidth: 150; placeholderText: "0" }
-        FormRow { id: fMonthly;   label: "Monthly contribution (€)"; labelWidth: 150; placeholderText: "300" }
+        FormRow { id: fName;      label: qsTr("Name");                     labelWidth: 150; placeholderText: qsTr("e.g. House deposit") }
+        FormRow { id: fTarget;    label: qsTr("Target amount (€)");        labelWidth: 150; placeholderText: "40000" }
+        FormRow { id: fMonths;    label: qsTr("Months until target");      labelWidth: 150; placeholderText: "36" }
+        FormRow { id: fEarmarked; label: qsTr("Already saved (€)");        labelWidth: 150; placeholderText: "0" }
+        FormRow { id: fMonthly;   label: qsTr("Monthly contribution (€)"); labelWidth: 150; placeholderText: "300" }
 
         // Why Create did nothing (#75). Empty when the form is correct.
         Text {
@@ -393,17 +395,17 @@ Item {
             var saved = fEarmarked.text.trim().length > 0 ? page.parseNumber(fEarmarked.text) : 0
             var monthly = fMonthly.text.trim().length > 0 ? page.parseNumber(fMonthly.text) : 0
             var bad = []
-            if (fName.text.trim().length === 0) bad.push("a name")
-            if (isNaN(target) || target <= 0) bad.push("a target amount above 0")
-            if (isNaN(months) || months < 1 || months > 1200) bad.push("a number of months from 1 to 1200")
-            if (isNaN(saved)) bad.push("a number for \"Already saved\"")
-            if (isNaN(monthly)) bad.push("a number for \"Monthly contribution\"")
+            if (fName.text.trim().length === 0) bad.push(qsTr("a name"))
+            if (isNaN(target) || target <= 0) bad.push(qsTr("a target amount above 0"))
+            if (isNaN(months) || months < 1 || months > 1200) bad.push(qsTr("a number of months from 1 to 1200"))
+            if (isNaN(saved)) bad.push(qsTr("a number for \"Already saved\""))
+            if (isNaN(monthly)) bad.push(qsTr("a number for \"Monthly contribution\""))
             if (bad.length > 0) {
-                newProjectError.text = "Enter " + bad.join(", ") + ". Numbers can be written 40 000 or 3,5."
+                newProjectError.text = qsTr("Enter %1. Numbers can be written 40 000 or 3,5.").arg(bad.join(", "))
                 return
             }
             if (!controller.addProject(fName.text, target, months, saved, monthly)) {
-                newProjectError.text = "The project was not created. Check the values."
+                newProjectError.text = qsTr("The project was not created. Check the values.")
                 return
             }
             fName.text = ""

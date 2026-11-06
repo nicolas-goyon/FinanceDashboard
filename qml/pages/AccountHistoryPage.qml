@@ -176,11 +176,11 @@ Item {
         var kind = ""
         if (distance >= categoryRing.pieSize * categoryRing.holeSize && distance <= categoryRing.pieSize) {
             ring = categoryRing
-            kind = "Category"
+            kind = qsTr("Category")
         } else if (distance >= subcategoryRing.pieSize * subcategoryRing.holeSize
                    && distance <= subcategoryRing.pieSize) {
             ring = subcategoryRing
-            kind = "Subcategory"
+            kind = qsTr("Subcategory")
         }
         if (!ring)
             return
@@ -303,7 +303,7 @@ Item {
 
             PageHeader {
                 showBack: true
-                title: "Account Details" + (page.account !== null ? " — " + page.account.name : "")
+                title: page.account !== null ? qsTr("Account Details — %1").arg(page.account.name) : qsTr("Account Details")
                 onBackClicked: page.closeRequested()
 
                 ComboBox {
@@ -317,7 +317,7 @@ Item {
 
             Text {
                 visible: AccountController.accounts.length === 0
-                text: "No accounts yet — add one from Account Management → Manage Accounts."
+                text: qsTr("No accounts yet — add one from Account Management → Manage Accounts.")
                 font.pixelSize: 15
                 color: Theme.red
             }
@@ -344,14 +344,14 @@ Item {
                     KpiCard {
                         Layout.preferredWidth: kpiRow.cardWidth
                         Layout.fillWidth: true
-                        label: "Current balance"
+                        label: qsTr("Current balance")
                         value: page.summary.currentBalanceText ? page.summary.currentBalanceText : "—"
-                        sub: page.summary.asOfDateText ? ("as of " + page.summary.asOfDateText) : ""
+                        sub: page.summary.asOfDateText ? qsTr("as of %1").arg(page.summary.asOfDateText) : ""
                     }
                     KpiCard {
                         Layout.preferredWidth: kpiRow.cardWidth
                         Layout.fillWidth: true
-                        label: "Transactions"
+                        label: qsTr("Transactions")
                         value: page.summary.transactionCount !== undefined ? String(page.summary.transactionCount) : "0"
                         // A non-empty sub line, not "" — KpiCard hides an empty sub Text
                         // (visible: root.sub.length > 0), and QtQuick Layouts excludes
@@ -361,12 +361,12 @@ Item {
                         // both have a real sub line). "All time" is also accurate: this
                         // count is the account's whole history, not scoped to any
                         // selected chart range.
-                        sub: "All time"
+                        sub: qsTr("All time")
                     }
                     KpiCard {
                         Layout.preferredWidth: kpiRow.cardWidth
                         Layout.fillWidth: true
-                        label: "Type / Category"
+                        label: qsTr("Type / Category")
                         value: page.account !== null ? page.account.type : "—"
                         sub: page.account !== null ? page.account.category : ""
                     }
@@ -375,7 +375,7 @@ Item {
                 ChartCard {
                     Layout.fillWidth: true
                     implicitHeight: 410
-                    title: "Balance over time (" + page.currencySymbol + ") — computed from every transaction"
+                    title: qsTr("Balance over time (%1) — computed from every transaction").arg(page.currencySymbol)
 
                     // Chart controls — direct children of ChartCard's content Item
                     // (not a Layout), positioned by anchors like the GraphsView/
@@ -393,35 +393,35 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 6
-                            Text { text: "RANGE"; font.pixelSize: 12; font.bold: true; color: Theme.overlay0 }
+                            Text { text: qsTr("RANGE"); font.pixelSize: 12; font.bold: true; color: Theme.overlay0 }
                             Item { Layout.fillWidth: true }
                             PillButton {
-                                text: "7D"; fontSize: 12; horizontalPadding: 10; implicitHeight: 24
+                                text: qsTr("7D"); fontSize: 12; horizontalPadding: 10; implicitHeight: 24
                                 variant: page.chartRange === "7d" ? "primary" : "neutral"
                                 onClicked: page.chartRange = "7d"
                             }
                             PillButton {
-                                text: "1M"; fontSize: 12; horizontalPadding: 10; implicitHeight: 24
+                                text: qsTr("1M"); fontSize: 12; horizontalPadding: 10; implicitHeight: 24
                                 variant: page.chartRange === "1m" ? "primary" : "neutral"
                                 onClicked: page.chartRange = "1m"
                             }
                             PillButton {
-                                text: "6M"; fontSize: 12; horizontalPadding: 10; implicitHeight: 24
+                                text: qsTr("6M"); fontSize: 12; horizontalPadding: 10; implicitHeight: 24
                                 variant: page.chartRange === "6m" ? "primary" : "neutral"
                                 onClicked: page.chartRange = "6m"
                             }
                             PillButton {
-                                text: "1Y"; fontSize: 12; horizontalPadding: 10; implicitHeight: 24
+                                text: qsTr("1Y"); fontSize: 12; horizontalPadding: 10; implicitHeight: 24
                                 variant: page.chartRange === "1y" ? "primary" : "neutral"
                                 onClicked: page.chartRange = "1y"
                             }
                             PillButton {
-                                text: "From start"; fontSize: 12; horizontalPadding: 10; implicitHeight: 24
+                                text: qsTr("From start"); fontSize: 12; horizontalPadding: 10; implicitHeight: 24
                                 variant: page.chartRange === "all" ? "primary" : "neutral"
                                 onClicked: page.chartRange = "all"
                             }
                             PillButton {
-                                text: "Custom"; fontSize: 12; horizontalPadding: 10; implicitHeight: 24
+                                text: qsTr("Custom"); fontSize: 12; horizontalPadding: 10; implicitHeight: 24
                                 variant: page.chartRange === "custom" ? "primary" : "neutral"
                                 onClicked: page.chartRange = "custom"
                             }
@@ -434,7 +434,7 @@ Item {
                             visible: page.chartRange === "custom"
                             spacing: 6
                             Item { Layout.fillWidth: true }
-                            Text { text: "From"; font.pixelSize: 12; color: Theme.overlay0 }
+                            Text { text: qsTr("From"); font.pixelSize: 12; color: Theme.overlay0 }
                             TextField {
                                 Layout.preferredWidth: 110
                                 implicitHeight: 24
@@ -443,7 +443,7 @@ Item {
                                 text: page.customStartIso
                                 onEditingFinished: page.customStartIso = text.trim()
                             }
-                            Text { text: "to"; font.pixelSize: 12; color: Theme.overlay0 }
+                            Text { text: qsTr("to"); font.pixelSize: 12; color: Theme.overlay0 }
                             TextField {
                                 Layout.preferredWidth: 110
                                 implicitHeight: 24
@@ -457,10 +457,10 @@ Item {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 6
-                            Text { text: "Y AXIS"; font.pixelSize: 12; font.bold: true; color: Theme.overlay0 }
+                            Text { text: qsTr("Y AXIS"); font.pixelSize: 12; font.bold: true; color: Theme.overlay0 }
                             Item { Layout.fillWidth: true }
                             PillButton {
-                                text: "Auto"
+                                text: qsTr("Auto")
                                 variant: page.axisStartAtZero ? "neutral" : "primary"
                                 fontSize: 12
                                 horizontalPadding: 10
@@ -468,7 +468,7 @@ Item {
                                 onClicked: page.axisStartAtZero = false
                             }
                             PillButton {
-                                text: "From 0"
+                                text: qsTr("From 0")
                                 variant: page.axisStartAtZero ? "primary" : "neutral"
                                 fontSize: 12
                                 horizontalPadding: 10
@@ -500,7 +500,9 @@ Item {
                         axisX: DateTimeAxis {
                             min: new Date(page.axisRangeMinMs)
                             max: new Date(page.axisRangeMaxMs)
-                            labelFormat: page.axisDateFormat
+                            // Month names in the language of the app (DateAxisLabel).
+                            labelFormat: "yyyy-MM-dd"
+                            labelDelegate: Component { DateAxisLabel { displayFormat: page.axisDateFormat } }
                         }
                         axisY: ValueAxis {
                             min: page.balanceAxisMin
@@ -527,7 +529,7 @@ Item {
                     EmptyState {
                         visible: page.history.length === 0
                         anchors.centerIn: parent
-                        message: "No dated transactions to chart yet for this account."
+                        message: qsTr("No dated transactions to chart yet for this account.")
                     }
                 }
 
@@ -546,7 +548,7 @@ Item {
                     ChartCard {
                         Layout.fillWidth: true
                         implicitHeight: 320
-                        title: "Income by category"
+                        title: qsTr("Income by category")
 
                         ColumnLayout {
                             anchors.fill: parent
@@ -554,7 +556,7 @@ Item {
 
                             EmptyState {
                                 visible: !page.breakdown.income || page.breakdown.income.length === 0
-                                message: "No income transactions for this account yet."
+                                message: qsTr("No income transactions for this account yet.")
                             }
 
                             Item {
@@ -611,7 +613,7 @@ Item {
                                 id: incomePieInfo
                                 Layout.alignment: Qt.AlignHCenter
                                 visible: !!page.breakdown.income && page.breakdown.income.length > 0
-                                text: "Click a category (inner ring) or subcategory (outer ring) slice for details"
+                                text: qsTr("Click a category (inner ring) or subcategory (outer ring) slice for details")
                                 font.pixelSize: 13
                                 color: Theme.overlay0
                                 wrapMode: Text.WordWrap
@@ -624,7 +626,7 @@ Item {
                     ChartCard {
                         Layout.fillWidth: true
                         implicitHeight: 320
-                        title: "Expenses by category"
+                        title: qsTr("Expenses by category")
 
                         ColumnLayout {
                             anchors.fill: parent
@@ -632,7 +634,7 @@ Item {
 
                             EmptyState {
                                 visible: !page.breakdown.expenses || page.breakdown.expenses.length === 0
-                                message: "No expense transactions for this account yet."
+                                message: qsTr("No expense transactions for this account yet.")
                             }
 
                             Item {
@@ -689,7 +691,7 @@ Item {
                                 id: expensePieInfo
                                 Layout.alignment: Qt.AlignHCenter
                                 visible: !!page.breakdown.expenses && page.breakdown.expenses.length > 0
-                                text: "Click a category (inner ring) or subcategory (outer ring) slice for details"
+                                text: qsTr("Click a category (inner ring) or subcategory (outer ring) slice for details")
                                 font.pixelSize: 13
                                 color: Theme.overlay0
                                 wrapMode: Text.WordWrap
@@ -720,7 +722,7 @@ Item {
                 ChartCard {
                     Layout.fillWidth: true
                     implicitHeight: txCol.implicitHeight + 50
-                    title: "Transaction history"
+                    title: qsTr("Transaction history")
 
                     // TableScrollView: a vertical wheel over the table scrolls the page.
                     TableScrollView {
@@ -746,14 +748,14 @@ Item {
                                 RowLayout {
                                     anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
                                     spacing: 8
-                                    Text { Layout.preferredWidth: 90;  text: "DATE";        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
-                                    Text { Layout.preferredWidth: 300; text: "NAME";        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 90;  text: qsTr("DATE");        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 300; text: qsTr("NAME");        font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
                                     Item { Layout.preferredWidth: 16 }
-                                    Text { Layout.preferredWidth: 90;  text: "DEBIT";       font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 90;  text: "CREDIT";      font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 100; text: "BALANCE";     font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
-                                    Text { Layout.preferredWidth: 130; text: "CATEGORY";    font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
-                                    Text { Layout.preferredWidth: 130; text: "SUBCATEGORY"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 90;  text: qsTr("DEBIT");       font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 90;  text: qsTr("CREDIT");      font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 100; text: qsTr("BALANCE");     font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                    Text { Layout.preferredWidth: 130; text: qsTr("CATEGORY");    font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                                    Text { Layout.preferredWidth: 130; text: qsTr("SUBCATEGORY"); font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
                                 }
                             }
 
@@ -761,7 +763,7 @@ Item {
                                 visible: page.rows.length === 0
                                 Layout.topMargin: 10
                                 Layout.preferredWidth: txCol.rowWidth
-                                message: "No transactions saved for this account yet."
+                                message: qsTr("No transactions saved for this account yet.")
                             }
 
                             Repeater {

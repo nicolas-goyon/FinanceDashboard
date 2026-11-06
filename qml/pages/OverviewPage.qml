@@ -67,7 +67,7 @@ Item {
             slice.borderColor = slice.color
             slice.labelVisible = true
         }
-        allocationInfo.text = "Click a slice for details"
+        allocationInfo.text = qsTr("Click a slice for details")
         monthAxis.categories = controller.monthLabels
         gainSet.values = controller.netGains
         lossSet.values = controller.netLosses
@@ -96,13 +96,13 @@ Item {
             spacing: 16
 
             PageHeader {
-                title: "Overview — Net Worth"
+                title: qsTr("Overview — Net Worth")
             }
 
             EmptyState {
                 visible: !controller.hasData
-                message: "No account is in your net worth yet. Add accounts in Account Management → Manage "
-                    + "Accounts, and import their statements."
+                message: qsTr("No account is in your net worth yet. Add accounts in Account Management → Manage "
+                    + "Accounts, and import their statements.")
             }
 
             // ── KPI cards ─────────────────────────────────────────────────────
@@ -126,7 +126,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 360
-                title: "Net worth over time — day-to-day, savings, investments (€) — hover the dots for values"
+                title: qsTr("Net worth over time — day-to-day, savings, investments (€) — hover the dots for values")
 
                 GraphsView {
                     anchors.fill: parent
@@ -139,7 +139,9 @@ Item {
                     axisX: DateTimeAxis {
                         min: new Date(controller.minTimeMs)
                         max: new Date(controller.maxTimeMs)
-                        labelFormat: "MMM yy"
+                        // Month names in the language of the app (DateAxisLabel).
+                        labelFormat: "yyyy-MM-dd"
+                        labelDelegate: Component { DateAxisLabel { displayFormat: "MMM yy" } }
                     }
                     axisY: ValueAxis {
                         min: controller.minTotal
@@ -148,14 +150,14 @@ Item {
                     }
 
                     AreaSeries {
-                        name: "Day-to-day"
+                        name: qsTr("Day-to-day")
                         color: Theme.blueArea
                         borderColor: Theme.blue
                         borderWidth: 1.5
                         upperSeries: checkingBound
                     }
                     AreaSeries {
-                        name: "Savings"
+                        name: qsTr("Savings")
                         color: Theme.greenArea
                         borderColor: Theme.green
                         borderWidth: 1.5
@@ -163,7 +165,7 @@ Item {
                         lowerSeries: checkingBound
                     }
                     AreaSeries {
-                        name: "Investments"
+                        name: qsTr("Investments")
                         color: Theme.mauveArea
                         borderColor: Theme.mauve
                         borderWidth: 1.5
@@ -185,7 +187,7 @@ Item {
                         width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
-                                seriesName: "Day-to-day"
+                                seriesName: qsTr("Day-to-day")
                                 overrideValues: page.checkingOwn
                             }
                         }
@@ -196,7 +198,7 @@ Item {
                         width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
-                                seriesName: "Savings"
+                                seriesName: qsTr("Savings")
                                 overrideValues: page.savingsOwn
                             }
                         }
@@ -207,7 +209,7 @@ Item {
                         width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
-                                seriesName: "Investments"
+                                seriesName: qsTr("Investments")
                                 overrideValues: page.tradingOwn
                             }
                         }
@@ -224,7 +226,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 320
-                    title: "Current allocation — click a slice for details"
+                    title: qsTr("Current allocation — click a slice for details")
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -252,7 +254,7 @@ Item {
                         Text {
                             id: allocationInfo
                             Layout.alignment: Qt.AlignHCenter
-                            text: "Click a slice for details"
+                            text: qsTr("Click a slice for details")
                             font.pixelSize: 14
                             color: Theme.overlay0
                         }
@@ -263,7 +265,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 320
-                    title: "Change of the net worth each month (€)"
+                    title: qsTr("Change of the net worth each month (€)")
 
                     GraphsView {
                         anchors.fill: parent
@@ -282,12 +284,12 @@ Item {
                             axisX: BarCategoryAxis { id: monthAxis }
                             BarSet {
                                 id: gainSet
-                                label: "Gain"
+                                label: qsTr("Gain")
                                 color: Theme.green
                             }
                             BarSet {
                                 id: lossSet
-                                label: "Loss"
+                                label: qsTr("Loss")
                                 color: Theme.red
                             }
                         }
@@ -302,7 +304,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: yearCol.implicitHeight + 50
-                title: "This year against the last years"
+                title: qsTr("This year against the last years")
 
                 ColumnLayout {
                     id: yearCol
@@ -367,11 +369,11 @@ Item {
                         Layout.fillWidth: true
                         Layout.topMargin: 8
                         wrapMode: Text.WordWrap
-                        text: "Savings = income − spending of the accounts of your net worth, without the internal "
+                        text: qsTr("Savings = income − spending of the accounts of your net worth, without the internal "
                             + "transfers. Savings + gains, losses and other changes = change of the net worth. The "
                             + "other changes are the valuations of the investments, interest that is not in a "
                             + "transaction, a corrected balance, and the opening balance of an account whose first "
-                            + "statement is in the year."
+                            + "statement is in the year.")
                         font.pixelSize: 12
                         color: Theme.overlay0
                     }
@@ -381,7 +383,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: categoryCol.implicitHeight + 50
-                title: "Spending by category — this year (to date) against last year"
+                title: qsTr("Spending by category — this year (to date) against last year")
 
                 ColumnLayout {
                     id: categoryCol
@@ -390,17 +392,17 @@ Item {
 
                     EmptyState {
                         visible: controller.categoryComparison.length === 0
-                        message: "No spending this year or last year."
+                        message: qsTr("No spending this year or last year.")
                     }
                     RowLayout {
                         visible: controller.categoryComparison.length > 0
                         Layout.fillWidth: true
                         Layout.preferredHeight: 30
                         spacing: 10
-                        Text { Layout.fillWidth: true; text: "CATEGORY"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
-                        Text { Layout.preferredWidth: 140; text: "LAST YEAR"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
-                        Text { Layout.preferredWidth: 140; text: "THIS YEAR"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
-                        Text { Layout.preferredWidth: 140; text: "DIFFERENCE"; font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                        Text { Layout.fillWidth: true; text: qsTr("CATEGORY"); font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                        Text { Layout.preferredWidth: 140; text: qsTr("LAST YEAR"); font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                        Text { Layout.preferredWidth: 140; text: qsTr("THIS YEAR"); font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                        Text { Layout.preferredWidth: 140; text: qsTr("DIFFERENCE"); font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
                     }
                     Repeater {
                         model: controller.categoryComparison

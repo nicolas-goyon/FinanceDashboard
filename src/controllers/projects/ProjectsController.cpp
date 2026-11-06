@@ -1,7 +1,9 @@
 #include "ProjectsController.h"
 #include "utils/Formatter.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
+#include <QLocale>
 #include <QObject>
 #include <QString>
 #include <QVariantMap>
@@ -81,11 +83,11 @@ Completion completionOf(double target, double earmarked, double monthly, const Q
 QString completionText(const Completion& completion, const QString& dateFormat)
 {
     switch (completion.state) {
-        case Completion::State::Reached: return QStringLiteral("Reached");
-        case Completion::State::Never:   return QStringLiteral("Never");
+        case Completion::State::Reached: return QCoreApplication::translate("ProjectsController", "Reached");
+        case Completion::State::Never:   return QCoreApplication::translate("ProjectsController", "Never");
         case Completion::State::OnDate:  break;
     }
-    return completion.date.toString(dateFormat);
+    return QLocale().toString(completion.date, dateFormat);
 }
 
 } // namespace
@@ -97,9 +99,9 @@ ProjectsController::ProjectsController(QObject* parent)
 
     // MOCK: seed projects (user can add real ones via addProject(), not persisted)
     m_projects = {
-        { "House deposit", kHouseDepositTarget, today.addYears(kHouseDepositTargetYears),
+        { tr("House deposit"), kHouseDepositTarget, today.addYears(kHouseDepositTargetYears),
           kHouseDepositEarmarked, kHouseDepositMonthly },
-        { "New car",       kCarTarget, today.addMonths(kCarTargetMonths), kCarEarmarked, kCarMonthly },
+        { tr("New car"),       kCarTarget, today.addMonths(kCarTargetMonths), kCarEarmarked, kCarMonthly },
     };
     for (const Project& project : m_projects) {
         m_projectNames.append(project.name);
@@ -126,9 +128,9 @@ void ProjectsController::rebuildCards()
             { "name",           project.name },
             { "targetText",     Fmt::money(project.target) },
             { "earmarkedText",  Fmt::money(project.earmarked) },
-            { "monthlyText",    Fmt::money(project.monthly) + "/mo" },
+            { "monthlyText",    tr("%1/mo").arg(Fmt::money(project.monthly)) },
             { "completionText", completionText(completion, QStringLiteral("MMM yyyy")) },
-            { "targetDateText", project.targetDate.toString("MMM yyyy") },
+            { "targetDateText", QLocale().toString(project.targetDate, QStringLiteral("MMM yyyy")) },
             { "progressPct",    qBound(0.0, project.earmarked / project.target, 1.0) },
             { "gapText",        gap > 0 ? Fmt::money(gap) : QStringLiteral("—") },
             { "onTrack",        gap <= 0 },
@@ -216,13 +218,13 @@ void ProjectsController::recomputeProject()
 
     m_kpis = {
         // Earmarked above the target: nothing is needed, not a negative amount (#41).
-        kpi("Still Needed", Fmt::money(qMax(0.0, project.target - project.earmarked)),
-            "of " + Fmt::money(project.target)),
-        kpi("Projected Completion", m_completionText,
-            QString("at %1 / month").arg(Fmt::money(project.monthly))),
-        kpi("Gap at Target Date",
-            m_fundingGap > 0 ? Fmt::money(m_fundingGap) : "None",
-            project.targetDate.toString("MMMM yyyy"),
+        kpi(tr("Still Needed"), Fmt::money(qMax(0.0, project.target - project.earmarked)),
+            tr("of %1").arg(Fmt::money(project.target))),
+        kpi(tr("Projected Completion"), m_completionText,
+            tr("at %1 / month").arg(Fmt::money(project.monthly))),
+        kpi(tr("Gap at Target Date"),
+            m_fundingGap > 0 ? Fmt::money(m_fundingGap) : tr("None"),
+            QLocale().toString(project.targetDate, QStringLiteral("MMMM yyyy")),
             m_fundingGap > 0 ? "#f38ba8" : "#a6e3a1"),
     };
 
@@ -243,7 +245,7 @@ void ProjectsController::recomputeLoan()
         const double monthly = annuityMonthly(principal, rate, numPayments);
         const double totalCost = monthly * numPayments;
         m_loanScenarios.append(QVariantMap{
-            { "label", QString("%1 years @ %2 %").arg(years).arg(m_loanRatePct, 0, 'f', 2) },
+            { "label", tr("%1 years @ %2 %").arg(years).arg(QLocale().toString(m_loanRatePct, 'f', 2)) },
             { "monthly",       Fmt::money(monthly) },
             { "totalInterest", Fmt::money(totalCost - principal) },
             { "totalCost",     Fmt::money(totalCost) },
@@ -260,28 +262,28 @@ void ProjectsController::recomputeLoan()
 
     if (m_fundingGap <= 0) {
         const QString reached = m_targetReached
-            ? QStringLiteral("The earmarked amount already covers the target.")
-            : QString("At %1/month, the target is reached in %2.").arg(Fmt::money(project.monthly), m_completionText);
+            ? tr("The earmarked amount already covers the target.")
+            : tr("At %1/month, the target is reached in %2.").arg(Fmt::money(project.monthly), m_completionText);
         m_saveVsBorrowText =
-            QString("There is no gap. %1 The loan scenarios borrow a sample amount of %2.")
+            tr("There is no gap. %1 The loan scenarios borrow a sample amount of %2.")
                 .arg(reached, Fmt::money(principal));
     } else if (!hasContribution(project.monthly)) {
         m_saveVsBorrowText =
-            QString("With no monthly contribution, saving does not close the %1 gap. "
-                    "Borrowing it today over 15 years costs %2 in interest.")
+            tr("With no monthly contribution, saving does not close the %1 gap. "
+               "Borrowing it today over 15 years costs %2 in interest.")
                 .arg(Fmt::money(principal), Fmt::money(interest15y));
     } else if (std::ceil(principal / project.monthly) > kMaxMonths) {
         m_saveVsBorrowText =
-            QString("Saving the %1 gap at %2/month takes more than %3 years. "
-                    "Borrowing it today over 15 years costs %4 in interest.")
+            tr("Saving the %1 gap at %2/month takes more than %3 years. "
+               "Borrowing it today over 15 years costs %4 in interest.")
                 .arg(Fmt::money(principal), Fmt::money(project.monthly))
                 .arg(kMaxMonths / 12)
                 .arg(Fmt::money(interest15y));
     } else {
         const auto monthsToSaveGap = static_cast<int>(std::ceil(principal / project.monthly));
         m_saveVsBorrowText =
-            QString("Saving the %1 gap at %2/month takes ~%3 more months. "
-                    "Borrowing it today over 15 years costs %4 in interest.")
+            tr("Saving the %1 gap at %2/month takes ~%3 more months. "
+               "Borrowing it today over 15 years costs %4 in interest.")
                 .arg(Fmt::money(principal))
                 .arg(Fmt::money(project.monthly))
                 .arg(monthsToSaveGap)

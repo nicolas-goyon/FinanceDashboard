@@ -115,6 +115,7 @@ private slots:
     void valueBetweenTwoValuations();
     void savingsPlusGainsIsTheChangeOfTheNetWorth();
     void savingsCeilingsAndInterest();
+    void accountGroupsInEnglishAndFrench();
 };
 
 namespace {
@@ -543,6 +544,26 @@ void CalcTest::savingsCeilingsAndInterest()
     Data::Transaction other = row(3, 1, QDate(2026, 12, 31), 0.0, 10.0);
     other.name = QStringLiteral("DISINTERESTED");
     QVERIFY(!SavingsCalc::isInterest(other));
+}
+
+void CalcTest::accountGroupsInEnglishAndFrench()
+{
+    // A database made in French has the default account categories in
+    // French: the savings and investment groups still find them.
+    Data::Account account;
+    account.type = QStringLiteral("Other");
+    account.category = QStringLiteral("\u00c9pargne");
+    QVERIFY(Data::isSavings(account));
+    account.category = QStringLiteral("Savings");
+    QVERIFY(Data::isSavings(account));
+    account.category = QStringLiteral("Investissements");
+    QVERIFY(Data::isInvestment(account));
+    QVERIFY(!Data::isSavings(account));
+    account.category = QStringLiteral("investments");
+    QVERIFY(Data::isInvestment(account));
+    account.category = QStringLiteral("Courant");
+    QVERIFY(!Data::isSavings(account));
+    QVERIFY(!Data::isInvestment(account));
 }
 
 QTEST_GUILESS_MAIN(CalcTest)

@@ -71,6 +71,11 @@ builds, source archives). Then CI opens a pull request that merges the release b
   accounts and the transactions stay: a transaction keeps its category when a category of the
   same name still exists, else it becomes uncategorized; the learned rules of a removed
   category are deleted.
+- French (#230): a new Settings page has the language of the app — System language (French when
+  your computer is in French), English or Français. The change is immediate. Every page, dialog
+  and message is translated, dates and numbers follow the language (month names, decimal
+  comma), and a new database gets its default categories and account categories in that
+  language. A new test (translations_test) fails when a text has no French translation.
 
 ### Changed
 - The Overview shows real data (#209): the net worth today, its change this month and over 12

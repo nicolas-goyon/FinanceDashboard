@@ -7,6 +7,7 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QLocale>
 #include <QVariantMap>
 #include <QVector>
 #include <QtMinMax>
@@ -55,7 +56,7 @@ void CashFlowController::reload()
     QVariantList timestamps;
     for (int m = 0; m < CashFlowCalc::kMonths; ++m) {
         const QDate month = m_result.months.at(m);
-        m_monthLabels.append(month.toString(QStringLiteral("MMM yy")));
+        m_monthLabels.append(QLocale().toString(month, QStringLiteral("MMM yy")));
         timestamps.append(static_cast<double>(month.startOfDay().toMSecsSinceEpoch()));
         const double income = Money::fromCents(m_result.incomeCents.at(m));
         const double spending = Money::fromCents(m_result.spendingCents.at(m));

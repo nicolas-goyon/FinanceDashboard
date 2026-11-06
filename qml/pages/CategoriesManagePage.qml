@@ -44,7 +44,7 @@ Item {
 
             PageHeader {
                 showBack: true
-                title: "Categories & Subcategories"
+                title: qsTr("Categories & Subcategories")
                 onBackClicked: page.closeRequested()
 
                 StatusBadge {
@@ -53,7 +53,7 @@ Item {
                     variant: CategoryController.statusLevel
                 }
                 PillButton {
-                    text: "＋  Add category"
+                    text: qsTr("＋  Add category")
                     variant: "primary"
                     onClicked: categoryDialog.openFor(-1, "", page.defaultNewColor)
                 }
@@ -62,9 +62,9 @@ Item {
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: "Categories and subcategories used everywhere a transaction gets classified "
+                text: qsTr("Categories and subcategories used everywhere a transaction gets classified "
                     + "(statement import). Colors are just for legends/swatches — no charts read "
-                    + "them yet."
+                    + "them yet.")
                 font.pixelSize: 14
                 color: Theme.overlay0
             }
@@ -73,7 +73,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: catsCol.implicitHeight + 50
-                title: "Categories (" + CategoryController.categories.length + ")"
+                title: qsTr("Categories (%1)").arg(CategoryController.categories.length)
 
                 ColumnLayout {
                     id: catsCol
@@ -82,7 +82,7 @@ Item {
 
                     EmptyState {
                         visible: CategoryController.categories.length === 0
-                        message: "No categories yet — add one above."
+                        message: qsTr("No categories yet — add one above.")
                     }
 
                     Repeater {
@@ -111,20 +111,21 @@ Item {
                                     color: Theme.text
                                 }
                                 Text {
-                                    text: "(" + catRow.modelData.subcategories.length + " subcategor"
-                                        + (catRow.modelData.subcategories.length === 1 ? "y" : "ies") + ")"
+                                    text: catRow.modelData.subcategories.length === 1
+                                        ? qsTr("(1 subcategory)")
+                                        : qsTr("(%1 subcategories)").arg(catRow.modelData.subcategories.length)
                                     font.pixelSize: 13
                                     color: Theme.overlay0
                                 }
                                 Item { Layout.fillWidth: true }
 
                                 GhostButton {
-                                    text: "✎ Edit"
+                                    text: qsTr("✎ Edit")
                                     textColor: Theme.blue
                                     onClicked: categoryDialog.openFor(catRow.index, catRow.modelData.name, catRow.modelData.color)
                                 }
                                 GhostButton {
-                                    text: "＋ Subcategory"
+                                    text: qsTr("＋ Subcategory")
                                     textColor: Theme.green
                                     onClicked: subcategoryDialog.openFor(
                                         catRow.index, -1, "",
@@ -163,7 +164,7 @@ Item {
                                         color: Theme.subtext0
                                     }
                                     GhostButton {
-                                        text: "✎ Edit"
+                                        text: qsTr("✎ Edit")
                                         textColor: Theme.blue
                                         fontSize: 12
                                         onClicked: subcategoryDialog.openFor(catRow.index, subRow.index, subRow.modelData.name, subRow.modelData.color)
@@ -192,8 +193,8 @@ Item {
     // ── Add / edit category dialog ──────────────────────────────────────────
     FormDialog {
         id: categoryDialog
-        dialogTitle: categoryDialog.editIndex < 0 ? "New category" : "Edit category"
-        saveText: categoryDialog.editIndex < 0 ? "Add" : "Save"
+        dialogTitle: categoryDialog.editIndex < 0 ? qsTr("New category") : qsTr("Edit category")
+        saveText: categoryDialog.editIndex < 0 ? qsTr("Add") : qsTr("Save")
 
         property int editIndex: -1
 
@@ -204,12 +205,12 @@ Item {
             open()
         }
 
-        FormRow { id: nameRow; label: "Name"; placeholderText: "e.g. Health" }
+        FormRow { id: nameRow; label: qsTr("Name"); placeholderText: qsTr("e.g. Health") }
 
         ColumnLayout {
             spacing: 8
-            Text { text: "Color"; font.pixelSize: 15; color: Theme.overlay0 }
-            ColorPickerRow { id: colorRow; dialogTitle: "Choose category color" }
+            Text { text: qsTr("Color"); font.pixelSize: 15; color: Theme.overlay0 }
+            ColorPickerRow { id: colorRow; dialogTitle: qsTr("Choose category color") }
         }
 
         onSaveClicked: {
@@ -229,8 +230,8 @@ Item {
     // ── Add / edit subcategory dialog ───────────────────────────────────────
     FormDialog {
         id: subcategoryDialog
-        dialogTitle: subcategoryDialog.editSubIndex < 0 ? "New subcategory" : "Edit subcategory"
-        saveText: subcategoryDialog.editSubIndex < 0 ? "Add" : "Save"
+        dialogTitle: subcategoryDialog.editSubIndex < 0 ? qsTr("New subcategory") : qsTr("Edit subcategory")
+        saveText: subcategoryDialog.editSubIndex < 0 ? qsTr("Add") : qsTr("Save")
 
         property int parentCategoryIndex: -1
         property int editSubIndex: -1
@@ -243,12 +244,12 @@ Item {
             open()
         }
 
-        FormRow { id: subNameRow; label: "Name"; placeholderText: "e.g. Pharmacy" }
+        FormRow { id: subNameRow; label: qsTr("Name"); placeholderText: qsTr("e.g. Pharmacy") }
 
         ColumnLayout {
             spacing: 8
-            Text { text: "Color"; font.pixelSize: 15; color: Theme.overlay0 }
-            ColorPickerRow { id: subColorRow; dialogTitle: "Choose subcategory color" }
+            Text { text: qsTr("Color"); font.pixelSize: 15; color: Theme.overlay0 }
+            ColorPickerRow { id: subColorRow; dialogTitle: qsTr("Choose subcategory color") }
         }
 
         onSaveClicked: {
@@ -272,14 +273,14 @@ Item {
     // undo/history for category edits, see file header).
     ConfirmDialog {
         id: deleteCategoryDialog
-        dialogTitle: "Delete category?"
-        confirmText: "Delete"
+        dialogTitle: qsTr("Delete category?")
+        confirmText: qsTr("Delete")
 
         property int categoryIndex: -1
 
         function openFor(idx, name) {
             categoryIndex = idx
-            message = "This will remove “" + name + "” and all of its subcategories. This cannot be undone."
+            message = qsTr("This will remove “%1” and all of its subcategories. This cannot be undone.").arg(name)
             open()
         }
 

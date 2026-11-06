@@ -61,13 +61,13 @@ Item {
             spacing: 16
 
             PageHeader {
-                title: "Savings"
+                title: qsTr("Savings")
             }
 
             EmptyState {
                 visible: !controller.hasData
-                message: "No savings account in your net worth yet. Give an account the category \"Savings\" "
-                    + "(or a type such as Livret A or LDDS) in Account Management → Manage Accounts."
+                message: qsTr("No savings account in your net worth yet. Give an account the category \"Savings\" "
+                    + "(or a type such as Livret A or LDDS) in Account Management → Manage Accounts.")
             }
 
             // ── KPI cards ─────────────────────────────────────────────────────
@@ -91,7 +91,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 340
-                title: "Balance over time — per account (€)"
+                title: qsTr("Balance over time — per account (€)")
 
                 GraphsView {
                     anchors.fill: parent
@@ -103,7 +103,9 @@ Item {
                     axisX: DateTimeAxis {
                         min: new Date(controller.minTimeMs)
                         max: new Date(controller.maxTimeMs)
-                        labelFormat: "MMM yy"
+                        // Month names in the language of the app (DateAxisLabel).
+                        labelFormat: "yyyy-MM-dd"
+                        labelDelegate: Component { DateAxisLabel { displayFormat: "MMM yy" } }
                     }
                     axisY: ValueAxis {
                         min: 0
@@ -152,7 +154,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: goalsCol.implicitHeight + 50
-                title: "Progress toward the ceilings"
+                title: qsTr("Progress toward the ceilings")
 
                 ColumnLayout {
                     id: goalsCol
@@ -161,7 +163,7 @@ Item {
 
                     EmptyState {
                         visible: controller.goals.length === 0
-                        message: "No regulated savings account (Livret A, LDDS, LEP, PEL, CEL, Livret Jeune)."
+                        message: qsTr("No regulated savings account (Livret A, LDDS, LEP, PEL, CEL, Livret Jeune).")
                     }
 
                     Repeater {
@@ -208,7 +210,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 320
-                title: "Interest earned per year (€)"
+                title: qsTr("Interest earned per year (€)")
 
                 GraphsView {
                     anchors.fill: parent

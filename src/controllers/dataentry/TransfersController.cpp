@@ -103,11 +103,11 @@ bool TransfersController::confirm(int index)
     }
     const TransferMatcher::Pair pair = m_pairs.at(index);
     if (!Database::instance().confirmTransfer(pair.debitId, pair.creditId)) {
-        m_status.show(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the transfer"));
+        m_status.show(StatusMessage::Level::Danger, tr("⚠  Could not save the transfer"));
         return false;
     }
     refresh();
-    m_status.show(StatusMessage::Level::Success, QStringLiteral("✓  Transfer confirmed"));
+    m_status.show(StatusMessage::Level::Success, tr("✓  Transfer confirmed"));
     return true;
 }
 
@@ -118,11 +118,11 @@ bool TransfersController::refuse(int index)
     }
     const TransferMatcher::Pair pair = m_pairs.at(index);
     if (!Database::instance().refuseTransfer(pair.debitId, pair.creditId)) {
-        m_status.show(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the answer"));
+        m_status.show(StatusMessage::Level::Danger, tr("⚠  Could not save the answer"));
         return false;
     }
     refresh();
-    m_status.show(StatusMessage::Level::Success, QStringLiteral("✓  Not a transfer"));
+    m_status.show(StatusMessage::Level::Success, tr("✓  Not a transfer"));
     return true;
 }
 
@@ -136,7 +136,7 @@ int TransfersController::confirmAll()
     }
     refresh();
     m_status.show(confirmed > 0 ? StatusMessage::Level::Success : StatusMessage::Level::Warning,
-                  QStringLiteral("%1  %2 transfer(s) confirmed").arg(confirmed > 0 ? QStringLiteral("✓") : QStringLiteral("⚠"))
+                  tr("%1  %2 transfer(s) confirmed").arg(confirmed > 0 ? QStringLiteral("✓") : QStringLiteral("⚠"))
                       .arg(confirmed));
     return confirmed;
 }
@@ -150,10 +150,10 @@ bool TransfersController::cancelTransfer(int transferId)
     const auto row = std::find_if(rows.cbegin(), rows.cend(),
                                   [transferId](const Data::Transaction& r) { return r.transferId == transferId; });
     if (row == rows.cend() || !Database::instance().setInternalTransfer(row->id, false)) {
-        m_status.show(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not cancel the transfer"));
+        m_status.show(StatusMessage::Level::Danger, tr("⚠  Could not cancel the transfer"));
         return false;
     }
     refresh();
-    m_status.show(StatusMessage::Level::Success, QStringLiteral("✓  Transfer cancelled"));
+    m_status.show(StatusMessage::Level::Success, tr("✓  Transfer cancelled"));
     return true;
 }
