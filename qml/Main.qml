@@ -200,6 +200,12 @@ ApplicationWindow {
             // The update check and the versions of the channel (#117).
             id: "updates", label: "Updates",
             actions: []
+        },
+        {
+            // The language of the app, and the other preferences of this
+            // computer.
+            id: "settings", label: qsTr("Settings"),
+            actions: []
         }
     ]
 
@@ -427,6 +433,7 @@ ApplicationWindow {
         AccountManagementLandingPage  {}
         DatabaseManagementPage        { prodDatabasePath: root.prodDatabasePath }
         UpdatesPage                   {}
+        SettingsPage                  {}
     }
 
     // ── Overlay — Import Transactions (see SidebarCategory.actionTriggered

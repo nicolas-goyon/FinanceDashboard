@@ -1,3 +1,4 @@
+#include "controllers/ui/Language.h"
 #include "db/Database.h"
 #include "startup/LocalOnlyNetwork.h"
 #include "startup/StartupChecks.h"
@@ -62,6 +63,11 @@ int main(int argc, char* argv[]) // NOLINT(cppcoreguidelines-avoid-c-arrays,mode
     // recommend for full customization. See:
     // https://doc.qt.io/qt-6/qtquickcontrols2-customize.html#customization-reference
     QQuickStyle::setStyle(QStringLiteral("Basic"));
+
+    // The language of the Settings page (QSettings, so after the names of
+    // the app above), before the database and the QML: the default data of a
+    // new database is written in it.
+    Language::applyAtStartup();
 
     // ── Start-up stage ────────────────────────────────────────────────────────
     // Requirement checks, then initialization (data folder + database), on

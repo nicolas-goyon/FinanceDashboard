@@ -93,7 +93,7 @@ if(WIN32)
 endif()
 
 # Qt Quick / QML + Qt Graphs (2D). Qt Charts and Widgets are no longer used.
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2 Network Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2 Network Concurrent LinguistTools)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -252,6 +252,8 @@ qt_add_qml_module(FinanceDashboard
         src/controllers/updates/UpdateInstaller.cpp
         # Fonts that QML cannot name (fixed-pitch font of the system, #77).
         src/controllers/ui/Fonts.h
+        src/controllers/ui/Language.h
+        src/controllers/ui/Language.cpp
     QML_FILES
         qml/Main.qml
         qml/StartupErrorWindow.qml
@@ -290,6 +292,20 @@ qt_add_qml_module(FinanceDashboard
         qml/pages/AccountTransactionsPage.qml
         qml/pages/AccountHistoryPage.qml
         qml/pages/InternalTransfersPage.qml
+        qml/pages/SettingsPage.qml
+)
+
+# ── Translations (Settings → Language) ───────────────────────────────────────
+# English is the language of the sources: qsTr() in QML, tr() and
+# QCoreApplication::translate() in C++. i18n/financedashboard_fr.ts has the
+# French. lrelease builds the .qm files into the app (resource prefix /i18n,
+# read by src/controllers/ui/Language.cpp). After a change of the texts:
+#   cmake --build build --target update_translations
+# updates the .ts files (lupdate) from the sources.
+qt_add_translations(FinanceDashboard
+    TS_FILES i18n/financedashboard_fr.ts
+    RESOURCE_PREFIX "/i18n"
+    LUPDATE_OPTIONS -no-obsolete -locations none
 )
 
 # NOTE — qml/pages/ImportSnapshotPage.qml (FileDialog) and
