@@ -84,6 +84,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
   each regulated account (Livret A 22 950 €, LDDS 12 000 €, …) and the interest of the last 3
   years (the credits that say "interest" or "intérêts"). The [MOCK] badge is gone from this
   page.
+- More default categories (#226): a new database starts with 15 categories and their
+  subcategories — Income (salary, bonus, freelance, social benefits, refunds, interest,
+  dividends, gifts received), Housing, Groceries, Utilities, Subscriptions (streaming, music,
+  software and cloud, press, sport and gym), Transport, Health, Leisure, Shopping, Children and
+  education, Investments (stocks and ETFs, life insurance, retirement savings, real estate,
+  crypto), Transfers, Taxes and fees, Gifts and donations, Other. Each subcategory has a shade
+  of the colour of its category. An existing database keeps its categories.
 
 ### Fixed
 - The application log no longer shows statement data (#205): the upgrade steps and the import

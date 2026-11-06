@@ -90,6 +90,8 @@ Per project:
 
 ## Category System
 
+A new database starts with 15 default categories, each with subcategories: Income (salary, bonus, freelance, social benefits, refunds, interest, dividends, gifts received), Housing, Groceries, Utilities, Subscriptions (streaming, music, software and cloud, press, sport and gym), Transport, Health, Leisure, Shopping, Children and education, Investments (stocks and ETFs, life insurance, retirement savings, real estate, crypto), Transfers, Taxes and fees, Gifts and donations, Other.
+
 ### Editing
 
 Categories of previously entered transactions/inputs can be edited at any time from the history table. Edits recompute all affected aggregates (cash-flow charts, monthly summaries).

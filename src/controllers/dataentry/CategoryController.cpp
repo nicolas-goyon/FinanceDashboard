@@ -1,6 +1,7 @@
 #include "CategoryController.h"
 
 #include "db/Database.h"
+#include "models/DefaultCategories.h"
 #include "models/Category.h"
 
 #include <QColor>
@@ -49,52 +50,19 @@ void CategoryController::setStatus(StatusMessage::Level level, const QString& ms
 
 void CategoryController::seedDefaults()
 {
-    // Same category names/colors/subcategories as the original in-memory
-    // mock list, now written through Database so they persist across
-    // restarts instead of resetting every run. Subcategory colors are
-    // shades of their parent category's color (same hue/saturation,
-    // lightness offset by ~8% per step) rather than unrelated Mocha
-    // accents, so a category and its subcategories read as one visual
-    // family in legends/swatches — same lightness-step convention as
-    // suggestSubcategoryColor() below.
-    struct SeedSub { QString name; QString color; };
-    struct SeedCat { QString name; QString color; QVector<SeedSub> subs; };
-
-    static const QVector<SeedCat> kSeed = {
-        { "Rent", "#b4befe", {
-            { "Base rent", "#b4befe" },
-            { "Charges",   "#8c9bfd" },
-        } },
-        { "Groceries", "#a6e3a1", {
-            { "Supermarket", "#a6e3a1" },
-            { "Market",      "#88da82" },
-        } },
-        { "Transport", "#89dceb", {
-            { "Public transit", "#89dceb" },
-            { "Fuel",           "#66d2e5" },
-            { "Rideshare",      "#ace6f1" },
-        } },
-        { "Utilities", "#f9e2af", {
-            { "Electricity", "#f9e2af" },
-            { "Internet",    "#f6d489" },
-        } },
-        { "Leisure", "#cba6f7", {
-            { "Restaurants",   "#cba6f7" },
-            { "Subscriptions", "#b581f4" },
-        } },
-        { "Other", "#6c7086", {} },
-    };
+    // The list of models/DefaultCategories.h, in the language of the app.
+    const QVector<Data::DefaultCategory> kSeed = Data::defaultCategories();
 
     // All the defaults and their record in one SQL transaction: when a write
     // fails, nothing is written, and the next start tries again (#37).
     Database& database = Database::instance();
-    const bool written = database.writeDefaults(Database::Defaults::Categories, [&database]() {
-        for (const SeedCat& seedCat : kSeed) {
+    const bool written = database.writeDefaults(Database::Defaults::Categories, [&database, &kSeed]() {
+        for (const Data::DefaultCategory& seedCat : kSeed) {
             const int catId = database.addCategory(seedCat.name, seedCat.color);
             if (catId < 0) {
                 return false;
             }
-            for (const SeedSub& seedSub : seedCat.subs) {
+            for (const Data::DefaultSubcategory& seedSub : seedCat.subcategories) {
                 if (database.addSubcategory(catId, seedSub.name, seedSub.color) < 0) {
                     return false;
                 }
