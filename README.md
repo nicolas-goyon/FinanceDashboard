@@ -8,6 +8,9 @@ The app connects to GitHub only: at each start it asks for the list of releases 
 check off on the Updates page), and with the setup and the AppImage it downloads a new version
 when you click **Install** (see "Updates" below).
 
+The app is in English and in French: choose the language on the **Settings** page ("System
+language" follows the language of your computer).
+
 For what the app is trying to do product-wise, see `PROJECT.md`. For how it's built, see
 `ARCHITECTURE.MD`. For how it's tested, packaged and released, see `CI-CD.md`. For the current
 backlog and version history, see `TODO.md` and `version.md`.
@@ -180,7 +183,8 @@ rounded to the cent and the account tags), `db_copy_test`
 the installation, with a local test server instead of GitHub, and the QML engine that reads no
 file from the network) and `calc_test` (the calculations behind the texts and charts of the pages,
 the money format and the whole cents of `Money`) and `qml_test` (the QML components, with Qt Quick
-Test: a wheel over a wide table scrolls the page).
+Test: a wheel over a wide table scrolls the page) and `translations_test` (every text has a French
+translation).
 `cmake --build build --target fd_tests` builds only the tests. The release tools have their own
 tests: `python -m unittest discover -s tools -p "test_*.py"`.
 

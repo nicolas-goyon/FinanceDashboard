@@ -47,6 +47,7 @@ src/startup/          Start-up checks (StartupChecks) and the QML network block 
 src/utils/            Money, AccountHashing and other helpers.
 tests/                The CTest suites. tests/CMakeLists.txt has one comment for each test.
 tests/qml/            The QML tests (Qt Quick Test, run by qml_test).
+i18n/                 The translations (financedashboard_fr.ts). See § Text and language rule.
 tools/                version.py, release_flow.py, Docker wrappers, requirement checks, analyzers.
 launcher/             The start-up launcher (Windows exe, Linux script).
 packaging/            Icon, Linux metadata, Windows setup, AppImage and .deb scripts.
@@ -311,6 +312,26 @@ when it closes.
 - The identity supposes one reference for each transaction. The import reports a skipped row
   that has the reference and the amount of a saved row, but another operation date. The report
   links to the issue in `TransactionsTable::kReusedReferenceIssueUrl`.
+
+## Text and language rule
+
+- English is the language of the sources. Write every text that the user can see with
+  `qsTr()` (QML), `tr()` (a class with Q_OBJECT) or `QCoreApplication::translate()`.
+- Do not translate: logs, SQL, settings keys, data stored in the database, strings that code
+  parses or compares. Build a sentence with `%1` and `.arg()`, not with `+` of translated parts.
+- `i18n/financedashboard_fr.ts` has the French. `qt_add_translations()` builds it into the app
+  (prefix `/i18n`). After you add or change a text, run
+  `cmake --build build --target update_translations` and translate the new messages.
+  `translations_test` fails when a text has no French translation.
+- The `Language` singleton (`src/controllers/ui/Language.h`) keeps the choice of the Settings
+  page in QSettings (`ui/language`: `system`, `en`, `fr`). `main()` applies it before the
+  database and the QML, so the default data of a new database is in that language.
+- A change of language installs the new translator, sets `QLocale::setDefault()`, and calls
+  `QQmlEngine::retranslate()`: every `qsTr()` changes at once. A text that a controller makes
+  in C++ changes when the page reads its data again (the pages on real data do it when they
+  are shown).
+- A date that the user sees uses `QLocale().toString(date, format)`, so the month names follow
+  the language.
 
 ## Network rule
 
