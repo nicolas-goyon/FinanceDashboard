@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <QChar>
+#include <QCoreApplication>
 #include <QDate>
 #include <QHash>
 #include <QString>
@@ -324,13 +325,13 @@ Prediction CategoryPredictor::predictFor(const NormalizedLabel& label, double si
     if (prediction.rung != kRungRule) {
         if (looksRecurring(label.key, signedAmount, date, excludeIndex)) {
             prediction.confidence = std::max(prediction.confidence, kRecurrenceConfidence);
-            prediction.reason += QStringLiteral(" — recurs monthly at this amount");
+            prediction.reason += QCoreApplication::translate("CategoryPredictor", " — recurs monthly at this amount");
         }
         if (!signIsPlausible(prediction.category, signedAmount)) {
             prediction.confidence = std::min(prediction.confidence, kSignMismatchCeiling);
             prediction.reason += (signedAmount > 0.0)
-                ? QStringLiteral(" — but this category has only ever been an expense")
-                : QStringLiteral(" — but this category has only ever been income");
+                ? QCoreApplication::translate("CategoryPredictor", " — but this category has only ever been an expense")
+                : QCoreApplication::translate("CategoryPredictor", " — but this category has only ever been income");
         }
     }
 
@@ -351,7 +352,7 @@ Prediction CategoryPredictor::matchRule(const NormalizedLabel& label) const
         prediction.subcategory = rule.subcategory;
         prediction.confidence = 1.0;
         prediction.rung = kRungRule;
-        prediction.reason = QStringLiteral("Your rule: labels containing \"%1\" are %2")
+        prediction.reason = QCoreApplication::translate("CategoryPredictor", "Your rule: labels containing \"%1\" are %2")
                                  .arg(rule.pattern, labelText(rule.category, rule.subcategory));
         return prediction;
     }
@@ -424,14 +425,14 @@ Prediction CategoryPredictor::matchExactKey(const NormalizedLabel& label, int ex
     prediction.rung = kRungExact;
     prediction.confidence = choice.purity * maturity(choice.total);
     prediction.reason = (choice.total == 1)
-        ? QStringLiteral("Categorized \"%1\" as %2 once before")
+        ? QCoreApplication::translate("CategoryPredictor", "Categorized \"%1\" as %2 once before")
               .arg(label.key, labelText(choice.category, choice.subcategory))
-        : QStringLiteral("Categorized \"%1\" as %2 in %3 of %4 previous transactions")
+        : QCoreApplication::translate("CategoryPredictor", "Categorized \"%1\" as %2 in %3 of %4 previous transactions")
               .arg(label.key, labelText(choice.category, choice.subcategory))
               .arg(choice.support)
               .arg(choice.total);
     if (choice.droppedSubcategory) {
-        prediction.reason += QStringLiteral(" (subcategory varies — left blank)");
+        prediction.reason += QCoreApplication::translate("CategoryPredictor", " (subcategory varies — left blank)");
     }
     return prediction;
 }
@@ -486,7 +487,7 @@ Prediction CategoryPredictor::matchFuzzyKey(const NormalizedLabel& label, int ex
     // Scaled by similarity: a 0.6-similar key is a weaker witness than an
     // identical one, and the confidence the user sees should say so.
     prediction.confidence = choice.purity * maturity(choice.total) * bestSimilarity;
-    prediction.reason = QStringLiteral("Close to \"%1\" (%2% match), which you categorize as %3")
+    prediction.reason = QCoreApplication::translate("CategoryPredictor", "Close to \"%1\" (%2% match), which you categorize as %3")
                              .arg(bestKey)
                              .arg(std::lround(bestSimilarity * 100.0))
                              .arg(labelText(choice.category, choice.subcategory));
@@ -608,12 +609,12 @@ Prediction CategoryPredictor::matchNeighbours(const NormalizedLabel& label, int 
     // generalization never outranks two confirmed sightings of an exact key.
     const double closeness = std::min(1.0, bestSimilarity / kSimilarityFullCredit);
     prediction.confidence = std::min(kSimilarConfidenceCeiling, share * closeness);
-    prediction.reason = QStringLiteral("%1 similar label(s) you categorized as %2 (closest %3% match)")
+    prediction.reason = QCoreApplication::translate("CategoryPredictor", "%1 similar label(s) you categorized as %2 (closest %3% match)")
                              .arg(neighbours.size())
                              .arg(labelText(prediction.category, prediction.subcategory))
                              .arg(std::lround(bestSimilarity * 100.0));
     if (droppedSubcategory) {
-        prediction.reason += QStringLiteral(" (subcategory varies — left blank)");
+        prediction.reason += QCoreApplication::translate("CategoryPredictor", " (subcategory varies — left blank)");
     }
     return prediction;
 }
