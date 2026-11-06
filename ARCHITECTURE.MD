@@ -169,6 +169,13 @@ database, the files and the logs must see nothing more than the user sees in the
   start tries again.
 - "Reset Database" keeps the records. So the default data does not come back, also after a
   restart.
+- `Data::defaultCategories()` (`src/models/DefaultCategories.h`) is the one list of the
+  default categories: 15 categories (income, housing, subscriptions, investments, transfers,
+  taxes…) and their subcategories. The first run, the mock data and the category resets use it.
+- The names are translated at the time of the write (context `DefaultCategories`). After that
+  they are data: a change of language does not rename them.
+- A subcategory gets a shade of the colour of its category: the same hue, another HSL
+  lightness, from 95 to 215, and no two shades the same.
 
 ### Copy of the prod database (Test app)
 

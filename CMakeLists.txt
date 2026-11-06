@@ -119,6 +119,8 @@ set(FD_CORE_SOURCES
     src/models/ImportLog.h
     src/models/Category.h
     src/models/Account.h
+    src/models/DefaultCategories.h
+    src/models/DefaultCategories.cpp
     src/models/Transaction.h
     src/models/CategoryRule.h
     src/db/tables/SnapshotsTable.h

@@ -1,8 +1,10 @@
 #include "DatabaseManagementController.h"
 
 #include "db/Database.h"
+#include "models/DefaultCategories.h"
 #include "models/Transaction.h"
 
+#include <QCoreApplication>
 #include <QDate>
 #include <QDateTime>
 #include <QDebug>
@@ -147,41 +149,13 @@ bool DatabaseManagementController::seedMockData() // static, see header
         return ok;
     };
 
-    // Same default category/subcategory list as
-    // CategoryController::seedDefaults() (duplicated here deliberately —
-    // see class comment).
-    struct SeedSub { QString name; QString color; };
-    struct SeedCat { QString name; QString color; QVector<SeedSub> subs; };
-    static const QVector<SeedCat> kCategorySeed = {
-        { "Rent", "#b4befe", {
-            { "Base rent", "#b4befe" },
-            { "Charges",   "#8c9bfd" },
-        } },
-        { "Groceries", "#a6e3a1", {
-            { "Supermarket", "#a6e3a1" },
-            { "Market",      "#88da82" },
-        } },
-        { "Transport", "#89dceb", {
-            { "Public transit", "#89dceb" },
-            { "Fuel",           "#66d2e5" },
-            { "Rideshare",      "#ace6f1" },
-        } },
-        { "Utilities", "#f9e2af", {
-            { "Electricity", "#f9e2af" },
-            { "Internet",    "#f6d489" },
-        } },
-        { "Leisure", "#cba6f7", {
-            { "Restaurants",   "#cba6f7" },
-            { "Subscriptions", "#b581f4" },
-        } },
-        { "Other", "#6c7086", {} },
-    };
-    for (const SeedCat& seedCat : kCategorySeed) {
+    // The default categories (models/DefaultCategories.h).
+    for (const Data::DefaultCategory& seedCat : Data::defaultCategories()) {
         const int catId = database.addCategory(seedCat.name, seedCat.color);
         if (!check(catId >= 0, "a category")) {
             continue;
         }
-        for (const SeedSub& seedSub : seedCat.subs) {
+        for (const Data::DefaultSubcategory& seedSub : seedCat.subcategories) {
             check(database.addSubcategory(catId, seedSub.name, seedSub.color) >= 0, "a subcategory");
         }
     }
@@ -239,13 +213,15 @@ bool DatabaseManagementController::seedMockData() // static, see header
             int daysAgo; QString description; double debit; double credit;
             double balanceAfter; QString category; QString subcategory;
         };
-        static const QVector<SeedTx> kTxSeed = {
-            { 28, "Salary",               0.0,    2800.00, 3120.50, "",           ""             },
-            { 25, "Monthly rent",         950.00,    0.0,   2170.50, "Rent",       "Base rent"    },
-            { 20, "Carrefour",             86.40,    0.0,   2084.10, "Groceries",  "Supermarket"  },
-            { 14, "SNCF ticket",           42.00,    0.0,   2042.10, "Transport",  "Public transit" },
-            { 9,  "EDF electricity",      118.50,    0.0,   1923.60, "Utilities",  "Electricity"  },
-            { 3,  "Cinema + dinner",       64.90,    0.0,   1858.70, "Leisure",    "Restaurants"  },
+        // The categories of the defaults, in the language of the app.
+        const auto cat = [](const char* name) { return QCoreApplication::translate("DefaultCategories", name); };
+        const QVector<SeedTx> kTxSeed = {
+            { 28, "Salary",          0.0,    2800.00, 3120.50, cat("Income"),    cat("Salary")         },
+            { 25, "Monthly rent",    950.00,    0.0,  2170.50, cat("Housing"),   cat("Rent")           },
+            { 20, "Carrefour",        86.40,    0.0,  2084.10, cat("Groceries"), cat("Supermarket")    },
+            { 14, "SNCF ticket",      42.00,    0.0,  2042.10, cat("Transport"), cat("Public transit") },
+            { 9,  "EDF electricity", 118.50,    0.0,  1923.60, cat("Utilities"), cat("Electricity")    },
+            { 3,  "Cinema + dinner",  64.90,    0.0,  1858.70, cat("Leisure"),   cat("Restaurants")    },
         };
         QVector<Data::Transaction> txs;
         txs.reserve(kTxSeed.size());

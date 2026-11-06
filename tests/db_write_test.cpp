@@ -28,6 +28,7 @@
 #include "DatabaseManagementController.h"
 #include "TransfersController.h"
 #include "db/Database.h"
+#include "models/DefaultCategories.h"
 #include "models/Account.h"
 #include "models/AssetEntry.h"
 #include "models/Category.h"
@@ -37,6 +38,7 @@
 
 #include <QDate>
 #include <QRegularExpression>
+#include <QSet>
 #include <QScopeGuard>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -131,6 +133,7 @@ private slots:
     void accountControllerRefusesADuplicateName();
     void defaultsAreWrittenOncePerDatabase();
     void defaultsAreAllOrNothing();
+    void defaultCategoriesAreAFullSet();
     void mockDataHasTheSampleTransactions();
     void balanceHistoryFollowsTheBookingOrder();
     void usdAccountShowsItsCurrency();
@@ -423,7 +426,7 @@ void DbWriteTest::defaultsAreWrittenOncePerDatabase()
         // First run: the defaults are written.
         CategoryController categories;
         AccountController accounts;
-        QVERIFY(!categories.categories().isEmpty());
+        QCOMPARE(categories.categories().size(), Data::defaultCategories().size());
         QVERIFY(!accounts.accounts().isEmpty());
         QVERIFY(!accounts.accountTypes().isEmpty());
     }
@@ -820,6 +823,43 @@ void DbWriteTest::transferIsConfirmedRefusedAndMarked()
     QVERIFY(!controller.transfers().first().toMap().value(QStringLiteral("complete")).toBool());
     QVERIFY(controller.cancelTransfer(credit));
     QCOMPARE(controller.transfers().size(), qsizetype(0));
+}
+
+void DbWriteTest::defaultCategoriesAreAFullSet()
+{
+    // The defaults have the kinds of money that a user needs from the start:
+    // income, investments, subscriptions… Names are unique, colours are
+    // valid, and the subcategories of a category have different shades.
+    const QVector<Data::DefaultCategory> defaults = Data::defaultCategories();
+    QStringList names;
+    for (const Data::DefaultCategory& category : defaults) {
+        names << category.name;
+        QVERIFY2(QRegularExpression(QStringLiteral("^#[0-9a-f]{6}$")).match(category.color).hasMatch(),
+                 qPrintable(category.color));
+        QSet<QString> subNames;
+        QSet<QString> shades;
+        for (const Data::DefaultSubcategory& sub : category.subcategories) {
+            QVERIFY2(QRegularExpression(QStringLiteral("^#[0-9a-f]{6}$")).match(sub.color).hasMatch(),
+                     qPrintable(sub.name + QLatin1Char(' ') + sub.color));
+            subNames.insert(sub.name);
+            shades.insert(sub.color);
+        }
+        QCOMPARE(subNames.size(), category.subcategories.size());
+        QCOMPARE(shades.size(), category.subcategories.size());
+        if (!category.subcategories.isEmpty()) {
+            QCOMPARE(category.subcategories.first().color, category.color);
+        }
+    }
+    QCOMPARE(QSet<QString>(names.cbegin(), names.cend()).size(), names.size());
+    for (const char* expected : {"Income", "Housing", "Subscriptions", "Investments", "Health", "Other"}) {
+        QVERIFY2(names.contains(QLatin1String(expected)), expected);
+    }
+    // The Savings page finds the interest by the word "Interest" (#211).
+    const auto income = std::find_if(defaults.cbegin(), defaults.cend(), [](const Data::DefaultCategory& c) {
+        return c.name == QLatin1String("Income");
+    });
+    QVERIFY(std::any_of(income->subcategories.cbegin(), income->subcategories.cend(),
+                        [](const Data::DefaultSubcategory& sub) { return sub.name == QLatin1String("Interest"); }));
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)
