@@ -69,9 +69,9 @@ Item {
             spacing: 16
 
             PageHeader {
-                title: "Cash Flow"
+                title: qsTr("Cash Flow")
 
-                Text { text: "Month:"; font.pixelSize: 15; color: Theme.overlay0 }
+                Text { text: qsTr("Month:"); font.pixelSize: 15; color: Theme.overlay0 }
                 ComboBox {
                     id: monthSelector
                     Layout.preferredWidth: 120
@@ -83,21 +83,20 @@ Item {
 
             EmptyState {
                 visible: !controller.hasData
-                message: "No transaction in the accounts of your net worth yet. Import a statement in "
-                    + "Transactions → Import Transactions."
+                message: qsTr("No transaction in the accounts of your net worth yet. Import a statement in "
+                    + "Transactions → Import Transactions.")
             }
 
             // ── Money flow (Sankey) for the selected month ────────────────────
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 420
-                title: "Money flow — " + page.selectedMonthLabel
-                       + " (income → budget → spending & savings)"
+                title: qsTr("Money flow — %1 (income → budget → spending & savings)").arg(page.selectedMonthLabel)
 
                 MoneyFlow {
                     id: moneyFlow
                     anchors.fill: parent
-                    centreName: "Monthly budget"
+                    centreName: qsTr("Monthly budget")
                     inputs: controller.flowInputs
                     outputs: controller.flowOutputs
                 }
@@ -107,7 +106,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 340
-                title: "Income vs expenses per month (€)"
+                title: qsTr("Income vs expenses per month (€)")
 
                 GraphsView {
                     anchors.fill: parent
@@ -126,12 +125,12 @@ Item {
                         axisX: BarCategoryAxis { id: monthAxis }
                         BarSet {
                             id: incomeSet
-                            label: "Income"
+                            label: qsTr("Income")
                             color: Theme.green
                         }
                         BarSet {
                             id: expenseSet
-                            label: "Expenses"
+                            label: qsTr("Expenses")
                             color: Theme.red
                         }
                     }
@@ -142,7 +141,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 280
-                title: "Rolling 3-month average spending (€)"
+                title: qsTr("Rolling 3-month average spending (€)")
 
                 GraphsView {
                     anchors.fill: parent
@@ -164,13 +163,13 @@ Item {
 
                     LineSeries {
                         id: rollingLine
-                        name: "3-month avg"
+                        name: qsTr("3-month avg")
                         color: Theme.blue
                         width: 2
                         // Filled by page.fill().
                         pointDelegate: Component {
                             HoverPoint {
-                                seriesName: "3-month avg"
+                                seriesName: qsTr("3-month avg")
                                 pointColor: Theme.blue
                             }
                         }
@@ -187,8 +186,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 360
-                    title: "Spending by category — " + page.selectedMonthLabel
-                           + " — click a slice"
+                    title: qsTr("Spending by category — %1 — click a slice").arg(page.selectedMonthLabel)
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -208,7 +206,7 @@ Item {
 
                                 function rebuild() {
                                     clear()
-                                    sliceInfo.text = "Click a slice for details"
+                                    sliceInfo.text = qsTr("Click a slice for details")
                                     var s = controller.monthSlices
                                     for (var i = 0; i < s.length; i++) {
                                         var slice = append(s[i].label, s[i].value)
@@ -234,7 +232,7 @@ Item {
                         Text {
                             id: sliceInfo
                             Layout.alignment: Qt.AlignHCenter
-                            text: "Click a slice for details"
+                            text: qsTr("Click a slice for details")
                             font.pixelSize: 14
                             color: Theme.overlay0
                         }
@@ -245,7 +243,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 360
-                    title: "Biggest expenses — " + page.selectedMonthLabel
+                    title: qsTr("Biggest expenses — %1").arg(page.selectedMonthLabel)
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -291,7 +289,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 340
-                title: "Category spending across months (€)"
+                title: qsTr("Category spending across months (€)")
 
                 GraphsView {
                     anchors.fill: parent

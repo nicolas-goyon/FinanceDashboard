@@ -63,14 +63,14 @@ void SavingsController::reload()
     const qint64 startOfYear = NetWorthCalc::period(NetWorthScope::histories(savings), yearStart, today).startValueCents;
     const qint64 added = totalCents - startOfYear - interestThisYear;
     m_kpis = {
-        QVariantMap{{"label", QStringLiteral("Total Savings")}, {"value", Fmt::money(Money::fromCents(totalCents))},
-                    {"sub", QStringLiteral("%1 account(s)").arg(savings.size())}, {"color", kKpiText}},
-        QVariantMap{{"label", QStringLiteral("Added This Year")}, {"value", Fmt::money(Money::fromCents(added), true)},
-                    {"sub", QStringLiteral("deposits − withdrawals since 1 January")},
+        QVariantMap{{"label", tr("Total Savings")}, {"value", Fmt::money(Money::fromCents(totalCents))},
+                    {"sub", tr("%1 account(s)").arg(savings.size())}, {"color", kKpiText}},
+        QVariantMap{{"label", tr("Added This Year")}, {"value", Fmt::money(Money::fromCents(added), true)},
+                    {"sub", tr("deposits − withdrawals since 1 January")},
                     {"color", added >= 0 ? kGreen : QStringLiteral("#f38ba8")}},
-        QVariantMap{{"label", QStringLiteral("Interest This Year")},
+        QVariantMap{{"label", tr("Interest This Year")},
                     {"value", Fmt::money(Money::fromCents(interestThisYear))},
-                    {"sub", QStringLiteral("the rows of interest")}, {"color", kGreen}},
+                    {"sub", tr("the rows of interest")}, {"color", kGreen}},
     };
 
     // ── Ceilings ─────────────────────────────────────────────────────────────

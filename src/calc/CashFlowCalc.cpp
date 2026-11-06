@@ -2,6 +2,7 @@
 
 #include "utils/Money.h"
 
+#include <QCoreApplication>
 #include <QVariantMap>
 
 #include <algorithm>
@@ -10,12 +11,12 @@ namespace CashFlowCalc {
 
 QString uncategorized()
 {
-    return QStringLiteral("Uncategorized");
+    return QCoreApplication::translate("CashFlowCalc", "Uncategorized");
 }
 
 QString other()
 {
-    return QStringLiteral("Other");
+    return QCoreApplication::translate("CashFlowCalc", "Other");
 }
 
 Result compute(const QVector<Data::Transaction>& rows, const QDate& today)
@@ -99,7 +100,7 @@ FlowSides moneyFlow(double income, const QVector<Part>& spending)
 {
     FlowSides sides;
     if (income > 0.0) {
-        sides.inputs.append(QVariantMap{{"name", QStringLiteral("Income")}, {"value", income}, {"color", "#a6e3a1"}});
+        sides.inputs.append(QVariantMap{{"name", QCoreApplication::translate("CashFlowCalc", "Income")}, {"value", income}, {"color", "#a6e3a1"}});
     }
     // Only the parts that are drawn count: a negative value is left out of
     // the chart, so it is left out of the total too.
@@ -114,9 +115,9 @@ FlowSides moneyFlow(double income, const QVector<Part>& spending)
     // keep the totals of the two sides equal.
     const double leftover = income - spent;
     if (leftover > 0.0) {
-        sides.outputs.append(QVariantMap{{"name", QStringLiteral("Savings")}, {"value", leftover}, {"color", "#94e2d5"}});
+        sides.outputs.append(QVariantMap{{"name", QCoreApplication::translate("CashFlowCalc", "Savings")}, {"value", leftover}, {"color", "#94e2d5"}});
     } else if (leftover < 0.0) {
-        sides.inputs.append(QVariantMap{{"name", QStringLiteral("Overspend")}, {"value", -leftover}, {"color", "#f38ba8"}});
+        sides.inputs.append(QVariantMap{{"name", QCoreApplication::translate("CashFlowCalc", "Overspend")}, {"value", -leftover}, {"color", "#f38ba8"}});
     }
     return sides;
 }

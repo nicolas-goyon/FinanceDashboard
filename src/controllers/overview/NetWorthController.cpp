@@ -8,6 +8,7 @@
 #include <QColor>
 #include <QDate>
 #include <QDateTime>
+#include <QLocale>
 #include <QString>
 #include <QVariantMap>
 #include <QVector>
@@ -108,7 +109,7 @@ void NetWorthController::reload()
         m_dayToDayBound.append(dayToDay);
         m_savingsBound.append(savings);
         m_investmentsBound.append(investments);
-        m_monthLabels.append(month.toString(QStringLiteral("MMM yy")));
+        m_monthLabels.append(QLocale().toString(month, QStringLiteral("MMM yy")));
         m_maxTotal = qMax(m_maxTotal, qMax(investments, qMax(savings, dayToDay)));
         m_minTotal = qMin(m_minTotal, qMin(dayToDay, qMin(savings, investments)));
 
@@ -141,21 +142,20 @@ void NetWorthController::reload()
             : QStringLiteral("—");
 
     m_kpis = {
-        kpi(QStringLiteral("Total Net Worth"), Fmt::money(Money::fromCents(netToday)),
-            QStringLiteral("%1 account(s)").arg(scope.size())),
-        kpi(QStringLiteral("This Month"), changeText(monthChange, total(last - 1)),
-            QStringLiteral("since ") + Fmt::dateOrDash(ends.at(last - 1)), monthChange >= 0 ? kGreen : kRed),
-        kpi(QStringLiteral("Over 12 Months"), changeText(yearChange, yearAgo),
-            QStringLiteral("since ") + Fmt::dateOrDash(today.addYears(-1)), yearChange >= 0 ? kGreen : kRed),
-        kpi(QStringLiteral("Savings Rate"), savingsRate,
-            QStringLiteral("saved %1 this month").arg(Fmt::money(Money::fromCents(month.savingsCents()))),
+        kpi(tr("Total Net Worth"), Fmt::money(Money::fromCents(netToday)),
+            tr("%1 account(s)").arg(scope.size())),
+        kpi(tr("This Month"), changeText(monthChange, total(last - 1)),
+            tr("since %1").arg(Fmt::dateOrDash(ends.at(last - 1))), monthChange >= 0 ? kGreen : kRed),
+        kpi(tr("Over 12 Months"), changeText(yearChange, yearAgo),
+            tr("since %1").arg(Fmt::dateOrDash(today.addYears(-1))), yearChange >= 0 ? kGreen : kRed),
+        kpi(tr("Savings Rate"), savingsRate,
+            tr("saved %1 this month").arg(Fmt::money(Money::fromCents(month.savingsCents()))),
             month.savingsCents() >= 0 ? kGreen : kRed),
     };
 
     // ── Allocation today (only the groups with a positive value) ────────────
     m_allocation.clear();
-    const std::array<QString, 3> names = {QStringLiteral("Day-to-day"), QStringLiteral("Savings"),
-                                          QStringLiteral("Investments")};
+    const std::array<QString, 3> names = {tr("Day-to-day"), tr("Savings"), tr("Investments")};
     const std::array<QString, 3> colors = {kBlue, kGreen, kMauve};
     for (std::size_t g = 0; g < names.size(); ++g) {
         const qint64 value = values.at(last).at(g);
@@ -178,7 +178,7 @@ void NetWorthController::buildYearSummary(const QVector<NetWorthScope::ScopeAcco
         const int year = today.year() - y;
         const QDate end = y == 0 ? today : QDate(year, 12, 31);
         periods.append(NetWorthCalc::period(histories, QDate(year, 1, 1), end));
-        m_yearLabels.append(y == 0 ? QStringLiteral("%1 (to date)").arg(year) : QString::number(year));
+        m_yearLabels.append(y == 0 ? tr("%1 (to date)").arg(year) : QString::number(year));
     }
 
     const auto row = [&periods](const QString& label, const auto& valueOf, bool signedColors) {
@@ -192,13 +192,13 @@ void NetWorthController::buildYearSummary(const QVector<NetWorthScope::ScopeAcco
         return QVariantMap{{"label", label}, {"values", texts}, {"colors", colors}};
     };
     m_yearRows = {
-        row(QStringLiteral("Income"), [](const NetWorthCalc::Period& p) { return p.flows.incomeCents; }, false),
-        row(QStringLiteral("Spending"), [](const NetWorthCalc::Period& p) { return p.flows.spendingCents; }, false),
-        row(QStringLiteral("Savings"), [](const NetWorthCalc::Period& p) { return p.flows.savingsCents(); }, true),
-        row(QStringLiteral("Gains, losses and other changes"), [](const NetWorthCalc::Period& p) { return p.gainsCents(); }, true),
-        row(QStringLiteral("Change of the net worth"), [](const NetWorthCalc::Period& p) { return p.changeCents(); },
+        row(tr("Income"), [](const NetWorthCalc::Period& p) { return p.flows.incomeCents; }, false),
+        row(tr("Spending"), [](const NetWorthCalc::Period& p) { return p.flows.spendingCents; }, false),
+        row(tr("Savings"), [](const NetWorthCalc::Period& p) { return p.flows.savingsCents(); }, true),
+        row(tr("Gains, losses and other changes"), [](const NetWorthCalc::Period& p) { return p.gainsCents(); }, true),
+        row(tr("Change of the net worth"), [](const NetWorthCalc::Period& p) { return p.changeCents(); },
             true),
-        row(QStringLiteral("Net worth at the end"), [](const NetWorthCalc::Period& p) { return p.endValueCents; },
+        row(tr("Net worth at the end"), [](const NetWorthCalc::Period& p) { return p.endValueCents; },
             false),
     };
     // The savings rate: savings / income.
@@ -215,7 +215,7 @@ void NetWorthController::buildYearSummary(const QVector<NetWorthScope::ScopeAcco
             rateColors.append(QStringLiteral("#cdd6f4"));
         }
     }
-    m_yearRows.insert(3, QVariantMap{{"label", QStringLiteral("Savings rate")}, {"values", rates}, {"colors", rateColors}});
+    m_yearRows.insert(3, QVariantMap{{"label", tr("Savings rate")}, {"values", rates}, {"colors", rateColors}});
 
     // Spending by category: this year (to date) against last year.
     QHash<QString, qint64> thisYear;
@@ -226,7 +226,7 @@ void NetWorthController::buildYearSummary(const QVector<NetWorthScope::ScopeAcco
             if (!booked.isValid() || booked > today || Data::isInternalTransfer(transaction) || transaction.debit <= 0.0) {
                 continue;
             }
-            const QString category = transaction.category.isEmpty() ? QStringLiteral("Uncategorized") : transaction.category;
+            const QString category = transaction.category.isEmpty() ? tr("Uncategorized") : transaction.category;
             if (booked.year() == today.year()) {
                 thisYear[category] += Money::toCents(transaction.debit);
             } else if (booked.year() == today.year() - 1) {

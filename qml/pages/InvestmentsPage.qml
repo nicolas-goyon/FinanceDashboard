@@ -24,7 +24,7 @@ Item {
             spacing: 16
 
             PageHeader {
-                title: "Investments"
+                title: qsTr("Investments")
                 mock: true
             }
 
@@ -49,7 +49,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 360
-                title: "Portfolio value vs cumulative deposits (€) — the gap is real P&L"
+                title: qsTr("Portfolio value vs cumulative deposits (€) — the gap is real P&L")
 
                 GraphsView {
                     anchors.fill: parent
@@ -70,7 +70,7 @@ Item {
                     }
 
                     LineSeries {
-                        name: "Portfolio value"
+                        name: qsTr("Portfolio value")
                         color: Theme.blue
                         width: 2.5
                         Component.onCompleted: {
@@ -78,11 +78,11 @@ Item {
                             for (var i = 0; i < t.length; i++) append(t[i], v[i])
                         }
                         pointDelegate: Component {
-                            HoverPoint { seriesName: "Portfolio value"; pointColor: Theme.blue }
+                            HoverPoint { seriesName: qsTr("Portfolio value"); pointColor: Theme.blue }
                         }
                     }
                     LineSeries {
-                        name: "Cumulative deposits"
+                        name: qsTr("Cumulative deposits")
                         color: Theme.overlay0
                         width: 2
                         Component.onCompleted: {
@@ -90,7 +90,7 @@ Item {
                             for (var i = 0; i < t.length; i++) append(t[i], v[i])
                         }
                         pointDelegate: Component {
-                            HoverPoint { seriesName: "Cumulative deposits"; pointColor: Theme.overlay0 }
+                            HoverPoint { seriesName: qsTr("Cumulative deposits"); pointColor: Theme.overlay0 }
                         }
                     }
                 }
@@ -105,7 +105,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 320
-                    title: "Allocation by asset class — click a slice"
+                    title: qsTr("Allocation by asset class — click a slice")
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -140,7 +140,7 @@ Item {
                         Text {
                             id: allocInfo
                             Layout.alignment: Qt.AlignHCenter
-                            text: "Click a slice for details"
+                            text: qsTr("Click a slice for details")
                             font.pixelSize: 14
                             color: Theme.overlay0
                         }
@@ -151,7 +151,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 320
-                    title: "Monthly performance %"
+                    title: qsTr("Monthly performance %")
 
                     GraphsView {
                         anchors.fill: parent
@@ -170,12 +170,12 @@ Item {
                                 Component.onCompleted: categories = controller.monthLabels
                             }
                             BarSet {
-                                label: "Gain"
+                                label: qsTr("Gain")
                                 color: Theme.green
                                 Component.onCompleted: values = controller.perfGains
                             }
                             BarSet {
-                                label: "Loss"
+                                label: qsTr("Loss")
                                 color: Theme.red
                                 Component.onCompleted: values = controller.perfLosses
                             }

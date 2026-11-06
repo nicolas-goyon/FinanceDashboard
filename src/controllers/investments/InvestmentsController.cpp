@@ -3,6 +3,7 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QLocale>
 #include <QObject>
 #include <QtMinMax>
 
@@ -41,7 +42,7 @@ InvestmentsController::InvestmentsController(QObject* parent)
         m_timestamps.append(static_cast<double>(month.startOfDay().toMSecsSinceEpoch()));
         m_portfolioValues.append(portfolio.at(monthIdx));
         m_depositValues.append(deposits);
-        m_monthLabels.append(month.toString("MMM"));
+        m_monthLabels.append(QLocale().toString(month, QStringLiteral("MMM")));
         m_valueMax = qMax(m_valueMax, portfolio.at(monthIdx));
 
         if (monthIdx > 0) {
@@ -70,23 +71,23 @@ InvestmentsController::InvestmentsController(QObject* parent)
     const double retPct   = pnl / invested * 100.0;
 
     m_kpis = {
-        QVariantMap{ { "label", "Total Invested" }, { "value", Fmt::money(invested) },
-                     { "sub", "cumulative deposits" }, { "color", "#cdd6f4" } },
-        QVariantMap{ { "label", "Unrealized P&L" }, { "value", Fmt::money(pnl, true) },
-                     { "sub", "value minus deposits" },
+        QVariantMap{ { "label", tr("Total Invested") }, { "value", Fmt::money(invested) },
+                     { "sub", tr("cumulative deposits") }, { "color", "#cdd6f4" } },
+        QVariantMap{ { "label", tr("Unrealized P&L") }, { "value", Fmt::money(pnl, true) },
+                     { "sub", tr("value minus deposits") },
                      { "color", pnl >= 0 ? "#a6e3a1" : "#f38ba8" } },
-        QVariantMap{ { "label", "Simple Return" },
+        QVariantMap{ { "label", tr("Simple Return") },
                      { "value", QString("%1%2 %").arg(retPct >= 0 ? "+" : "")
                                                  .arg(retPct, 0, 'f', 1) },
-                     { "sub", "on deposited capital" },
+                     { "sub", tr("on deposited capital") },
                      { "color", retPct >= 0 ? "#a6e3a1" : "#f38ba8" } },
     };
 
     // MOCK: allocation donut (static breakdown)
     m_allocation = {
-        QVariantMap{ { "label", "ETF World" },  { "value", kAllocEtfPct }, { "color", "#89b4fa" } },
-        QVariantMap{ { "label", "Tech stocks" },{ "value", kAllocTechStocksPct }, { "color", "#cba6f7" } },
-        QVariantMap{ { "label", "Crypto" },     { "value", kAllocCryptoPct }, { "color", "#fab387" } },
-        QVariantMap{ { "label", "Cash" },       { "value", kAllocCashPct }, { "color", "#a6e3a1" } },
+        QVariantMap{ { "label", tr("ETF World") },  { "value", kAllocEtfPct }, { "color", "#89b4fa" } },
+        QVariantMap{ { "label", tr("Tech stocks") },{ "value", kAllocTechStocksPct }, { "color", "#cba6f7" } },
+        QVariantMap{ { "label", tr("Crypto") },     { "value", kAllocCryptoPct }, { "color", "#fab387" } },
+        QVariantMap{ { "label", tr("Cash") },       { "value", kAllocCashPct }, { "color", "#a6e3a1" } },
     };
 }
