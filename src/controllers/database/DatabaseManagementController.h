@@ -3,6 +3,8 @@
 
 #include "utils/StatusMessage.h"
 
+#include "models/DefaultCategories.h"
+
 #include <QObject>
 #include <QString>
 #include <QtQml/qqml.h>
@@ -90,6 +92,16 @@ public:
     // to show right away.
     Q_INVOKABLE void resetToMock();
 
+    // ── Category resets ──────────────────────────────────────────────────────
+    // Remove every category and subcategory (resetCategories()), or replace
+    // them with the defaults of models/DefaultCategories.h, in the language
+    // of the app (resetCategoriesToDefaults()). The transactions keep a
+    // category that still exists; the others become uncategorized, and the
+    // rules of a removed category go (Database::replaceCategories()).
+    // Accounts and transactions stay. Emits databaseReset().
+    Q_INVOKABLE void resetCategories();
+    Q_INVOKABLE void resetCategoriesToDefaults();
+
     // ── Per-account cleanup (see ARCHITECTURE.MD § Database Management) ────────
     // Deletes every transaction for `accountId` but leaves the account, its
     // hashes, and its balance checkpoints in place — narrower than
@@ -123,6 +135,7 @@ signals:
     void databaseReset();
 
 private:
+    void replaceCategories(const QVector<Data::DefaultCategory>& categories, const QString& doneText);
     void setStatus(StatusMessage::Level level, const QString& msg);
     // False when a write failed (the application log has which one): the
     // status then says it, instead of a success (#38).

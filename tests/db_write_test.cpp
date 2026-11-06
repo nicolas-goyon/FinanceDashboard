@@ -39,6 +39,7 @@
 #include <QDate>
 #include <QRegularExpression>
 #include <QSet>
+#include <QSignalSpy>
 #include <QScopeGuard>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -134,6 +135,7 @@ private slots:
     void defaultsAreWrittenOncePerDatabase();
     void defaultsAreAllOrNothing();
     void defaultCategoriesAreAFullSet();
+    void categoryResetsKeepWhatStillExists();
     void mockDataHasTheSampleTransactions();
     void balanceHistoryFollowsTheBookingOrder();
     void usdAccountShowsItsCurrency();
@@ -860,6 +862,65 @@ void DbWriteTest::defaultCategoriesAreAFullSet()
     });
     QVERIFY(std::any_of(income->subcategories.cbegin(), income->subcategories.cend(),
                         [](const Data::DefaultSubcategory& sub) { return sub.name == QLatin1String("Interest"); }));
+}
+
+void DbWriteTest::categoryResetsKeepWhatStillExists()
+{
+    // The two category resets of Database management: the accounts and the
+    // transactions stay; a transaction keeps a category that still exists.
+    Database& db = Database::instance();
+    const int account = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
+                                      QStringLiteral("EUR"), QStringLiteral(""));
+    const int groceries = db.addCategory(QStringLiteral("Groceries"), QStringLiteral("#a6e3a1"));
+    QVERIFY(db.addSubcategory(groceries, QStringLiteral("Supermarket"), QStringLiteral("#a6e3a1")) >= 0);
+    QVERIFY(db.addSubcategory(groceries, QStringLiteral("Organic shop"), QStringLiteral("#a6e3a1")) >= 0);
+    QVERIFY(db.addCategory(QStringLiteral("My own"), QStringLiteral("#89b4fa")) >= 0);
+    QVERIFY(db.insertTransactions(account, {
+        transaction(QStringLiteral("CARREFOUR"), QStringLiteral("Groceries"), QStringLiteral("Supermarket")),
+        transaction(QStringLiteral("BIOCOOP"), QStringLiteral("Groceries"), QStringLiteral("Organic shop")),
+        transaction(QStringLiteral("CLUB"), QStringLiteral("My own"), QStringLiteral("")),
+    }));
+    QVERIFY(db.addCategoryRule(QStringLiteral("CARREFOUR"), QStringLiteral("Groceries"), QStringLiteral("Supermarket")) >= 0);
+    QVERIFY(db.addCategoryRule(QStringLiteral("BIOCOOP"), QStringLiteral("Groceries"), QStringLiteral("Organic shop")) >= 0);
+    QVERIFY(db.addCategoryRule(QStringLiteral("CLUB"), QStringLiteral("My own"), QStringLiteral("")) >= 0);
+
+    // Reset to the defaults (the test runs in English): Groceries and
+    // Groceries/Supermarket exist there, "Organic shop" and "My own" do not.
+    Database::CategoryResetStats stats;
+    QVERIFY2(db.replaceCategories(Data::defaultCategories(), stats), qPrintable(db.lastError()));
+    QCOMPARE(db.loadCategories().size(), Data::defaultCategories().size());
+    auto rows = categoriesByName(account);
+    QCOMPARE(rows.value(QStringLiteral("CARREFOUR")), qMakePair(QStringLiteral("Groceries"), QStringLiteral("Supermarket")));
+    QCOMPARE(rows.value(QStringLiteral("BIOCOOP")), qMakePair(QStringLiteral("Groceries"), QString()));
+    QCOMPARE(rows.value(QStringLiteral("CLUB")), qMakePair(QString(), QString()));
+    QCOMPARE(stats.uncategorizedTransactions, 1);
+    QCOMPARE(stats.removedRules, 1);
+    QVector<Data::CategoryRule> rules = db.loadCategoryRules();
+    QCOMPARE(rules.size(), qsizetype(2));
+    for (const Data::CategoryRule& rule : rules) {
+        QCOMPARE(rule.category, QStringLiteral("Groceries"));
+        QCOMPARE(rule.subcategory, rule.pattern == QLatin1String("CARREFOUR") ? QStringLiteral("Supermarket") : QString());
+    }
+
+    // Remove all: no category, no rule, every transaction uncategorized; the
+    // account and its 3 transactions stay.
+    DatabaseManagementController controller;
+    QSignalSpy reset(&controller, &DatabaseManagementController::databaseReset);
+    controller.resetCategories();
+    QCOMPARE(reset.count(), 1);
+    QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓")), qPrintable(controller.statusText()));
+    QVERIFY(db.loadCategories().isEmpty());
+    QVERIFY(db.loadCategoryRules().isEmpty());
+    rows = categoriesByName(account);
+    QCOMPARE(rows.size(), qsizetype(3));
+    for (const auto& pair : std::as_const(rows)) {
+        QCOMPARE(pair, qMakePair(QString(), QString()));
+    }
+
+    // And back to the defaults from the controller.
+    controller.resetCategoriesToDefaults();
+    QCOMPARE(reset.count(), 2);
+    QCOMPARE(db.loadCategories().size(), Data::defaultCategories().size());
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)

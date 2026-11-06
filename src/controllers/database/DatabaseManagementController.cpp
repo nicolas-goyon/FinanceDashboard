@@ -55,6 +55,36 @@ void DatabaseManagementController::resetToMock()
     emit databaseReset();
 }
 
+void DatabaseManagementController::resetCategories()
+{
+    replaceCategories({}, QStringLiteral("✓  Categories removed"));
+}
+
+void DatabaseManagementController::resetCategoriesToDefaults()
+{
+    replaceCategories(Data::defaultCategories(), QStringLiteral("✓  Categories reset to the defaults"));
+}
+
+void DatabaseManagementController::replaceCategories(const QVector<Data::DefaultCategory>& categories,
+                                                     const QString& doneText)
+{
+    Database::CategoryResetStats stats;
+    if (!Database::instance().replaceCategories(categories, stats)) {
+        qWarning().noquote() << "[DatabaseManagementController] category reset failed:"
+                             << Database::instance().lastError();
+        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Category reset failed — see application log"));
+        return;
+    }
+    QString text = doneText;
+    if (stats.uncategorizedTransactions > 0 || stats.removedRules > 0) {
+        text += QStringLiteral(" — %1 transaction(s) uncategorized, %2 rule(s) removed")
+                    .arg(stats.uncategorizedTransactions)
+                    .arg(stats.removedRules);
+    }
+    setStatus(StatusMessage::Level::Success, text);
+    emit databaseReset();
+}
+
 bool DatabaseManagementController::clearTransactionsForAccount(int accountId)
 {
     if (accountId < 0) {

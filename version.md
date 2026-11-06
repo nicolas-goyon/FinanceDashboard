@@ -66,6 +66,11 @@ builds, source archives). Then CI opens a pull request that merges the release b
   income, spending, savings, savings rate, gains and other changes, change of the net worth and
   the net worth at the end — and the spending by category, this year against last year. Savings
   + gains = change of the net worth.
+- Category resets in Database Management (#228): "Reset to defaults" replaces every category
+  with the default ones, and "Remove all" deletes them all, to build your own list. The
+  accounts and the transactions stay: a transaction keeps its category when a category of the
+  same name still exists, else it becomes uncategorized; the learned rules of a removed
+  category are deleted.
 
 ### Changed
 - The Overview shows real data (#209): the net worth today, its change this month and over 12

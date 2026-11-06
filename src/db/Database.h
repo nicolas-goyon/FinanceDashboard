@@ -14,6 +14,7 @@
 #include "db/tables/CategoryRulesTable.h"
 #include "db/tables/SettingsTable.h"
 #include "models/Category.h"
+#include "models/DefaultCategories.h"
 #include "models/CategoryRule.h"
 #include "models/Account.h"
 #include "models/Transaction.h"
@@ -289,6 +290,19 @@ public:
     // table stays, and records that the defaults were written: the
     // controllers do not write them again (#37).
     bool resetAll();
+
+    // ── Category resets (Database management) ──────────────────────────────────
+    // Replaces every category and subcategory with `categories` (empty: no
+    // category at all), in one SQL transaction. A transaction keeps its
+    // category when a category of that name is in the new list (and its
+    // subcategory when that category has it); else it has none. A category
+    // rule whose category is not in the new list is removed. Counts in
+    // `stats` for the status message.
+    struct CategoryResetStats {
+        int uncategorizedTransactions = 0;
+        int removedRules = 0;
+    };
+    bool replaceCategories(const QVector<Data::DefaultCategory>& categories, CategoryResetStats& stats);
 
     // ── Copy of another database (the Test app, #130) ──────────────────────────
     // Replaces the open database with a copy of the database at `sourcePath`
