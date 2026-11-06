@@ -32,6 +32,8 @@ qml/Main.qml          The window, the sidebar and the navigation (currentViewId)
 qml/pages/            One file for each page. Display only.
 qml/components/       Shared QML components (ChartCard, PillButton, FormDialog, HoverPoint, …).
 qml/components/Theme.qml  Every colour of the QML (a singleton, `Theme.<name>`).
+qml/components/AccountFormDialog.qml  The form of an account (add, edit). The accounts page and the
+                      import review ("＋ New account") use it.
 qml/components/TableScrollView.qml  The ScrollView of a wide table in a page: a vertical wheel
                       scrolls the page, a sideways wheel scrolls the table.
 src/controllers/      One subfolder for each domain. One controller class for each page.

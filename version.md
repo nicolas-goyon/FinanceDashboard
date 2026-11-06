@@ -76,6 +76,10 @@ builds, source archives). Then CI opens a pull request that merges the release b
   and message is translated, dates and numbers follow the language (month names, decimal
   comma), and a new database gets its default categories and account categories in that
   language. A new test (translations_test) fails when a text has no French translation.
+- Create an account from the import review (#232): when no account fits the statement, "＋ New
+  account" next to the target account opens the account form (name, type, category, currency,
+  notes, part of the net worth). The new account becomes the target of the import, and saving
+  the import links the statement to it.
 
 ### Changed
 - The Overview shows real data (#209): the net worth today, its change this month and over 12
