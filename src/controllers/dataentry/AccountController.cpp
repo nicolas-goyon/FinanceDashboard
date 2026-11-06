@@ -69,11 +69,11 @@ void AccountController::seedDefaults()
     // Same 4 usage buckets named in the product request: day-to-day basis,
     // savings, investments, urgent saving.
     struct SeedCat { QString name; QString color; };
-    static const QVector<SeedCat> kCatSeed = {
-        { "Day-to-day",     "#89b4fa" },
-        { "Savings",        "#a6e3a1" },
-        { "Investments",    "#cba6f7" },
-        { "Urgent savings", "#f9e2af" },
+    const QVector<SeedCat> kCatSeed = {
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Day-to-day")),     "#89b4fa" },
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Savings")),        "#a6e3a1" },
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Investments")),    "#cba6f7" },
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Urgent savings")), "#f9e2af" },
     };
 
     // Same accounts as before, minus iban/bic/number (no longer stored — see
@@ -83,19 +83,19 @@ void AccountController::seedDefaults()
     struct SeedAcc {
         QString name, type, category, currency, notes;
     };
-    static const QVector<SeedAcc> kAccSeed = {
-        { "Checking — Bank A", "CCP",           "Day-to-day",  "EUR", "" },
-        { "Checking — Bank B", "CCP",           "Day-to-day",  "EUR", "" },
-        { "Livret A",          "Livret A",      "Savings",     "EUR", "" },
-        { "LDDS",              "LDDS",          "Savings",     "EUR", "" },
-        { "Assurance Vie",     "Assurance Vie", "Investments", "EUR", "" },
-        { "Trading account",  "CTO",           "Investments", "EUR", "" },
+    const QVector<SeedAcc> kAccSeed = {
+        { "Checking — Bank A", "CCP",           Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Day-to-day")),  "EUR", "" },
+        { "Checking — Bank B", "CCP",           Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Day-to-day")),  "EUR", "" },
+        { "Livret A",          "Livret A",      Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Savings")),     "EUR", "" },
+        { "LDDS",              "LDDS",          Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Savings")),     "EUR", "" },
+        { "Assurance Vie",     "Assurance Vie", Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Investments")), "EUR", "" },
+        { "Trading account",  "CTO",           Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Investments")), "EUR", "" },
     };
 
     // All the defaults and their record in one SQL transaction: when a write
     // fails, nothing is written, and the next start tries again (#37).
     Database& database = Database::instance();
-    const bool written = database.writeDefaults(Database::Defaults::Accounts, [&database]() {
+    const bool written = database.writeDefaults(Database::Defaults::Accounts, [&database, &kCatSeed, &kAccSeed]() {
         for (const QString& name : kTypeSeed) {
             if (database.addAccountType(name) < 0) {
                 return false;

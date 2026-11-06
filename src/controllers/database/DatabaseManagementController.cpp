@@ -192,11 +192,11 @@ bool DatabaseManagementController::seedMockData() // static, see header
 
     // Same defaults as AccountController::seedDefaults().
     struct SeedAccCat { QString name; QString color; };
-    static const QVector<SeedAccCat> kAccountCategorySeed = {
-        { "Day-to-day",     "#89b4fa" },
-        { "Savings",        "#a6e3a1" },
-        { "Investments",    "#cba6f7" },
-        { "Urgent savings", "#f9e2af" },
+    const QVector<SeedAccCat> kAccountCategorySeed = {
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Day-to-day")),     "#89b4fa" },
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Savings")),        "#a6e3a1" },
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Investments")),    "#cba6f7" },
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Urgent savings")), "#f9e2af" },
     };
     for (const SeedAccCat& seedAccCat : kAccountCategorySeed) {
         check(database.addAccountCategory(seedAccCat.name, seedAccCat.color) >= 0, "an account category");
@@ -211,12 +211,12 @@ bool DatabaseManagementController::seedMockData() // static, see header
 
     struct SeedAcc { QString name, type, category, currency, notes; };
     static const QVector<SeedAcc> kAccountSeed = {
-        { "Checking — Bank A", "CCP",           "Day-to-day",  "EUR", "" },
-        { "Checking — Bank B", "CCP",           "Day-to-day",  "EUR", "" },
-        { "Livret A",          "Livret A",      "Savings",     "EUR", "" },
-        { "LDDS",              "LDDS",          "Savings",     "EUR", "" },
-        { "Assurance Vie",     "Assurance Vie", "Investments", "EUR", "" },
-        { "Trading account",  "CTO",           "Investments", "EUR", "" },
+        { "Checking — Bank A", "CCP",           Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Day-to-day")),  "EUR", "" },
+        { "Checking — Bank B", "CCP",           Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Day-to-day")),  "EUR", "" },
+        { "Livret A",          "Livret A",      Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Savings")),     "EUR", "" },
+        { "LDDS",              "LDDS",          Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Savings")),     "EUR", "" },
+        { "Assurance Vie",     "Assurance Vie", Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Investments")), "EUR", "" },
+        { "Trading account",  "CTO",           Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Investments")), "EUR", "" },
     };
     // The sample transactions go to the first demo account. Found by its
     // place, not by its name: QLatin1String("Checking — Bank A") read the

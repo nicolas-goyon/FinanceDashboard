@@ -500,7 +500,9 @@ Item {
                         axisX: DateTimeAxis {
                             min: new Date(page.axisRangeMinMs)
                             max: new Date(page.axisRangeMaxMs)
-                            labelFormat: page.axisDateFormat
+                            // Month names in the language of the app (DateAxisLabel).
+                            labelFormat: "yyyy-MM-dd"
+                            labelDelegate: Component { DateAxisLabel { displayFormat: page.axisDateFormat } }
                         }
                         axisY: ValueAxis {
                             min: page.balanceAxisMin

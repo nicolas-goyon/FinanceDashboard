@@ -245,7 +245,7 @@ void ProjectsController::recomputeLoan()
         const double monthly = annuityMonthly(principal, rate, numPayments);
         const double totalCost = monthly * numPayments;
         m_loanScenarios.append(QVariantMap{
-            { "label", tr("%1 years @ %2 %").arg(years).arg(m_loanRatePct, 0, 'f', 2) },
+            { "label", tr("%1 years @ %2 %").arg(years).arg(QLocale().toString(m_loanRatePct, 'f', 2)) },
             { "monthly",       Fmt::money(monthly) },
             { "totalInterest", Fmt::money(totalCost - principal) },
             { "totalCost",     Fmt::money(totalCost) },

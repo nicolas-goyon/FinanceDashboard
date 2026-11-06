@@ -20,6 +20,8 @@
 #include <functional>
 #include <optional>
 #include <utility>
+#include <QCoreApplication>
+#include <QEvent>
 #include <QDate>
 #include <QFileInfo>
 #include <QFuture>
@@ -82,6 +84,16 @@ SnapshotImportController::SnapshotImportController(QObject* parent)
 {
     connect(&m_predictionWatcher, &QFutureWatcher<PredictionJob>::finished, this,
             &SnapshotImportController::predictionsReady);
+    buildTemplates();
+    // The names of the templates are translated: a change of language
+    // (QCoreApplication::installTranslator() sends LanguageChange to the
+    // application) builds the list again.
+    QCoreApplication::instance()->installEventFilter(this);
+}
+
+void SnapshotImportController::buildTemplates()
+{
+    m_templates.clear();
     for (const ImportTemplate* tpl : ImportTemplateRegistry::all()) {
         m_templates.append(QVariantMap{
             { "id",          tpl->id() },
@@ -89,6 +101,15 @@ SnapshotImportController::SnapshotImportController(QObject* parent)
             { "fileFilter",  tpl->fileFilter() },
         });
     }
+}
+
+bool SnapshotImportController::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == QCoreApplication::instance() && event->type() == QEvent::LanguageChange) {
+        buildTemplates();
+        emit templatesChanged();
+    }
+    return QObject::eventFilter(watched, event);
 }
 
 SnapshotImportController::~SnapshotImportController()

@@ -25,7 +25,7 @@ Item {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
             text: qsTr("Use the sidebar actions to manage accounts: \"Manage Accounts\" to add/edit/remove "
-                + "accounts, link hash fingerprints, and view an account's transactions, or \"Account "
+                + "accounts, choose your net worth, and view an account's transactions, or \"Account "
                 + "types & categories\" to edit the type/category lists accounts are classified by. "
                 + "Expand this category in the sidebar (the arrow) to see both.")
             font.pixelSize: 15

@@ -139,7 +139,9 @@ Item {
                     axisX: DateTimeAxis {
                         min: new Date(controller.minTimeMs)
                         max: new Date(controller.maxTimeMs)
-                        labelFormat: "MMM yy"
+                        // Month names in the language of the app (DateAxisLabel).
+                        labelFormat: "yyyy-MM-dd"
+                        labelDelegate: Component { DateAxisLabel { displayFormat: "MMM yy" } }
                     }
                     axisY: ValueAxis {
                         min: controller.minTotal

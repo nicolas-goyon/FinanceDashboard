@@ -8,6 +8,7 @@
 
 #include <QDate>
 #include <QDateTime>
+#include <QLocale>
 #include <QString>
 #include <QVariantMap>
 #include <QtMinMax>
@@ -83,7 +84,7 @@ void SavingsController::reload()
         const qint64 value = NetWorthCalc::valueCentsAt(savings.at(i).history, today);
         const double pct = qBound(0.0, static_cast<double>(value) / static_cast<double>(ceiling), 1.0);
         m_goals.append(QVariantMap{
-            {"label", QStringLiteral("%1 (%2 %)").arg(savings.at(i).account.name).arg(pct * kPercent, 0, 'f', 0)},
+            {"label", QStringLiteral("%1 (%2 %)").arg(savings.at(i).account.name).arg(QLocale().toString(pct * kPercent, 'f', 0))},
             {"currentText", Fmt::money(Money::fromCents(value))},
             {"targetText", Fmt::money(Money::fromCents(ceiling))},
             {"pct", pct},

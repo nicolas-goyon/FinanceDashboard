@@ -1,7 +1,9 @@
 #ifndef FINANCEDASHBOARD_MODELS_ACCOUNT_H
 #define FINANCEDASHBOARD_MODELS_ACCOUNT_H
 
+#include <QCoreApplication>
 #include <QString>
+#include <QStringView>
 #include <QDate>
 #include <QVector>
 
@@ -62,10 +64,30 @@ struct Account {
 // An investment account (#208): its value changes with the market, so its
 // balance checkpoints are valuations that the user enters from the statement
 // of the bank. The account category "Investments", or a type of the default
-// list for investments.
+// list for investments. The category name in English or French.
+// A default account category, in the language of the app (context
+// "DefaultAccountCategories"). The seeders write its name; the name is data
+// after that.
+[[nodiscard]] inline QString accountCategory(const char* englishName)
+{
+    return QCoreApplication::translate("DefaultAccountCategories", englishName);
+}
+
+// True when `category` is the default account category `englishName` in one
+// of the languages of the app: a database made in French has "\u00c9pargne",
+// not "Savings". The French names are written here too, so that a database
+// made in French still works after a switch to English.
+[[nodiscard]] inline bool isDefaultAccountCategory(const QString& category, const char* englishName,
+                                                   QStringView frenchName)
+{
+    return category.compare(QLatin1String(englishName), Qt::CaseInsensitive) == 0
+           || category.compare(frenchName, Qt::CaseInsensitive) == 0
+           || category.compare(accountCategory(englishName), Qt::CaseInsensitive) == 0;
+}
+
 [[nodiscard]] inline bool isInvestment(const Account& account)
 {
-    if (account.category.compare(QLatin1String("Investments"), Qt::CaseInsensitive) == 0) {
+    if (isDefaultAccountCategory(account.category, "Investments", u"Investissements")) {
         return true;
     }
     for (const char* type : {"PEA", "CTO", "Assurance Vie"}) {
@@ -84,7 +106,7 @@ struct Account {
     if (isInvestment(account)) {
         return false;
     }
-    if (account.category.compare(QLatin1String("Savings"), Qt::CaseInsensitive) == 0) {
+    if (isDefaultAccountCategory(account.category, "Savings", u"\u00c9pargne")) {
         return true;
     }
     for (const char* type : {"Livret A", "LDDS", "LEP", "PEL", "CEL", "Livret Jeune"}) {

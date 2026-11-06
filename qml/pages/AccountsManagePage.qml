@@ -77,10 +77,10 @@ Item {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: qsTr("Manage the accounts themselves here. Account types and categories are managed "
-                    + "from Account Management → \"Account types & categories\". Hashes are the "
-                    + "fingerprints statement import uses to auto-match an account — an account with "
-                    + "none yet shows as \"not linked\" during import. No IBAN, BIC, or account number "
-                    + "is stored on an account.")
+                    + "from Account Management → \"Account types & categories\". The import link lets "
+                    + "the statement import suggest the account; an account without one shows as "
+                    + "\"not linked\" until its first import. No IBAN, BIC, or account number is stored "
+                    + "on an account.")
                 font.pixelSize: 14
                 color: Theme.overlay0
             }

@@ -44,7 +44,7 @@ QString signedPercent(qint64 change, qint64 base)
         return QString();
     }
     const double pct = static_cast<double>(change) / static_cast<double>(base) * kPercent;
-    return QStringLiteral("%1%2 %").arg(pct >= 0 ? QStringLiteral("+") : QString()).arg(pct, 0, 'f', 1);
+    return QStringLiteral("%1%2 %").arg(pct >= 0 ? QStringLiteral("+") : QString()).arg(QLocale().toString(pct, 'f', 1));
 }
 
 QString changeText(qint64 change, qint64 base)
@@ -137,8 +137,9 @@ void NetWorthController::reload()
         NetWorthCalc::flows(NetWorthScope::histories(scope), QDate(today.year(), today.month(), 1), today);
     const QString savingsRate =
         month.incomeCents > 0
-            ? QStringLiteral("%1 %").arg(static_cast<double>(month.savingsCents()) / static_cast<double>(month.incomeCents)
-                                             * kPercent, 0, 'f', 1)
+            ? QStringLiteral("%1 %").arg(QLocale().toString(static_cast<double>(month.savingsCents())
+                                                                / static_cast<double>(month.incomeCents) * kPercent,
+                                                            'f', 1))
             : QStringLiteral("—");
 
     m_kpis = {
@@ -208,7 +209,7 @@ void NetWorthController::buildYearSummary(const QVector<NetWorthScope::ScopeAcco
         if (period.flows.incomeCents > 0) {
             const double rate = static_cast<double>(period.flows.savingsCents())
                                 / static_cast<double>(period.flows.incomeCents) * kPercent;
-            rates.append(QStringLiteral("%1 %").arg(rate, 0, 'f', 1));
+            rates.append(QStringLiteral("%1 %").arg(QLocale().toString(rate, 'f', 1)));
             rateColors.append(rate >= 0 ? kGreen : kRed);
         } else {
             rates.append(QStringLiteral("—"));

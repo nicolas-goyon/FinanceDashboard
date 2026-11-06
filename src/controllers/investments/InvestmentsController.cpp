@@ -78,7 +78,7 @@ InvestmentsController::InvestmentsController(QObject* parent)
                      { "color", pnl >= 0 ? "#a6e3a1" : "#f38ba8" } },
         QVariantMap{ { "label", tr("Simple Return") },
                      { "value", QString("%1%2 %").arg(retPct >= 0 ? "+" : "")
-                                                 .arg(retPct, 0, 'f', 1) },
+                                                 .arg(QLocale().toString(retPct, 'f', 1)) },
                      { "sub", tr("on deposited capital") },
                      { "color", retPct >= 0 ? "#a6e3a1" : "#f38ba8" } },
     };
