@@ -1,8 +1,10 @@
 #include "DatabaseManagementController.h"
 
 #include "db/Database.h"
+#include "models/DefaultCategories.h"
 #include "models/Transaction.h"
 
+#include <QCoreApplication>
 #include <QDate>
 #include <QDateTime>
 #include <QDebug>
@@ -28,10 +30,10 @@ void DatabaseManagementController::resetDatabase()
     if (!Database::instance().resetAll()) {
         // The status says "see application log": the log has the cause (#49).
         qWarning().noquote() << "[DatabaseManagementController] reset failed:" << Database::instance().lastError();
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Reset failed — see application log"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Reset failed — see application log"));
         return;
     }
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Database reset — everything cleared"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Database reset — everything cleared"));
     emit databaseReset();
 }
 
@@ -40,16 +42,46 @@ void DatabaseManagementController::resetToMock()
     if (!Database::instance().resetAll()) {
         // The status says "see application log": the log has the cause (#49).
         qWarning().noquote() << "[DatabaseManagementController] reset failed:" << Database::instance().lastError();
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Reset failed — see application log"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Reset failed — see application log"));
         return;
     }
     if (!seedMockData()) {
         // The reset is done: the pages reload what was written.
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not write all the mock data — see application log"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not write all the mock data — see application log"));
         emit databaseReset();
         return;
     }
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Database reset to mock data"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Database reset to mock data"));
+    emit databaseReset();
+}
+
+void DatabaseManagementController::resetCategories()
+{
+    replaceCategories({}, tr("✓  Categories removed"));
+}
+
+void DatabaseManagementController::resetCategoriesToDefaults()
+{
+    replaceCategories(Data::defaultCategories(), tr("✓  Categories reset to the defaults"));
+}
+
+void DatabaseManagementController::replaceCategories(const QVector<Data::DefaultCategory>& categories,
+                                                     const QString& doneText)
+{
+    Database::CategoryResetStats stats;
+    if (!Database::instance().replaceCategories(categories, stats)) {
+        qWarning().noquote() << "[DatabaseManagementController] category reset failed:"
+                             << Database::instance().lastError();
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Category reset failed — see application log"));
+        return;
+    }
+    QString text = doneText;
+    if (stats.uncategorizedTransactions > 0 || stats.removedRules > 0) {
+        text = tr("%1 — %2 transaction(s) uncategorized, %3 rule(s) removed")
+                   .arg(doneText, QString::number(stats.uncategorizedTransactions),
+                        QString::number(stats.removedRules));
+    }
+    setStatus(StatusMessage::Level::Success, text);
     emit databaseReset();
 }
 
@@ -59,10 +91,10 @@ bool DatabaseManagementController::clearTransactionsForAccount(int accountId)
         return false;
     }
     if (!Database::instance().clearTransactionsForAccount(accountId)) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not clear transactions for this account"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not clear transactions for this account"));
         return false;
     }
-    setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Cleared transactions for this account"));
+    setStatus(StatusMessage::Level::Success, tr("✓  Cleared transactions for this account"));
     return true;
 }
 
@@ -87,7 +119,7 @@ QString DatabaseManagementController::prodDatabaseText() const
     }
     const QString path = QDir::toNativeSeparators(m_prodDatabasePath);
     if (!prodDatabaseFound()) {
-        return QStringLiteral("There is no prod database at %1. Start Finance Dashboard once, then come back "
+        return tr("There is no prod database at %1. Start Finance Dashboard once, then come back "
                               "to this page.")
             .arg(path);
     }
@@ -97,7 +129,7 @@ QString DatabaseManagementController::prodDatabaseText() const
     if (wal.exists() && wal.size() > 0 && wal.lastModified() > changed) {
         changed = wal.lastModified();
     }
-    return QStringLiteral("Prod database: %1 — last change on %2")
+    return tr("Prod database: %1 — last change on %2")
         .arg(path, changed.toString(QStringLiteral("yyyy-MM-dd HH:mm")));
 }
 
@@ -116,16 +148,16 @@ void DatabaseManagementController::copyProdDatabase()
     m_copyFailed = !database.replaceWithCopyOf(m_prodDatabasePath, keptPath);
     if (m_copyFailed) {
         m_copyReport = database.lastError();
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  The copy failed — see below"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  The copy failed — see below"));
     } else {
-        m_copyReport = QStringLiteral("The Test app now uses a copy of the prod database.\n\n"
+        m_copyReport = tr("The Test app now uses a copy of the prod database.\n\n"
                                       "The Test data from before the copy is in:\n%1")
                            .arg(QDir::toNativeSeparators(keptPath));
         const QString upgrade = database.upgradeReport();
         if (!upgrade.isEmpty()) {
             m_copyReport += QStringLiteral("\n\n") + upgrade;
         }
-        setStatus(StatusMessage::Level::Success, QStringLiteral("✓  Prod database copied"));
+        setStatus(StatusMessage::Level::Success, tr("✓  Prod database copied"));
     }
     emit copyReportChanged();
     emit prodDatabaseChanged();
@@ -147,52 +179,24 @@ bool DatabaseManagementController::seedMockData() // static, see header
         return ok;
     };
 
-    // Same default category/subcategory list as
-    // CategoryController::seedDefaults() (duplicated here deliberately —
-    // see class comment).
-    struct SeedSub { QString name; QString color; };
-    struct SeedCat { QString name; QString color; QVector<SeedSub> subs; };
-    static const QVector<SeedCat> kCategorySeed = {
-        { "Rent", "#b4befe", {
-            { "Base rent", "#b4befe" },
-            { "Charges",   "#8c9bfd" },
-        } },
-        { "Groceries", "#a6e3a1", {
-            { "Supermarket", "#a6e3a1" },
-            { "Market",      "#88da82" },
-        } },
-        { "Transport", "#89dceb", {
-            { "Public transit", "#89dceb" },
-            { "Fuel",           "#66d2e5" },
-            { "Rideshare",      "#ace6f1" },
-        } },
-        { "Utilities", "#f9e2af", {
-            { "Electricity", "#f9e2af" },
-            { "Internet",    "#f6d489" },
-        } },
-        { "Leisure", "#cba6f7", {
-            { "Restaurants",   "#cba6f7" },
-            { "Subscriptions", "#b581f4" },
-        } },
-        { "Other", "#6c7086", {} },
-    };
-    for (const SeedCat& seedCat : kCategorySeed) {
+    // The default categories (models/DefaultCategories.h).
+    for (const Data::DefaultCategory& seedCat : Data::defaultCategories()) {
         const int catId = database.addCategory(seedCat.name, seedCat.color);
         if (!check(catId >= 0, "a category")) {
             continue;
         }
-        for (const SeedSub& seedSub : seedCat.subs) {
+        for (const Data::DefaultSubcategory& seedSub : seedCat.subcategories) {
             check(database.addSubcategory(catId, seedSub.name, seedSub.color) >= 0, "a subcategory");
         }
     }
 
     // Same defaults as AccountController::seedDefaults().
     struct SeedAccCat { QString name; QString color; };
-    static const QVector<SeedAccCat> kAccountCategorySeed = {
-        { "Day-to-day",     "#89b4fa" },
-        { "Savings",        "#a6e3a1" },
-        { "Investments",    "#cba6f7" },
-        { "Urgent savings", "#f9e2af" },
+    const QVector<SeedAccCat> kAccountCategorySeed = {
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Day-to-day")),     "#89b4fa" },
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Savings")),        "#a6e3a1" },
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Investments")),    "#cba6f7" },
+        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Urgent savings")), "#f9e2af" },
     };
     for (const SeedAccCat& seedAccCat : kAccountCategorySeed) {
         check(database.addAccountCategory(seedAccCat.name, seedAccCat.color) >= 0, "an account category");
@@ -207,12 +211,12 @@ bool DatabaseManagementController::seedMockData() // static, see header
 
     struct SeedAcc { QString name, type, category, currency, notes; };
     static const QVector<SeedAcc> kAccountSeed = {
-        { "Checking — Bank A", "CCP",           "Day-to-day",  "EUR", "" },
-        { "Checking — Bank B", "CCP",           "Day-to-day",  "EUR", "" },
-        { "Livret A",          "Livret A",      "Savings",     "EUR", "" },
-        { "LDDS",              "LDDS",          "Savings",     "EUR", "" },
-        { "Assurance Vie",     "Assurance Vie", "Investments", "EUR", "" },
-        { "Trading account",  "CTO",           "Investments", "EUR", "" },
+        { "Checking — Bank A", "CCP",           Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Day-to-day")),  "EUR", "" },
+        { "Checking — Bank B", "CCP",           Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Day-to-day")),  "EUR", "" },
+        { "Livret A",          "Livret A",      Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Savings")),     "EUR", "" },
+        { "LDDS",              "LDDS",          Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Savings")),     "EUR", "" },
+        { "Assurance Vie",     "Assurance Vie", Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Investments")), "EUR", "" },
+        { "Trading account",  "CTO",           Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Investments")), "EUR", "" },
     };
     // The sample transactions go to the first demo account. Found by its
     // place, not by its name: QLatin1String("Checking — Bank A") read the
@@ -239,13 +243,15 @@ bool DatabaseManagementController::seedMockData() // static, see header
             int daysAgo; QString description; double debit; double credit;
             double balanceAfter; QString category; QString subcategory;
         };
-        static const QVector<SeedTx> kTxSeed = {
-            { 28, "Salary",               0.0,    2800.00, 3120.50, "",           ""             },
-            { 25, "Monthly rent",         950.00,    0.0,   2170.50, "Rent",       "Base rent"    },
-            { 20, "Carrefour",             86.40,    0.0,   2084.10, "Groceries",  "Supermarket"  },
-            { 14, "SNCF ticket",           42.00,    0.0,   2042.10, "Transport",  "Public transit" },
-            { 9,  "EDF electricity",      118.50,    0.0,   1923.60, "Utilities",  "Electricity"  },
-            { 3,  "Cinema + dinner",       64.90,    0.0,   1858.70, "Leisure",    "Restaurants"  },
+        // The categories of the defaults, in the language of the app.
+        const auto cat = [](const char* name) { return QCoreApplication::translate("DefaultCategories", name); };
+        const QVector<SeedTx> kTxSeed = {
+            { 28, "Salary",          0.0,    2800.00, 3120.50, cat("Income"),    cat("Salary")         },
+            { 25, "Monthly rent",    950.00,    0.0,  2170.50, cat("Housing"),   cat("Rent")           },
+            { 20, "Carrefour",        86.40,    0.0,  2084.10, cat("Groceries"), cat("Supermarket")    },
+            { 14, "SNCF ticket",      42.00,    0.0,  2042.10, cat("Transport"), cat("Public transit") },
+            { 9,  "EDF electricity", 118.50,    0.0,  1923.60, cat("Utilities"), cat("Electricity")    },
+            { 3,  "Cinema + dinner",  64.90,    0.0,  1858.70, cat("Leisure"),   cat("Restaurants")    },
         };
         QVector<Data::Transaction> txs;
         txs.reserve(kTxSeed.size());

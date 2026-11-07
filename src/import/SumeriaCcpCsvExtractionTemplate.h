@@ -3,6 +3,9 @@
 
 #include "ImportTemplate.h"
 
+#include <QCoreApplication>
+#include <QString>
+
 // ── SumeriaCcpCsvExtractionTemplate ───────────────────────────────────────────
 //
 // First supported bank-export format: a Sumeria CCP checking-account CSV
@@ -43,8 +46,15 @@ class SumeriaCcpCsvExtractionTemplate final : public ImportTemplate
 {
 public:
     [[nodiscard]] QString id() const override { return QStringLiteral("sumeria_ccp_csv_extraction"); }
-    [[nodiscard]] QString displayName() const override { return QStringLiteral("Sumeria CCP — CSV Statement"); }
-    [[nodiscard]] QString fileFilter() const override { return QStringLiteral("CSV files (*.csv)"); }
+    // Shown in the template list and the file dialog of the import page.
+    [[nodiscard]] QString displayName() const override
+    {
+        return QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Sumeria CCP — CSV Statement");
+    }
+    [[nodiscard]] QString fileFilter() const override
+    {
+        return QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "CSV files (*.csv)");
+    }
 
     bool parse(const QString& filePath,
                Data::ImportedStatement& outStatement,

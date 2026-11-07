@@ -76,7 +76,7 @@ UpdateInstaller::UpdateInstaller(QNetworkAccessManager* network, QObject* parent
         if (m_state == State::Installing) {
             // A second setup stops at once while the first one runs (the
             // SetupMutex of CMakeLists.txt), so a new click is safe.
-            setState(State::Ready, QStringLiteral("The setup has not closed the app yet. If a window asks for "
+            setState(State::Ready, tr("The setup has not closed the app yet. If a window asks for "
                                                   "administrator rights, accept it. If the setup ended, click "
                                                   "\"Install and restart\" again."));
         }
@@ -207,7 +207,7 @@ void UpdateInstaller::start(const Update::Release& release, const QString& packa
     m_version = version;
     m_packageName = packageName;
     if (!Update::installsItself(m_kind) || packageName.isEmpty()) {
-        fail(QStringLiteral("This copy of the app updates by hand: see the steps on the Updates page."));
+        fail(tr("This copy of the app updates by hand: see the steps on the Updates page."));
         return;
     }
     const Update::ReleaseAsset* package = nullptr;
@@ -220,24 +220,24 @@ void UpdateInstaller::start(const Update::Release& release, const QString& packa
         }
     }
     if (package == nullptr) {
-        fail(QStringLiteral("Version %1 has no file %2. Download the update from the release page.")
+        fail(tr("Version %1 has no file %2. Download the update from the release page.")
                  .arg(version, packageName));
         return;
     }
     if (sums == nullptr) {
-        fail(QStringLiteral("Version %1 has no %2, so the download cannot be checked. Download the update from "
+        fail(tr("Version %1 has no %2, so the download cannot be checked. Download the update from "
                             "the release page.")
                  .arg(version, QLatin1String(kSumsFileName)));
         return;
     }
     if (!allowed(package->downloadUrl) || !allowed(sums->downloadUrl)) {
-        fail(QStringLiteral("The files of version %1 are not on the GitHub page of the project: the app does not "
+        fail(tr("The files of version %1 are not on the GitHub page of the project: the app does not "
                             "download them.")
                  .arg(version));
         return;
     }
     if (sums->size > kMaxSumsSize) {
-        fail(QStringLiteral("The %1 of version %2 is too big for a list of checksums.")
+        fail(tr("The %1 of version %2 is too big for a list of checksums.")
                  .arg(QLatin1String(kSumsFileName), version));
         return;
     }
@@ -247,7 +247,7 @@ void UpdateInstaller::start(const Update::Release& release, const QString& packa
     } else {
         removeOldDownloads(m_downloadDir, false);
         if (m_downloadDir.isEmpty() || !QDir().mkpath(m_downloadDir)) {
-            fail(QStringLiteral("The app cannot make the folder %1 for the setup.")
+            fail(tr("The app cannot make the folder %1 for the setup.")
                      .arg(QDir::toNativeSeparators(m_downloadDir)));
             return;
         }
@@ -262,11 +262,11 @@ void UpdateInstaller::start(const Update::Release& release, const QString& packa
     if (!m_file->open(QIODevice::WriteOnly)) {
         const QString reason = m_file->errorString();
         if (m_kind == Update::InstallKind::AppImage) {
-            fail(QStringLiteral("The app cannot replace its AppImage %1 (%2). Download the new AppImage from the "
+            fail(tr("The app cannot replace its AppImage %1 (%2). Download the new AppImage from the "
                                 "release page and replace the file by hand.")
                      .arg(QDir::toNativeSeparators(target), reason));
         } else {
-            fail(QStringLiteral("The app cannot write the setup %1 (%2).").arg(QDir::toNativeSeparators(target), reason));
+            fail(tr("The app cannot write the setup %1 (%2).").arg(QDir::toNativeSeparators(target), reason));
         }
         return;
     }
@@ -277,7 +277,7 @@ void UpdateInstaller::start(const Update::Release& release, const QString& packa
     m_lastPercent = -1;
     m_hash.reset();
     m_progress = 0.0;
-    setState(State::Downloading, QStringLiteral("Downloading version %1…").arg(version));
+    setState(State::Downloading, tr("Downloading version %1…").arg(version));
     QNetworkReply* reply = get(sums->downloadUrl);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() { sumsFinished(reply); });
 }
@@ -298,7 +298,7 @@ QNetworkReply* UpdateInstaller::get(const QUrl& url)
         if (allowedRedirect(target)) {
             emit reply->redirectAllowed();
         } else {
-            fail(QStringLiteral("GitHub sent the download of version %1 to %2, which is not GitHub: the app "
+            fail(tr("GitHub sent the download of version %1 to %2, which is not GitHub: the app "
                                 "stopped it.")
                      .arg(m_version, target.host()));
         }
@@ -309,17 +309,17 @@ QNetworkReply* UpdateInstaller::get(const QUrl& url)
 QString UpdateInstaller::downloadError(QNetworkReply* reply, const QString& fileName) const
 {
     if (reply->error() == QNetworkReply::OperationCanceledError || reply->error() == QNetworkReply::TimeoutError) {
-        return QStringLiteral("The download of %1 stopped: no data came for %2 seconds. Try again.")
+        return tr("The download of %1 stopped: no data came for %2 seconds. Try again.")
             .arg(fileName)
             .arg(m_timeoutMs / kMillisecondsPerSecond);
     }
     const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
     if (status != 0 && status != kHttpOk) {
-        return QStringLiteral("The download of %1 failed: the server answered with the status %2.")
+        return tr("The download of %1 failed: the server answered with the status %2.")
             .arg(fileName)
             .arg(status);
     }
-    return QStringLiteral("The download of %1 failed (%2).").arg(fileName, reply->errorString());
+    return tr("The download of %1 failed (%2).").arg(fileName, reply->errorString());
 }
 
 void UpdateInstaller::sumsFinished(QNetworkReply* reply)
@@ -336,13 +336,13 @@ void UpdateInstaller::sumsFinished(QNetworkReply* reply)
     }
     const QByteArray sums = reply->read(kMaxSumsSize + 1);
     if (sums.size() > kMaxSumsSize) {
-        fail(QStringLiteral("The %1 of version %2 is too big for a list of checksums.")
+        fail(tr("The %1 of version %2 is too big for a list of checksums.")
                  .arg(QLatin1String(kSumsFileName), m_version));
         return;
     }
     m_expectedSha256 = Update::sha256Of(sums, m_packageName);
     if (m_expectedSha256.isEmpty()) {
-        fail(QStringLiteral("The %1 of version %2 does not list %3, so the download cannot be checked.")
+        fail(tr("The %1 of version %2 does not list %3, so the download cannot be checked.")
                  .arg(QLatin1String(kSumsFileName), m_version, m_packageName));
         return;
     }
@@ -364,12 +364,12 @@ void UpdateInstaller::packageData(QNetworkReply* reply)
     }
     const qint64 limit = m_packageSize > 0 ? m_packageSize : kMaxPackageSize;
     if (m_received + data.size() > limit) {
-        fail(QStringLiteral("The download of %1 is bigger than the list of releases says: the app stopped it.")
+        fail(tr("The download of %1 is bigger than the list of releases says: the app stopped it.")
                  .arg(m_packageName));
         return;
     }
     if (m_file->write(data) != data.size()) {
-        fail(QStringLiteral("The app cannot write %1 (%2).")
+        fail(tr("The app cannot write %1 (%2).")
                  .arg(QDir::toNativeSeparators(m_file->fileName()), m_file->errorString()));
         return;
     }
@@ -406,14 +406,14 @@ void UpdateInstaller::packageFinished(QNetworkReply* reply)
         return;
     }
     if (m_packageSize > 0 && m_received != m_packageSize) {
-        fail(QStringLiteral("The download of %1 is incomplete (%2 of %3 bytes). Try again.")
+        fail(tr("The download of %1 is incomplete (%2 of %3 bytes). Try again.")
                  .arg(m_packageName)
                  .arg(m_received)
                  .arg(m_packageSize));
         return;
     }
     if (m_hash.result().toHex() != m_expectedSha256) {
-        fail(QStringLiteral("The download of %1 is damaged: its SHA-256 is not the one in %2. Try again.")
+        fail(tr("The download of %1 is damaged: its SHA-256 is not the one in %2. Try again.")
                  .arg(m_packageName, QLatin1String(kSumsFileName)));
         return;
     }
@@ -427,21 +427,21 @@ void UpdateInstaller::apply()
         const QString reason = m_file->errorString();
         m_file.reset();
         if (m_kind == Update::InstallKind::AppImage) {
-            fail(QStringLiteral("The new AppImage cannot replace %1 (%2). Download it from the release page and "
+            fail(tr("The new AppImage cannot replace %1 (%2). Download it from the release page and "
                                 "replace the file by hand.")
                      .arg(QDir::toNativeSeparators(target), reason));
         } else {
-            fail(QStringLiteral("The app cannot write the setup %1 (%2).").arg(QDir::toNativeSeparators(target), reason));
+            fail(tr("The app cannot write the setup %1 (%2).").arg(QDir::toNativeSeparators(target), reason));
         }
         return;
     }
     m_file.reset();
     m_progress = 1.0;
     if (m_kind == Update::InstallKind::AppImage) {
-        setState(State::Installed, QStringLiteral("Version %1 is installed. Restart the app to use it.").arg(m_version));
+        setState(State::Installed, tr("Version %1 is installed. Restart the app to use it.").arg(m_version));
     } else {
         m_setupPath = target;
-        setState(State::Ready, QStringLiteral("Version %1 is ready. The app closes during the installation and opens "
+        setState(State::Ready, tr("Version %1 is ready. The app closes during the installation and opens "
                                               "again.")
                                    .arg(m_version));
     }
@@ -473,7 +473,7 @@ void UpdateInstaller::restart()
 {
     if (m_state == State::Ready) {
         if (!setupUnchanged()) {
-            fail(QStringLiteral("The setup of version %1 changed after the download: the app does not run it. "
+            fail(tr("The setup of version %1 changed after the download: the app does not run it. "
                                 "Click \"Install\" to download it again.")
                      .arg(m_version));
             return;
@@ -483,11 +483,11 @@ void UpdateInstaller::restart()
         arguments.append(QStringLiteral("/LOG=%1").arg(
             QDir::toNativeSeparators(QDir(m_downloadDir).filePath(QLatin1String(kSetupLogName)))));
         if (!m_launcher(m_setupPath, arguments, QProcessEnvironment::systemEnvironment())) {
-            fail(QStringLiteral("The setup of version %1 did not start. Run it by hand: %2")
+            fail(tr("The setup of version %1 did not start. Run it by hand: %2")
                      .arg(m_version, QDir::toNativeSeparators(m_setupPath)));
             return;
         }
-        setState(State::Installing, QStringLiteral("Installing version %1. The app closes now and opens again when "
+        setState(State::Installing, tr("Installing version %1. The app closes now and opens again when "
                                                    "the installation ends.")
                                         .arg(m_version));
         m_installWait.start();
@@ -496,7 +496,7 @@ void UpdateInstaller::restart()
     if (m_state == State::Installed) {
         const QProcessEnvironment environment = environmentForNewAppImage(QProcessEnvironment::systemEnvironment());
         if (!m_launcher(QFileInfo(m_appImagePath).absoluteFilePath(), {}, environment)) {
-            fail(QStringLiteral("Version %1 is installed, but it did not start. Start the app again by hand.")
+            fail(tr("Version %1 is installed, but it did not start. Start the app again by hand.")
                      .arg(m_version));
             return;
         }

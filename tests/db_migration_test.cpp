@@ -134,7 +134,8 @@ private slots:
     void resetKeepsTheLatestSchema();
     void version2DatabaseIsUpgraded();
     void version3AmountsAreRoundedToTheCent();
-    void version4HashesGetOneAccount();
+    void version4HashesAreRemoved();
+    void version6BankIdentifiersAreRemoved();
     void version5RulesAreNormalizedAgain();
 
 private:
@@ -145,18 +146,58 @@ private:
     [[nodiscard]] QStringList backups() const;
     [[nodiscard]] static int count(const QString& sql);
     [[nodiscard]] static QStringList columns(const QString& table);
+    // Fails when a message of the app since init() holds one of `values`
+    // (with the same case).
+    static void logHasNo(const QStringList& values);
 
     std::unique_ptr<QTemporaryDir> m_dir;
+    QtMessageHandler m_previousHandler = nullptr;
 };
+
+namespace {
+// The messages of the app during a test (#205).
+QStringList& capturedLog()
+{
+    static QStringList log;
+    return log;
+}
+QtMessageHandler& forwardHandler()
+{
+    static QtMessageHandler handler = nullptr;
+    return handler;
+}
+void captureMessage(QtMsgType type, const QMessageLogContext& context, const QString& message)
+{
+    capturedLog().append(message);
+    if (forwardHandler() != nullptr) {
+        forwardHandler()(type, context, message);
+    }
+}
+} // namespace
 
 void DbMigrationTest::init()
 {
     m_dir = std::make_unique<QTemporaryDir>();
     QVERIFY(m_dir->isValid());
+    capturedLog().clear();
+    m_previousHandler = qInstallMessageHandler(captureMessage);
+    forwardHandler() = m_previousHandler;
+}
+
+void DbMigrationTest::logHasNo(const QStringList& values)
+{
+    for (const QString& message : capturedLog()) {
+        for (const QString& value : values) {
+            QVERIFY2(!message.contains(value),
+                     qPrintable(QStringLiteral("\"%1\" in the log: %2").arg(value, message)));
+        }
+    }
 }
 
 void DbMigrationTest::cleanup()
 {
+    qInstallMessageHandler(m_previousHandler);
+    forwardHandler() = nullptr;
     Database::instance().close();
     m_dir.reset();
 }
@@ -289,6 +330,10 @@ void DbMigrationTest::oldDatabaseIsUpgraded()
 
     Database& db = Database::instance();
     QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    // The log gives ids, not statement data or account names (#205).
+    logHasNo({QStringLiteral("CARREFOUR"), QStringLiteral("SNCF"), QStringLiteral("BAKERY"), QStringLiteral("CINEMA"),
+              QStringLiteral("LANDLORD"), QStringLiteral("POWER"), QStringLiteral("Checking"),
+              QStringLiteral("Savings"), QStringLiteral("FR7630006000011234567890189")});
     QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
 
     // Accounts: legacy columns gone, rows and ids kept.
@@ -297,6 +342,10 @@ void DbMigrationTest::oldDatabaseIsUpgraded()
     QVERIFY(!accountColumns.contains(QStringLiteral("bic")));
     QVERIFY(!accountColumns.contains(QStringLiteral("number")));
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM accounts;")), 2);
+    // #206: every account of an old file is in the net worth.
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM accounts WHERE in_net_worth = 1;")), 2);
+    // #207: no row of an old file is a transfer yet.
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions WHERE transfer_id <> 0;")), 0);
     QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM accounts WHERE id = 1 AND name = 'Checking'"
                                   " AND type = 'CCP' AND currency = 'EUR' AND notes = 'main';")), 1);
 
@@ -608,76 +657,136 @@ void DbMigrationTest::version3AmountsAreRoundedToTheCent()
     QCOMPARE(countOn(backup, QStringLiteral("PRAGMA user_version;")), 3);
 }
 
-void DbMigrationTest::version4HashesGetOneAccount()
+void DbMigrationTest::version4HashesAreRemoved()
 {
-    // A file at schema version 4: the index on the hash is not UNIQUE, and
-    // the hashes keep the case in which they were written.
+    // A file at schema version 4: hashes in two cases, on two accounts, and a
+    // value that is not a fingerprint. Step 5 makes them unique, then step 7
+    // removes them all (#203: the 64-character fingerprints can be reversed).
     Database& db = Database::instance();
     const QString path = m_dir->filePath(QStringLiteral("v4.db"));
     QVERIFY2(db.open(path), qPrintable(db.lastError()));
     db.close();
     const QString shared = QStringLiteral("ABCDEF0123456789").repeated(4);
     const QString own = QStringLiteral("0123456789abcdef").repeated(4);
-    const QString tabbed = QStringLiteral("fedcba9876543210").repeated(4);
     execOn(path, {
         QStringLiteral("DROP INDEX idx_account_hashes_hash;"),
         QStringLiteral("CREATE INDEX idx_account_hashes_hash ON account_hashes(hash);"),
         QStringLiteral("INSERT INTO accounts (name, type, category, currency, notes) VALUES"
                        " ('Checking', 'CCP', '', 'EUR', ''), ('Savings', 'CCP', '', 'EUR', '');"),
-        // Ids 1–3: the shared hash, typed in upper case on Checking, linked
-        // in lower case to Savings by a save, then linked again to Checking
-        // (a second row in another case: the most recent link). Id 4: a hash
-        // of Savings only. Ids 5–6: a hash with a tab after it on Checking,
-        // then on Savings. Ids 7–8: a typed value that is not a fingerprint,
-        // on both accounts in two cases: removed from Checking, not counted.
         QStringLiteral("INSERT INTO account_hashes (account_id, hash, source) VALUES"
-                       " (1, '%1', 'manual'), (2, '%2', 'auto'), (1, '%2', 'auto'), (2, '%3', 'auto'),"
-                       " (1, '%4' || char(9), 'manual'), (2, '%4', 'auto'),"
-                       " (1, 'MY OLD HASH', 'manual'), (2, 'my old hash', 'manual');")
-            .arg(shared, shared.toLower(), own, tabbed),
+                       " (1, '%1', 'manual'), (2, '%2', 'auto'), (2, '%3', 'auto'), (1, 'MY OLD HASH', 'manual');")
+            .arg(shared, shared.toLower(), own),
         QStringLiteral("PRAGMA user_version = 4;"),
     });
     QVERIFY(!QTest::currentTestFailed());
 
     QVERIFY2(db.open(path), qPrintable(db.lastError()));
     QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
-    // Savings loses the shared hash and Checking the tabbed one; the second
-    // row of Checking is not a link to another account, and the value that is
-    // not a fingerprint is not counted.
-    QVERIFY2(db.upgradeReport().contains(QStringLiteral("2 link(s) of an account hash to another account were removed")),
-             qPrintable(db.upgradeReport()));
-    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM account_hashes;")), 4);
-    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = '%1' AND account_id = 1;").arg(shared.toLower())), 3);
-    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = '%1' AND account_id = 2;").arg(own)), 4);
-    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = '%1' AND account_id = 2;").arg(tabbed)), 6);
-    QCOMPARE(count(QStringLiteral("SELECT id FROM account_hashes WHERE hash = 'my old hash' AND account_id = 2;")), 8);
-    QCOMPARE(db.accountOfHash(shared), 1);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM account_hashes;")), 0);
+    QVERIFY2(db.upgradeReport().contains(QStringLiteral("account links were removed")), qPrintable(db.upgradeReport()));
     const QString uniqueIndex =
         QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index' AND name = 'idx_account_hashes_hash'"
                        " AND sql LIKE 'CREATE UNIQUE INDEX%';");
-    const QString namedIndexes = QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index'"
-                                                " AND tbl_name = 'account_hashes' AND name NOT LIKE 'sqlite_%';");
-    QCOMPARE(count(uniqueIndex), 1);
-    QCOMPARE(count(namedIndexes), 2); // the account index and the UNIQUE hash index
-    // A second account cannot get the hash, in any case.
-    QSqlQuery insert(db.sqlDatabase());
-    QVERIFY(!insert.exec(QStringLiteral("INSERT INTO account_hashes (account_id, hash, source) VALUES (2, '%1', 'auto');")
-                             .arg(shared.toLower())));
-    insert.finish();
+    const QString hashIndex = QStringLiteral("SELECT COUNT(*) FROM sqlite_master WHERE type = 'index'"
+                                             " AND name = 'idx_account_hashes_hash';");
+    QCOMPARE(count(uniqueIndex), 0);
+    QCOMPARE(count(hashIndex), 1);
+    // A tag can be on two accounts; an account has a tag once.
+    QVERIFY2(db.linkAccountHash(1, QStringLiteral("0c"), QStringLiteral("auto")), qPrintable(db.lastError()));
+    QVERIFY2(db.linkAccountHash(2, QStringLiteral("0C"), QStringLiteral("auto")), qPrintable(db.lastError()));
+    QVERIFY2(db.linkAccountHash(2, QStringLiteral("0c"), QStringLiteral("auto")), qPrintable(db.lastError()));
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM account_hashes WHERE hash = '0c';")), 2);
+    // A 64-character fingerprint is not a tag.
+    QVERIFY(!db.linkAccountHash(1, own, QStringLiteral("auto")));
     db.close();
 
-    // At the next open, createTable() does not add the old index again.
-    QVERIFY2(db.open(path), qPrintable(db.lastError()));
-    QVERIFY(db.upgradeReport().isEmpty());
-    QCOMPARE(count(uniqueIndex), 1);
-    QCOMPARE(count(namedIndexes), 2);
-    // A reset and a new file have the UNIQUE index too.
-    QVERIFY2(db.resetAll(), qPrintable(db.lastError()));
-    QCOMPARE(count(uniqueIndex), 1);
-    db.close();
+    // A reset and a new file have the plain index too.
     QVERIFY2(db.open(m_dir->filePath(QStringLiteral("new.db"))), qPrintable(db.lastError()));
-    QCOMPARE(count(uniqueIndex), 1);
-    QCOMPARE(count(namedIndexes), 2);
+    QCOMPARE(count(uniqueIndex), 0);
+    QCOMPARE(count(hashIndex), 1);
+}
+
+void DbMigrationTest::version6BankIdentifiersAreRemoved()
+{
+    // A file at schema version 6, with what the imports of v0.2.x stored:
+    // a raw description with the reference block of the bank, a card
+    // number, an IBAN, a fingerprint of 64 characters, the file name of the
+    // statement in a note, a rule taught from an identifier.
+    Database& db = Database::instance();
+    const QString path = m_dir->filePath(QStringLiteral("v6.db"));
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    db.close();
+    const QString iban = QStringLiteral("FR7630006000011234567890189");
+    const QString cardRow = QStringLiteral("Card payment 4321: STORE External ref.: 556677 Internal ref.: a1b2c3d4e5");
+    const QString ibanRow = QStringLiteral("Transfer to %1 SAMPLE LANDLORD").arg(iban);
+    const QString oldFingerprint = QStringLiteral("0123456789abcdef").repeated(4);
+    // Two rows that differ only by the card number: they must stay two rows.
+    const QString cardA = QStringLiteral("CB 1111 BAKERY");
+    const QString cardB = QStringLiteral("CB 2222 BAKERY");
+    execOn(path, {
+        QStringLiteral("INSERT INTO accounts (name, type, category, currency, notes) VALUES"
+                       " ('Checking', 'CCP', '', 'EUR', '');"),
+        QStringLiteral("INSERT INTO account_hashes (account_id, hash, source) VALUES (1, '%1', 'auto');")
+            .arg(oldFingerprint),
+        QStringLiteral("INSERT INTO transactions (account_id, operation_date, confirmation_date, name, description,"
+                       " debit, credit, balance_after, fingerprint) VALUES"
+                       " (1, '2026-03-02', '2026-03-02', 'Card payment 4321: STORE', '%1', 12.5, 0, 100, 'f1'),"
+                       " (1, '2026-03-03', '2026-03-03', 'Transfer to %2', '%3', 500, 0, 0, 'f2'),"
+                       " (1, '2026-03-04', '2026-03-04', 'BAKERY', '%4', 3, 0, 0, 'f3'),"
+                       " (1, '2026-03-04', '2026-03-04', 'BAKERY', '%5', 3, 0, 0, 'f4');")
+            .arg(cardRow, iban, ibanRow, cardA, cardB),
+        QStringLiteral("INSERT INTO account_balance_checkpoints (account_id, date, balance, note) VALUES"
+                       " (1, '2026-03-01', 100, 'Auto — statement start (Releve_%1.csv)'),"
+                       " (1, '2026-03-02', 90, 'Paid back (Marc)');").arg(iban),
+        QStringLiteral("INSERT INTO category_rules (pattern, category) VALUES ('%1', 'Housing'), ('BAKERY', 'Food');")
+            .arg(iban),
+        QStringLiteral("PRAGMA user_version = 6;"),
+    });
+    QVERIFY(!QTest::currentTestFailed());
+
+    QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    // No statement data in the log either (#205).
+    // (Not a short number alone: the log has the path of the copy, with a time.)
+    logHasNo({iban, QStringLiteral("payment 4321"), QStringLiteral("556677"), QStringLiteral("STORE"),
+              QStringLiteral("BAKERY"), QStringLiteral("LANDLORD"), QStringLiteral("Checking")});
+    QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
+    QVERIFY2(db.upgradeReport().contains(QStringLiteral("stores no bank identifier")), qPrintable(db.upgradeReport()));
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM account_hashes;")), 0);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM transactions;")), 4);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(DISTINCT fingerprint) FROM transactions;")), 4);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM category_rules;")), 1);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM account_balance_checkpoints WHERE note = 'Paid back (Marc)';")),
+             1);
+    QCOMPARE(count(QStringLiteral("SELECT COUNT(*) FROM account_balance_checkpoints"
+                                  " WHERE note = 'Auto — statement start';")),
+             1);
+    {
+        QSqlQuery query(db.sqlDatabase());
+        QVERIFY(query.exec(QStringLiteral("SELECT name, description FROM transactions ORDER BY id;")));
+        const QString mask = QStringLiteral("•••");
+        QVERIFY(query.next());
+        QCOMPARE(query.value(0).toString(), QStringLiteral("Card payment %1: STORE").arg(mask));
+        QCOMPARE(query.value(1).toString(), QStringLiteral("Card payment %1: STORE").arg(mask));
+        QVERIFY(query.next());
+        QCOMPARE(query.value(0).toString(), QStringLiteral("Transfer to %1").arg(mask));
+        QCOMPARE(query.value(1).toString(), QStringLiteral("Transfer to %1 SAMPLE LANDLORD").arg(mask));
+        query.finish();
+    }
+    db.close();
+
+    // Neither the file nor the copy has an identifier in it, also in free
+    // pages (secure_delete, VACUUM).
+    QCOMPARE(backups().size(), qsizetype(1));
+    const QStringList files = {path, m_dir->filePath(backups().first())};
+    for (const QString& file : files) {
+        QFile in(file);
+        QVERIFY(in.open(QIODevice::ReadOnly));
+        const QByteArray bytes = in.readAll();
+        for (const QString& secret : {iban, QStringLiteral("4321"), QStringLiteral("556677"),
+                                      QStringLiteral("a1b2c3d4e5"), QStringLiteral("1111 BAKERY"), oldFingerprint}) {
+            QVERIFY2(!bytes.contains(secret.toUtf8()), qPrintable(file + QStringLiteral(": ") + secret));
+        }
+    }
 }
 
 void DbMigrationTest::version5RulesAreNormalizedAgain()
@@ -712,6 +821,9 @@ void DbMigrationTest::version5RulesAreNormalizedAgain()
     QVERIFY(!QTest::currentTestFailed());
 
     QVERIFY2(db.open(path), qPrintable(db.lastError()));
+    // The log gives rule ids, not patterns (#205).
+    // ("JOHN DOE" and "CARD PAYMENT" are examples in the text of the report.)
+    logHasNo({QStringLiteral("CARREFOUR"), QStringLiteral("JANE ROE")});
     QCOMPARE(db.schemaVersion(), Database::kSchemaVersion);
     const QString report = db.upgradeReport();
     QVERIFY2(report.contains(QStringLiteral("1 category rule(s) were removed: their label had only generic words")),

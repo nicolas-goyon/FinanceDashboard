@@ -2,6 +2,7 @@
 #include "update/SemVer.h"
 
 #include <QByteArray>
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -29,7 +30,7 @@ QVector<Release> parseReleases(const QByteArray& json, QString* error)
         if (error != nullptr) {
             *error = parseError.error != QJsonParseError::NoError
                          ? parseError.errorString()
-                         : QStringLiteral("the answer is not a list of releases");
+                         : QCoreApplication::translate("ReleaseFeed", "the answer is not a list of releases");
         }
         return {};
     }

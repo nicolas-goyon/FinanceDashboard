@@ -4,10 +4,13 @@
 #include "models/Category.h"
 #include "models/CategoryRule.h"
 #include "models/Transaction.h"
+#include "db/tables/SqlText.h"
+#include "import/StatementSanitizer.h"
 #include "predict/LabelNormalizer.h"
 #include "utils/AccountHashing.h"
 #include "utils/Money.h"
 
+#include <QCoreApplication>
 #include <QDate>
 #include <QDateTime>
 #include <QDir>
@@ -17,6 +20,8 @@
 #include <QLatin1Char>
 #include <QLatin1String>
 #include <QSet>
+
+#include <tuple>
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QString>
@@ -123,7 +128,7 @@ bool Database::openFile(const QString& path)
     m_db.setDatabaseName(path);
 
     if (!m_db.open()) {
-        return failOpen(OpenError::CannotOpen, QStringLiteral("Cannot open: %1").arg(sqlText(m_db.lastError())));
+        return failOpen(OpenError::CannotOpen, QCoreApplication::translate("Database", "Cannot open: %1").arg(sqlText(m_db.lastError())));
     }
 
     // The first read: a file that is not a database fails here, with
@@ -133,14 +138,14 @@ bool Database::openFile(const QString& path)
         QSqlQuery version(m_db);
         if (!version.exec(QStringLiteral("PRAGMA user_version;")) || !version.next()) {
             return failOpen(OpenError::CannotOpen,
-                            QStringLiteral("Cannot read the database: %1").arg(sqlText(version.lastError())));
+                            QCoreApplication::translate("Database", "Cannot read the database: %1").arg(sqlText(version.lastError())));
         }
         from = version.value(0).toInt();
     }
     // A file from a newer version of the app: refuse it before any change.
     if (from > kSchemaVersion) {
         return failOpen(OpenError::NewerSchema,
-                        QStringLiteral("This database uses schema version %1. This version of the app "
+                        QCoreApplication::translate("Database", "This database uses schema version %1. This version of the app "
                                        "knows schema version %2 at most: use a newer version of the app.")
                             .arg(from)
                             .arg(kSchemaVersion));
@@ -163,7 +168,19 @@ bool Database::openFile(const QString& path)
                 const QString detail = m_lastError;
                 QFile::remove(backupPath);
                 return failOpen(OpenError::UpgradeFailed,
-                                QStringLiteral("Could not remove the account numbers from the copy of the "
+                                QCoreApplication::translate("Database", "Could not remove the account numbers from the copy of the "
+                                               "database, so it was not upgraded: %1 The file was not changed.")
+                                    .arg(sentence(detail)));
+            }
+            copyCleared = true;
+        }
+        // The privacy rule (#204): the copy keeps no bank identifier either.
+        if (from < kPrivacyVersion) {
+            if (!removeBankIdentifiersInCopy(backupPath)) {
+                const QString detail = m_lastError;
+                QFile::remove(backupPath);
+                return failOpen(OpenError::UpgradeFailed,
+                                QCoreApplication::translate("Database", "Could not remove the bank identifiers from the copy of the "
                                                "database, so it was not upgraded: %1 The file was not changed.")
                                     .arg(sentence(detail)));
             }
@@ -171,11 +188,12 @@ bool Database::openFile(const QString& path)
         }
     }
 
-    // The account numbers that step 1 removes: with secure_delete, SQLite
-    // writes zeros over the freed pages inside the upgrade transaction, so the
-    // old values are gone even when the VACUUM below does not run (a crash
+    // secure_delete for every write of this connection (#204): SQLite writes
+    // zeros over the pages that a delete or an update frees, so a deleted row
+    // or an old value is not in the file any more. Also for the values that
+    // the upgrade removes, even when the VACUUM below does not run (a crash
     // after the commit, a full disk).
-    if (copyCleared) {
+    {
         QSqlQuery secureDelete(m_db);
         // Without it, the VACUUM below still writes the file again without
         // the freed pages (#49: the result was not checked).
@@ -200,7 +218,7 @@ bool Database::openFile(const QString& path)
         // failed start would leave one more copy.
         QFile::remove(backupPath);
         return failOpen(OpenError::UpgradeFailed,
-                        QStringLiteral("Could not upgrade the database from schema version %1 to %2: %3 "
+                        QCoreApplication::translate("Database", "Could not upgrade the database from schema version %1 to %2: %3 "
                                        "The file was not changed.")
                             .arg(from)
                             .arg(kSchemaVersion)
@@ -208,20 +226,14 @@ bool Database::openFile(const QString& path)
     }
 
     // VACUUM writes the file again without free pages (the zeroed ones of
-    // step 1 too); secure_delete goes back to SQLite's default.
-    if (stats.droppedAccountNumbers) {
+    // steps 1 and 7 too).
+    const bool removedIdentifiers = stats.droppedAccountNumbers || (upgrading && from < kPrivacyVersion);
+    if (removedIdentifiers) {
         QSqlQuery vacuum(m_db);
         if (!vacuum.exec(QStringLiteral("VACUUM;"))) {
             qWarning() << "[Database] VACUUM after the upgrade failed:" << sqlText(vacuum.lastError());
         }
         vacuum.finish();
-    }
-    if (copyCleared) {
-        QSqlQuery secureDelete(m_db);
-        if (!secureDelete.exec(QStringLiteral("PRAGMA secure_delete = OFF;"))) {
-            qWarning() << "[Database] PRAGMA secure_delete = OFF failed:" << sqlText(secureDelete.lastError());
-        }
-        secureDelete.finish();
     }
 
     // WAL mode: better read concurrency, faster writes. After the upgrade:
@@ -238,7 +250,7 @@ bool Database::openFile(const QString& path)
     // The PRAGMA returns a row; finish() releases the statement, else the
     // next commit() fails with "SQL statements in progress".
     pragma.finish();
-    if (stats.droppedAccountNumbers) {
+    if (removedIdentifiers) {
         // Write the WAL into the file and empty it: the old pages go too. The
         // first column is 1 when a reader or a writer blocked the checkpoint.
         if (!pragma.exec(QStringLiteral("PRAGMA wal_checkpoint(TRUNCATE);"))) {
@@ -251,17 +263,25 @@ bool Database::openFile(const QString& path)
     }
 
     if (upgrading) {
-        m_upgradeReport = QStringLiteral("The database was upgraded from schema version %1 to %2.\n\n"
+        m_upgradeReport = QCoreApplication::translate("Database", "The database was upgraded from schema version %1 to %2.\n\n"
                                          "A copy from before the upgrade is in:\n%3")
                               .arg(from)
                               .arg(kSchemaVersion)
                               .arg(QDir::toNativeSeparators(backupPath));
-        if (copyCleared) {
-            m_upgradeReport += QStringLiteral("\n\nThe old IBAN, BIC and account numbers were removed, from "
+        if (stats.droppedAccountNumbers) {
+            m_upgradeReport += QCoreApplication::translate("Database", "\n\nThe old IBAN, BIC and account numbers were removed, from "
                                               "the database and from the copy.");
         }
+        if (from < kPrivacyVersion) {
+            m_upgradeReport += QCoreApplication::translate("Database", "\n\nThe app now stores no bank identifier. The card numbers, "
+                                              "bank references, IBANs and mandate ids were removed from %1 "
+                                              "transaction(s), from the database and from the copy. The account "
+                                              "links were removed: at the next import of each account, choose "
+                                              "the account once, and the app suggests it again after that.")
+                                   .arg(stats.cleanedRows);
+        }
         if (stats.removedDuplicates > 0) {
-            m_upgradeReport += QStringLiteral("\n\n%1 duplicate transaction(s) were removed: the same "
+            m_upgradeReport += QCoreApplication::translate("Database", "\n\n%1 duplicate transaction(s) were removed: the same "
                                               "statement rows had been saved more than once. Of each row, "
                                               "the copy with a category stays (then the one with a "
                                               "subcategory, then the oldest one). If a statement really had "
@@ -269,13 +289,14 @@ bool Database::openFile(const QString& path)
                                    .arg(stats.removedDuplicates);
         }
         if (stats.removedWithOtherValues > 0) {
-            m_upgradeReport += QStringLiteral("\n\n%1 of the removed copies had another category, "
+            m_upgradeReport += QCoreApplication::translate("Database", "\n\n%1 of the removed copies had another category, "
                                               "subcategory, label, date or balance. The copy from before "
-                                              "the upgrade keeps them, and the application log lists them.")
+                                              "the upgrade keeps them, and the application log gives the ids "
+                                              "of the removed and the kept transactions.")
                                    .arg(stats.removedWithOtherValues);
         }
         if (stats.reusedReferences > 0) {
-            m_upgradeReport += QStringLiteral("\n\nWarning: %1 of the removed copies have the bank reference "
+            m_upgradeReport += QCoreApplication::translate("Database", "\n\nWarning: %1 of the removed copies have the bank reference "
                                               "and the amount of the copy that stays, but another operation "
                                               "date. If they are different transactions, the bank reuses its "
                                               "references, and the copy from before the upgrade keeps them. "
@@ -284,41 +305,35 @@ bool Database::openFile(const QString& path)
                                    .arg(QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
         }
         if (stats.roundedRows > 0) {
-            m_upgradeReport += QStringLiteral("\n\n%1 row(s) had an amount with more than two decimals. The "
+            m_upgradeReport += QCoreApplication::translate("Database", "\n\n%1 row(s) had an amount with more than two decimals. The "
                                               "amounts are now rounded to the cent; the copy from before the "
                                               "upgrade keeps the old values.")
                                    .arg(stats.roundedRows);
         }
         if (stats.removedGenericRules > 0) {
-            m_upgradeReport += QStringLiteral("\n\n%1 category rule(s) were removed: their label had only "
+            m_upgradeReport += QCoreApplication::translate("Database", "\n\n%1 category rule(s) were removed: their label had only "
                                               "generic words (such as \"CARD PAYMENT\"), so they also matched "
-                                              "other merchants. Teach them again from an import; the "
-                                              "application log lists them.")
+                                              "other merchants. Teach them again from an import.")
                                    .arg(stats.removedGenericRules);
         }
         if (stats.rewrittenRules > 0 || stats.mergedRules > 0) {
-            m_upgradeReport += QStringLiteral("\n\nThe labels of the category rules follow the new rules for "
+            m_upgradeReport += QCoreApplication::translate("Database", "\n\nThe labels of the category rules follow the new rules for "
                                               "merchant names: %1 rule(s) were rewritten, and %2 merged with a "
                                               "newer rule for the same merchant and the same category.")
                                    .arg(stats.rewrittenRules)
                                    .arg(stats.mergedRules);
         }
         if (stats.conflictingRules > 0) {
-            m_upgradeReport += QStringLiteral("\n\n%1 category rule(s) were removed: with the new rules for "
+            m_upgradeReport += QCoreApplication::translate("Database", "\n\n%1 category rule(s) were removed: with the new rules for "
                                               "merchant names, two or more rules with different categories "
                                               "have one label (such as \"TRANSFER TO JOHN DOE\" and \"RECEIVED "
                                               "FROM JOHN DOE\": both are \"JOHN DOE\" now). One rule cannot "
                                               "give two categories. Teach the correct rule again from an "
-                                              "import; the application log lists them.")
+                                              "import.")
                                    .arg(stats.conflictingRules);
         }
-        if (stats.removedHashLinks > 0) {
-            m_upgradeReport += QStringLiteral("\n\n%1 link(s) of an account hash to another account were "
-                                              "removed. A hash now belongs to one account only: its most "
-                                              "recent link stays. The application log lists the accounts; "
-                                              "check their hashes in Account Management.")
-                                   .arg(stats.removedHashLinks);
-        }
+        // stats.removedHashLinks (step 5) is not reported: step 7 removes
+        // every account hash (#203).
         qInfo().noquote() << "[Database]" << m_upgradeReport;
     }
     return true;
@@ -382,7 +397,7 @@ bool Database::backUp(const QString& path, QString& backupPath)
         backup.finish();
         QFile::remove(backupPath); // a partial copy, if any
         return failOpen(OpenError::UpgradeFailed,
-                        QStringLiteral("Could not save a copy of the database before the upgrade, so it "
+                        QCoreApplication::translate("Database", "Could not save a copy of the database before the upgrade, so it "
                                        "was not upgraded: %1 The file was not changed.")
                             .arg(sentence(detail)));
     }
@@ -487,6 +502,9 @@ bool Database::upgrade(int from, UpgradeStats& stats)
         case 4: ok = migrateTo4(stats); break;
         case 5: ok = migrateTo5(stats); break;
         case 6: ok = migrateTo6(stats); break;
+        case 7: ok = migrateTo7(stats); break;
+        case 8: ok = migrateTo8(stats); break;
+        case 9: ok = migrateTo9(stats); break;
         default: m_lastError = QStringLiteral("there is no migration step %1.").arg(step); break;
         }
         // NOLINTEND(cppcoreguidelines-avoid-magic-numbers,readability-magic-numbers)
@@ -505,6 +523,282 @@ bool Database::upgrade(int from, UpgradeStats& stats)
         m_lastError = sqlText(setVersion.lastError());
     }
     setVersion.finish();
+    return ok;
+}
+
+// Version 7 — the privacy rule (maintainer, 2026-10-29, #202-#204): a person
+// with full access to the files must see nothing more than the UI shows.
+// See removeBankIdentifiers().
+bool Database::migrateTo7(UpgradeStats& stats)
+{
+    return removeBankIdentifiers(m_db, stats, m_lastError);
+}
+
+// The clean-up of step 7, also run on the copy made before the upgrade:
+//   - account_hashes: the 64-character hashes go (an HMAC of the IBAN, which
+//     a person can reverse by brute force). The account tags of #203 (one
+//     byte) come again at the next import of each account. A tag can be on
+//     two accounts, so the UNIQUE index of step 5 becomes a plain one.
+//   - transactions: name and description lose the bank identifiers
+//     (StatementSanitizer). A row without a bank reference gets the
+//     fingerprint of its clean description (with the occurrence it had),
+//     the one that an import gives it now; a row with a reference keeps its
+//     fingerprint (reference and amount).
+//   - balance checkpoints: an automatic note loses the file name of the
+//     statement ("Auto — statement start (<file>)").
+//   - category rules: a pattern that holds an identifier goes.
+bool Database::removeBankIdentifiers(QSqlDatabase& db, UpgradeStats& stats, QString& error)
+{
+    const auto run = [&](const QString& sql) {
+        QSqlQuery query(db);
+        if (!query.exec(sql)) {
+            error = sqlText(query.lastError());
+            return false;
+        }
+        query.finish();
+        return true;
+    };
+
+    // The copy made before an upgrade has the schema of its version: a table
+    // or a column that this version does not have yet is not there.
+    const auto columns = [&](const QString& table) {
+        QStringList names;
+        QSqlQuery info(db);
+        if (info.exec(QStringLiteral("PRAGMA table_info(%1);").arg(table))) {
+            while (info.next()) {
+                names << info.value(1).toString();
+            }
+        }
+        return names;
+    };
+
+    if (!columns(QStringLiteral("account_hashes")).isEmpty()) {
+        {
+            QSqlQuery count(db);
+            if (count.exec(QStringLiteral("SELECT COUNT(*) FROM account_hashes;")) && count.next()) {
+                stats.removedAccountHashes = count.value(0).toInt();
+            }
+        }
+        if (!run(QStringLiteral("DELETE FROM account_hashes;"))
+            || !run(QStringLiteral("DROP INDEX IF EXISTS idx_account_hashes_hash;"))
+            || !run(QStringLiteral("CREATE INDEX IF NOT EXISTS idx_account_hashes_hash ON account_hashes(hash);"))) {
+            return false;
+        }
+    }
+
+    const QStringList txColumns = columns(QStringLiteral("transactions"));
+    const bool hasTransactions = txColumns.contains(QLatin1String("name"))
+                                 && txColumns.contains(QLatin1String("description"));
+    const bool hasFingerprint = txColumns.contains(QLatin1String("fingerprint"));
+
+    // Transactions, account by account: the new fingerprints must stay unique
+    // in their account (two rows that differed only by an identifier).
+    struct Row {
+        int id = 0;
+        int accountId = 0;
+        QString operationDate, confirmationDate, name, description, fingerprint;
+        double debit = 0, credit = 0, balanceAfter = 0;
+    };
+    QVector<Row> rows;
+    if (hasTransactions) {
+        QSqlQuery select(db);
+        if (!select.exec(QStringLiteral("SELECT id, account_id, operation_date, confirmation_date, name, description, "
+                                        "debit, credit, balance_after, %1 FROM transactions "
+                                        "ORDER BY account_id, id;")
+                             .arg(hasFingerprint ? QStringLiteral("fingerprint") : QStringLiteral("''")))) {
+            error = sqlText(select.lastError());
+            return false;
+        }
+        while (select.next()) {
+            Row row;
+            row.id = select.value(0).toInt();
+            row.accountId = select.value(1).toInt();
+            row.operationDate = select.value(2).toString();
+            row.confirmationDate = select.value(3).toString();
+            row.name = select.value(4).toString();
+            row.description = select.value(5).toString();
+            row.debit = select.value(6).toDouble();
+            row.credit = select.value(7).toDouble();
+            row.balanceAfter = select.value(8).toDouble();
+            row.fingerprint = select.value(9).toString();
+            rows.append(row);
+        }
+    }
+    constexpr int kMaxOccurrence = 50;
+    QHash<int, QSet<QString>> taken; // account -> new fingerprints
+    for (const Row& row : rows) {
+        taken[row.accountId].insert(row.fingerprint);
+    }
+    QSqlQuery update(db);
+    if (hasTransactions
+        && !update.prepare(hasFingerprint
+                               ? QStringLiteral("UPDATE transactions SET name = ?, description = ?, fingerprint = ? "
+                                                "WHERE id = ?;")
+                               : QStringLiteral("UPDATE transactions SET name = ?, description = ? WHERE id = ?;"))) {
+        error = sqlText(update.lastError());
+        return false;
+    }
+    for (const Row& row : rows) {
+        const QString name = StatementSanitizer::clean(row.name);
+        const QString description = StatementSanitizer::cleanStoredDescription(row.description);
+        QString fingerprint = row.fingerprint;
+        if (hasFingerprint && TransactionsTable::bankReference(row.description).isEmpty()
+            && description != row.description) {
+            // The occurrence of the old fingerprint (1 for most rows).
+            int occurrence = 1;
+            for (int k = 1; k <= kMaxOccurrence; ++k) {
+                if (TransactionsTable::fingerprint(row.operationDate, row.confirmationDate, row.debit, row.credit,
+                                                   row.balanceAfter, row.description, k) == row.fingerprint) {
+                    occurrence = k;
+                    break;
+                }
+            }
+            QSet<QString>& inAccount = taken[row.accountId];
+            inAccount.remove(row.fingerprint);
+            for (int k = occurrence;; ++k) {
+                fingerprint = TransactionsTable::fingerprint(row.operationDate, row.confirmationDate, row.debit,
+                                                             row.credit, row.balanceAfter, description, k);
+                if (!inAccount.contains(fingerprint)) {
+                    break;
+                }
+            }
+            inAccount.insert(fingerprint);
+        }
+        if (name == row.name && description == row.description && fingerprint == row.fingerprint) {
+            continue;
+        }
+        update.addBindValue(Sql::text(name));
+        update.addBindValue(Sql::text(description));
+        if (hasFingerprint) {
+            update.addBindValue(Sql::text(fingerprint));
+        }
+        update.addBindValue(row.id);
+        if (!update.exec()) {
+            error = sqlText(update.lastError());
+            return false;
+        }
+        ++stats.cleanedRows;
+    }
+    update.finish();
+
+    // The automatic notes: "Auto — statement start (<file name>)".
+    if (columns(QStringLiteral("account_balance_checkpoints")).contains(QLatin1String("note"))
+        && !run(QStringLiteral("UPDATE account_balance_checkpoints SET note = substr(note, 1, instr(note, ' (') - 1) "
+                               "WHERE note LIKE 'Auto %statement%(%' AND instr(note, ' (') > 0;"))) {
+        return false;
+    }
+
+    // Category rules whose pattern holds an identifier.
+    if (columns(QStringLiteral("category_rules")).isEmpty()) {
+        return true;
+    }
+    QStringList identifierPatterns;
+    {
+        QSqlQuery select(db);
+        if (!select.exec(QStringLiteral("SELECT pattern FROM category_rules;"))) {
+            error = sqlText(select.lastError());
+            return false;
+        }
+        while (select.next()) {
+            const QString pattern = select.value(0).toString();
+            if (StatementSanitizer::hasIdentifier(pattern)) {
+                identifierPatterns.append(pattern);
+            }
+        }
+    }
+    QSqlQuery remove(db);
+    if (!remove.prepare(QStringLiteral("DELETE FROM category_rules WHERE pattern = ?;"))) {
+        error = sqlText(remove.lastError());
+        return false;
+    }
+    for (const QString& pattern : identifierPatterns) {
+        remove.addBindValue(pattern);
+        if (!remove.exec()) {
+            error = sqlText(remove.lastError());
+            return false;
+        }
+        ++stats.removedIdentifierRules;
+    }
+    remove.finish();
+    return true;
+}
+
+// Version 8 — the net worth (#206): the column accounts.in_net_worth. Every
+// account is in the net worth, as before.
+bool Database::migrateTo8(UpgradeStats& stats)
+{
+    Q_UNUSED(stats)
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("PRAGMA table_info(accounts);"))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    while (query.next()) {
+        if (query.value(1).toString() == QLatin1String("in_net_worth")) {
+            return true; // already there (a file of this version with an older user_version)
+        }
+    }
+    if (!query.exec(QStringLiteral("ALTER TABLE accounts ADD COLUMN in_net_worth INTEGER NOT NULL DEFAULT 1;"))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    return true;
+}
+
+// Version 9 — internal transfers (#207): the column transactions.transfer_id
+// (0: not decided, -1: not a transfer, > 0: the id of the transfer).
+bool Database::migrateTo9(UpgradeStats& stats)
+{
+    Q_UNUSED(stats)
+    QSqlQuery query(m_db);
+    if (!query.exec(QStringLiteral("PRAGMA table_info(transactions);"))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    while (query.next()) {
+        if (query.value(1).toString() == QLatin1String("transfer_id")) {
+            return true; // already there (a file of this version with an older user_version)
+        }
+    }
+    if (!query.exec(QStringLiteral("ALTER TABLE transactions ADD COLUMN transfer_id INTEGER NOT NULL DEFAULT 0;"))) {
+        m_lastError = sqlText(query.lastError());
+        return false;
+    }
+    return true;
+}
+
+bool Database::removeBankIdentifiersInCopy(const QString& backupPath)
+{
+    static const QLatin1String kCopyConnection("finance_dashboard_privacy_copy");
+    bool ok = false;
+    {
+        QSqlDatabase copy = QSqlDatabase::addDatabase(QStringLiteral("QSQLITE"), kCopyConnection);
+        copy.setDatabaseName(backupPath);
+        if (copy.open()) {
+            UpgradeStats ignored;
+            QSqlQuery pragma(copy);
+            ok = pragma.exec(QStringLiteral("PRAGMA journal_mode = DELETE;")) && (pragma.finish(), true)
+                 && pragma.exec(QStringLiteral("PRAGMA secure_delete = ON;")) && (pragma.finish(), true)
+                 && copy.transaction() && removeBankIdentifiers(copy, ignored, m_lastError) && copy.commit();
+            if (!ok) {
+                if (m_lastError.isEmpty()) {
+                    m_lastError = sqlText(copy.lastError());
+                }
+                copy.rollback();
+            } else {
+                QSqlQuery vacuum(copy);
+                ok = vacuum.exec(QStringLiteral("VACUUM;"));
+                if (!ok) {
+                    m_lastError = sqlText(vacuum.lastError());
+                }
+                vacuum.finish();
+            }
+            copy.close();
+        } else {
+            m_lastError = sqlText(copy.lastError());
+        }
+    }
+    QSqlDatabase::removeDatabase(kCopyConnection);
     return ok;
 }
 
@@ -626,14 +920,10 @@ bool Database::migrateTo2(UpgradeStats& stats)
                 differ.value(2).toString() != differ.value(9).toString()) {
                 ++stats.reusedReferences;
             }
+            // Ids only: no statement data in the log (#205).
             qInfo().noquote() << QStringLiteral("[Database] duplicate transaction %1 removed (transaction %2 "
-                                                "stays): %3 \"%4\", category \"%5\", subcategory \"%6\", "
-                                                "label \"%7\", confirmation date %8, balance after %9")
-                                     .arg(differ.value(0).toString(), differ.value(1).toString(),
-                                          differ.value(2).toString(), differ.value(3).toString(),
-                                          differ.value(4).toString(), differ.value(5).toString(),
-                                          differ.value(6).toString(), differ.value(7).toString(),
-                                          differ.value(8).toString());
+                                                "stays)")
+                                     .arg(differ.value(0).toString(), differ.value(1).toString());
         }
     }
 
@@ -780,16 +1070,8 @@ bool Database::migrateTo5(UpgradeStats& stats)
 
     // Count and log the links to other accounts that go: only the
     // fingerprints (a typed value that is not one never matched), with the
-    // names of the accounts and without the hashes.
-    QHash<int, QString> names;
+    // ids of the accounts and without the hashes (#205).
     QSqlQuery query(m_db);
-    if (!query.exec(QStringLiteral("SELECT id, name FROM accounts;"))) {
-        m_lastError = sqlText(query.lastError());
-        return false;
-    }
-    while (query.next()) {
-        names.insert(query.value(0).toInt(), query.value(1).toString());
-    }
     if (!query.exec(QStringLiteral("SELECT account_id, %1 FROM account_hashes ORDER BY id;").arg(stored))) {
         m_lastError = sqlText(query.lastError());
         return false;
@@ -811,8 +1093,8 @@ bool Database::migrateTo5(UpgradeStats& stats)
             continue;
         }
         removed.insert(link);
-        qInfo().noquote() << "[Database] migration step 5: the account" << names.value(account)
-                          << "loses an account hash that the account" << names.value(kept) << "keeps";
+        qInfo().noquote() << "[Database] migration step 5: the account" << account
+                          << "loses an account hash that the account" << kept << "keeps";
     }
     stats.removedHashLinks = static_cast<int>(removed.size());
 
@@ -842,15 +1124,6 @@ struct StoredRule {
     QString subcategory;
     QString normalized; // normalize() of the pattern
 };
-
-// For the log of step 6: "TRANSFER TO JOHN DOE" (Housing / Rent).
-QString describeRule(const StoredRule& rule)
-{
-    const QString target = rule.subcategory.isEmpty()
-                               ? rule.category
-                               : rule.category + QStringLiteral(" / ") + rule.subcategory;
-    return QStringLiteral("\"%1\" (%2)").arg(rule.pattern, target);
-}
 
 // The writes of step 6: the rules in `removed` go, the rules in `rewritten`
 // get their normalized pattern. On a failure, `error` is the SQLite error.
@@ -910,7 +1183,7 @@ bool writeRuleChanges(QSqlQuery& query, const QVector<qint64>& removed, const QV
 //     give two categories, and the most recent rule would give its category
 //     to the rows of the other one, with full confidence;
 //   - another result: the pattern is rewritten.
-// The application log lists each change. The step calls the normalizer of
+// The application log gives the id of each changed rule. The step calls the normalizer of
 // the build that runs it, so the patterns are the keys of that build: a rule
 // that the user teaches after the upgrade gets the same pattern. A later
 // change of the keys needs a new step that does this again, for the files
@@ -944,7 +1217,7 @@ bool Database::migrateTo6(UpgradeStats& stats)
         if (rule.normalized.isEmpty()) {
             removed.append(rule.id);
             ++stats.removedGenericRules;
-            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.pattern
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.id
                               << "is removed: it has only generic words";
             continue;
         }
@@ -956,18 +1229,18 @@ bool Database::migrateTo6(UpgradeStats& stats)
         if (!oneCategory) {
             removed.append(rule.id);
             ++stats.conflictingRules;
-            qInfo().noquote() << "[Database] migration step 6: the category rule" << describeRule(rule)
-                              << "is removed: a rule with another category also becomes" << rule.normalized;
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.id
+                              << "is removed: a rule with another category gets the same pattern";
         } else if (newest.id != rule.id) {
             removed.append(rule.id);
             ++stats.mergedRules;
-            qInfo().noquote() << "[Database] migration step 6: the category rule" << describeRule(rule)
-                              << "is merged with the newer rule" << describeRule(newest) << "for" << rule.normalized;
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.id
+                              << "is merged with the newer rule" << newest.id;
         } else if (rule.normalized != rule.pattern) {
             rewritten.append(&rule);
             ++stats.rewrittenRules;
-            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.pattern
-                              << "becomes" << rule.normalized;
+            qInfo().noquote() << "[Database] migration step 6: the category rule" << rule.id
+                              << "gets a new pattern";
         }
     }
     return writeRuleChanges(query, removed, rewritten, m_lastError);
@@ -1066,12 +1339,12 @@ bool hasText(const QString& value)
 
 // A hash that the user typed must be a fingerprint as the app computes it:
 // only such a value can match a statement (#47).
-constexpr const char* kNotAFingerprint = "An account hash has 64 hexadecimal characters (0-9, a-f).";
+constexpr const char* kNotAFingerprint = QT_TRANSLATE_NOOP("Database", "An account tag has 2 hexadecimal characters (0-9, a-f).");
 
 // An amount must be a number, not larger than Money::kMaxAmount (#33): the
 // app rounds amounts to the cent before it writes them. Refused before any
 // write, as an empty name.
-constexpr const char* kInvalidAmount = "An amount is not a number, or it is too large.";
+constexpr const char* kInvalidAmount = QT_TRANSLATE_NOOP("Database", "An amount is not a number, or it is too large.");
 
 bool hasValidAmounts(const QVector<Data::Transaction>& txs)
 {
@@ -1085,7 +1358,7 @@ bool hasValidAmounts(const QVector<Data::Transaction>& txs)
 int Database::addCategory(const QString& name, const QString& color)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
-    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return -1; }
+    if (!hasText(name)) { m_lastError = QCoreApplication::translate("Database", "The name is empty."); return -1; }
     return m_categoriesTable.insert(name, color);
 }
 
@@ -1096,12 +1369,12 @@ int Database::addCategory(const QString& name, const QString& color)
 bool Database::renameCategory(int categoryId, const QString& newName)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
-    if (!hasText(newName)) { m_lastError = QStringLiteral("The name is empty."); return false; }
+    if (!hasText(newName)) { m_lastError = QCoreApplication::translate("Database", "The name is empty."); return false; }
     const QVector<Data::Category> categories = loadCategories();
     const auto category = std::find_if(categories.cbegin(), categories.cend(),
                                        [categoryId](const Data::Category& c) { return c.id == categoryId; });
     if (category == categories.cend()) {
-        m_lastError = QStringLiteral("No category with id %1.").arg(categoryId);
+        m_lastError = QCoreApplication::translate("Database", "No category with id %1.").arg(categoryId);
         return false;
     }
     const QString oldName = category->name;
@@ -1132,14 +1405,14 @@ bool Database::removeCategory(int categoryId)
 int Database::addSubcategory(int categoryId, const QString& name, const QString& color)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
-    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return -1; }
+    if (!hasText(name)) { m_lastError = QCoreApplication::translate("Database", "The name is empty."); return -1; }
     return m_subcategoriesTable.insert(categoryId, name, color);
 }
 
 bool Database::renameSubcategory(int subcategoryId, const QString& newName)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
-    if (!hasText(newName)) { m_lastError = QStringLiteral("The name is empty."); return false; }
+    if (!hasText(newName)) { m_lastError = QCoreApplication::translate("Database", "The name is empty."); return false; }
     QString categoryName;
     QString oldName;
     bool found = false;
@@ -1153,7 +1426,7 @@ bool Database::renameSubcategory(int subcategoryId, const QString& newName)
         }
     }
     if (!found) {
-        m_lastError = QStringLiteral("No subcategory with id %1.").arg(subcategoryId);
+        m_lastError = QCoreApplication::translate("Database", "No subcategory with id %1.").arg(subcategoryId);
         return false;
     }
     return inTransaction(QStringLiteral("renameSubcategory"), [&]() {
@@ -1190,8 +1463,8 @@ int Database::addAccount(const QString& name, const QString& type, const QString
                           const QString& currency, const QString& notes)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
-    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return -1; }
-    if (!hasText(currency)) { m_lastError = QStringLiteral("The currency is empty."); return -1; }
+    if (!hasText(name)) { m_lastError = QCoreApplication::translate("Database", "The name is empty."); return -1; }
+    if (!hasText(currency)) { m_lastError = QCoreApplication::translate("Database", "The currency is empty."); return -1; }
     return m_accountsTable.insert(name, type, category, currency, notes);
 }
 
@@ -1199,9 +1472,19 @@ bool Database::updateAccount(int accountId, const QString& name, const QString& 
                               const QString& currency, const QString& notes)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
-    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return false; }
-    if (!hasText(currency)) { m_lastError = QStringLiteral("The currency is empty."); return false; }
+    if (!hasText(name)) { m_lastError = QCoreApplication::translate("Database", "The name is empty."); return false; }
+    if (!hasText(currency)) { m_lastError = QCoreApplication::translate("Database", "The currency is empty."); return false; }
     return m_accountsTable.update(accountId, name, type, category, currency, notes);
+}
+
+bool Database::setAccountInNetWorth(int accountId, bool inNetWorth)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    if (!m_accountsTable.setInNetWorth(accountId, inNetWorth)) {
+        m_lastError = QCoreApplication::translate("Database", "Could not change the net worth of the account.");
+        return false;
+    }
+    return true;
 }
 
 bool Database::removeAccount(int accountId)
@@ -1222,17 +1505,18 @@ bool Database::removeAccount(int accountId)
 int Database::addAccountHash(int accountId, const QString& hash, const QString& source)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
-    if (!hasText(hash)) { m_lastError = QStringLiteral("The account hash is empty."); return -1; }
-    if (!hasText(source)) { m_lastError = QStringLiteral("The source of the account hash is empty."); return -1; }
+    if (!hasText(hash)) { m_lastError = QCoreApplication::translate("Database", "The account hash is empty."); return -1; }
+    if (!hasText(source)) { m_lastError = QCoreApplication::translate("Database", "The source of the account hash is empty."); return -1; }
     const QString stored = AccountHashing::storedForm(hash);
-    if (!AccountHashing::isFingerprint(stored)) { m_lastError = QString::fromLatin1(kNotAFingerprint); return -1; }
-    // One account for each hash (#47): a typed hash does not move a link.
-    const int owner = m_accountHashesTable.accountOf(stored);
-    if (owner == accountId) { m_lastError = QStringLiteral("The account already has this hash."); return -1; }
-    if (owner >= 0) { m_lastError = QStringLiteral("Another account has this hash."); return -1; }
+    if (!AccountHashing::isTag(stored)) { m_lastError = QCoreApplication::translate("Database", kNotAFingerprint); return -1; }
+    // A tag can be on two accounts (#203), once on each.
+    if (m_accountHashesTable.existsForAccount(accountId, stored)) {
+        m_lastError = QCoreApplication::translate("Database", "The account already has this tag.");
+        return -1;
+    }
     const int hashId = m_accountHashesTable.insert(accountId, stored, source);
     if (hashId < 0) {
-        m_lastError = QStringLiteral("Could not add the account hash.");
+        m_lastError = QCoreApplication::translate("Database", "Could not add the account hash.");
     }
     return hashId;
 }
@@ -1240,7 +1524,7 @@ int Database::addAccountHash(int accountId, const QString& hash, const QString& 
 bool Database::linkAccountHash(int accountId, const QString& hash, const QString& source, const QString& legacyHash)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
-    if (!hasText(source)) { m_lastError = QStringLiteral("The source of the account hash is empty."); return false; }
+    if (!hasText(source)) { m_lastError = QCoreApplication::translate("Database", "The source of the account hash is empty."); return false; }
     if (legacyHash.isEmpty()) {
         return linkHashTo(accountId, hash, source);
     }
@@ -1256,12 +1540,12 @@ bool Database::removeLegacyHash(int accountId, const QString& legacyHash)
         return true; // no account has it
     }
     if (!m_accountHashesTable.removeHash(legacyHash)) {
-        m_lastError = QStringLiteral("Could not replace the old account fingerprint.");
+        m_lastError = QCoreApplication::translate("Database", "Could not replace the old account fingerprint.");
         return false;
     }
     if (owner != accountId) {
         qInfo().noquote() << "[Database] the old account fingerprint (from before #50) moves from the account"
-                          << accountName(owner) << "to the account" << accountName(accountId);
+                          << owner << "to the account" << accountId;
     }
     return true;
 }
@@ -1272,26 +1556,17 @@ bool Database::removeLegacyHash(int accountId, const QString& legacyHash)
 bool Database::linkHashTo(int accountId, const QString& hash, const QString& source)
 {
     const QString stored = AccountHashing::storedForm(hash);
-    if (!AccountHashing::isFingerprint(stored)) {
-        m_lastError = QString::fromLatin1(kNotAFingerprint);
+    if (!AccountHashing::isTag(stored)) {
+        m_lastError = QCoreApplication::translate("Database", kNotAFingerprint);
         return false;
     }
-    const int owner = m_accountHashesTable.accountOf(stored);
-    if (owner == accountId) {
+    // A tag can be on two accounts (#203): it does not move, the account gets
+    // it too.
+    if (m_accountHashesTable.existsForAccount(accountId, stored)) {
         return true; // already linked
     }
-    if (owner >= 0) {
-        // The user picked another account for this statement: the hash moves.
-        if (!m_accountHashesTable.moveToAccount(stored, accountId, source)) {
-            m_lastError = QStringLiteral("Could not move the account fingerprint to this account.");
-            return false;
-        }
-        qInfo().noquote() << "[Database] the account fingerprint moves from the account" << accountName(owner)
-                          << "to the account" << accountName(accountId);
-        return true;
-    }
     if (m_accountHashesTable.insert(accountId, stored, source) < 0) {
-        m_lastError = QStringLiteral("Could not link the account fingerprint.");
+        m_lastError = QCoreApplication::translate("Database", "Could not link the account fingerprint.");
         return false;
     }
     return true;
@@ -1335,19 +1610,19 @@ QVector<Data::AccountCategory> Database::loadAccountCategories() const
 int Database::addAccountCategory(const QString& name, const QString& color)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
-    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return -1; }
+    if (!hasText(name)) { m_lastError = QCoreApplication::translate("Database", "The name is empty."); return -1; }
     return m_accountCategoriesTable.insert(name, color);
 }
 
 bool Database::renameAccountCategory(int accountCategoryId, const QString& newName)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
-    if (!hasText(newName)) { m_lastError = QStringLiteral("The name is empty."); return false; }
+    if (!hasText(newName)) { m_lastError = QCoreApplication::translate("Database", "The name is empty."); return false; }
     const QVector<Data::AccountCategory> categories = loadAccountCategories();
     const auto category = std::find_if(categories.cbegin(), categories.cend(),
         [accountCategoryId](const Data::AccountCategory& c) { return c.id == accountCategoryId; });
     if (category == categories.cend()) {
-        m_lastError = QStringLiteral("No account category with id %1.").arg(accountCategoryId);
+        m_lastError = QCoreApplication::translate("Database", "No account category with id %1.").arg(accountCategoryId);
         return false;
     }
     const QString oldName = category->name;
@@ -1379,19 +1654,19 @@ QVector<Data::AccountType> Database::loadAccountTypes() const
 int Database::addAccountType(const QString& name)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
-    if (!hasText(name)) { m_lastError = QStringLiteral("The name is empty."); return -1; }
+    if (!hasText(name)) { m_lastError = QCoreApplication::translate("Database", "The name is empty."); return -1; }
     return m_accountTypesTable.insert(name);
 }
 
 bool Database::renameAccountType(int typeId, const QString& newName)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
-    if (!hasText(newName)) { m_lastError = QStringLiteral("The name is empty."); return false; }
+    if (!hasText(newName)) { m_lastError = QCoreApplication::translate("Database", "The name is empty."); return false; }
     const QVector<Data::AccountType> types = loadAccountTypes();
     const auto type = std::find_if(types.cbegin(), types.cend(),
                                    [typeId](const Data::AccountType& t) { return t.id == typeId; });
     if (type == types.cend()) {
-        m_lastError = QStringLiteral("No account type with id %1.").arg(typeId);
+        m_lastError = QCoreApplication::translate("Database", "No account type with id %1.").arg(typeId);
         return false;
     }
     const QString oldName = type->name;
@@ -1439,7 +1714,7 @@ bool Database::removeAccountType(int typeId)
 bool Database::insertTransactions(int accountId, const QVector<Data::Transaction>& txs)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
-    if (!hasValidAmounts(txs)) { m_lastError = QString::fromLatin1(kInvalidAmount); return false; }
+    if (!hasValidAmounts(txs)) { m_lastError = QCoreApplication::translate("Database", kInvalidAmount); return false; }
     return m_transactionsTable.insertBatch(accountId, txs);
 }
 
@@ -1452,7 +1727,7 @@ bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, 
         std::all_of(checkpoints.cbegin(), checkpoints.cend(),
                     [](const Data::AccountBalanceCheckpoint& checkpoint) { return Money::isValid(checkpoint.balance); });
     if (!hasValidAmounts(txs) || !validCheckpoints) {
-        m_lastError = QString::fromLatin1(kInvalidAmount);
+        m_lastError = QCoreApplication::translate("Database", kInvalidAmount);
         qWarning() << "[Database] saveImport:" << m_lastError << "— nothing saved";
         return false;
     }
@@ -1470,7 +1745,7 @@ bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, 
     };
 
     if (!m_transactionsTable.insertBatch(accountId, txs, inserted)) {
-        return fail(QStringLiteral("Could not save the transactions."));
+        return fail(QCoreApplication::translate("Database", "Could not save the transactions."));
     }
     // The fingerprint from before #50 goes, whichever account had it
     // (#50); the fingerprint is added, or moved from another account (#47).
@@ -1484,7 +1759,7 @@ bool Database::saveImport(int accountId, const QVector<Data::Transaction>& txs, 
     }
     for (const Data::AccountBalanceCheckpoint& checkpoint : checkpoints) {
         if (m_balanceCheckpointsTable.insert(accountId, checkpoint.date, checkpoint.balance, checkpoint.note) < 0) {
-            return fail(QStringLiteral("Could not save a balance checkpoint."));
+            return fail(QCoreApplication::translate("Database", "Could not save a balance checkpoint."));
         }
     }
     if (!m_db.commit()) {
@@ -1515,7 +1790,7 @@ bool Database::updateTransaction(const Data::Transaction& tx)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }
     if (!Money::isValid(tx.debit) || !Money::isValid(tx.credit)) {
-        m_lastError = QString::fromLatin1(kInvalidAmount);
+        m_lastError = QCoreApplication::translate("Database", kInvalidAmount);
         return false;
     }
     return m_transactionsTable.updateById(tx);
@@ -1531,6 +1806,59 @@ std::optional<Data::Transaction> Database::latestTransactionOnOrBefore(int accou
 {
     if (!isOpen()) { return std::nullopt; }
     return m_transactionsTable.latestOnOrBefore(accountId, date);
+}
+
+QVector<Data::Transaction> Database::allTransactions() const
+{
+    if (!isOpen()) { return {}; }
+    return m_transactionsTable.all();
+}
+
+bool Database::confirmTransfer(int debitId, int creditId)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return inTransaction(QStringLiteral("confirmTransfer"), [&]() {
+        if (!m_transactionsTable.setTransferId(debitId, debitId) || !m_transactionsTable.setTransferId(creditId, debitId)) {
+            m_lastError = QCoreApplication::translate("Database", "Could not save the transfer.");
+            return false;
+        }
+        return true;
+    });
+}
+
+bool Database::refuseTransfer(int debitId, int creditId)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    return inTransaction(QStringLiteral("refuseTransfer"), [&]() {
+        if (!m_transactionsTable.setTransferId(debitId, Data::kNotATransfer)
+            || !m_transactionsTable.setTransferId(creditId, Data::kNotATransfer)) {
+            m_lastError = QCoreApplication::translate("Database", "Could not save the answer.");
+            return false;
+        }
+        return true;
+    });
+}
+
+bool Database::setInternalTransfer(int transactionId, bool on)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    const std::optional<Data::Transaction> row = m_transactionsTable.byId(transactionId);
+    if (!row) {
+        m_lastError = QCoreApplication::translate("Database", "The transaction does not exist.");
+        return false;
+    }
+    bool done = true;
+    if (on) {
+        done = Data::isInternalTransfer(*row) || m_transactionsTable.setTransferId(transactionId, transactionId);
+    } else if (Data::isInternalTransfer(*row)) {
+        done = m_transactionsTable.clearTransfer(row->transferId);
+    } else {
+        done = m_transactionsTable.setTransferId(transactionId, Data::kNotATransfer);
+    }
+    if (!done) {
+        m_lastError = QCoreApplication::translate("Database", "Could not change the transaction.");
+    }
+    return done;
 }
 
 QVector<Data::Transaction> Database::allCategorizedTransactions() const
@@ -1596,8 +1924,8 @@ QVector<Data::AccountBalanceCheckpoint> Database::loadBalanceCheckpoints(int acc
 int Database::addBalanceCheckpoint(int accountId, const QDate& date, double balance, const QString& note)
 {
     if (!isOpen()) { m_lastError = "Database not open."; return -1; }
-    if (!date.isValid()) { m_lastError = QStringLiteral("The date of the checkpoint is not valid."); return -1; }
-    if (!Money::isValid(balance)) { m_lastError = QString::fromLatin1(kInvalidAmount); return -1; }
+    if (!date.isValid()) { m_lastError = QCoreApplication::translate("Database", "The date of the checkpoint is not valid."); return -1; }
+    if (!Money::isValid(balance)) { m_lastError = QCoreApplication::translate("Database", kInvalidAmount); return -1; }
     return m_balanceCheckpointsTable.insert(accountId, date, balance, note);
 }
 
@@ -1640,6 +1968,121 @@ bool Database::writeDefaults(Defaults set, const std::function<bool()>& write)
 bool Database::recordDefaults(Defaults set)
 {
     return m_settingsTable.setValue(defaultsKey(set), QStringLiteral("1"));
+}
+
+bool Database::replaceCategories(const QVector<Data::DefaultCategory>& categories, CategoryResetStats& stats)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    stats = CategoryResetStats{};
+
+    // The names that stay, with their subcategories.
+    QHash<QString, QSet<QString>> kept;
+    for (const Data::DefaultCategory& category : categories) {
+        QSet<QString>& subs = kept[category.name];
+        for (const Data::DefaultSubcategory& sub : category.subcategories) {
+            subs.insert(sub.name);
+        }
+    }
+    // The category and subcategory of a row after the reset.
+    const auto after = [&kept](const QString& category, const QString& subcategory) {
+        const auto found = kept.constFind(category);
+        if (found == kept.cend()) {
+            return std::pair<QString, QString>{QString(), QString()};
+        }
+        return std::pair<QString, QString>{category, found->contains(subcategory) ? subcategory : QString()};
+    };
+
+    return inTransaction(QStringLiteral("replaceCategories"), [&]() {
+        QSqlQuery query(m_db);
+        if (!query.exec(QStringLiteral("DELETE FROM subcategories;")) || !query.exec(QStringLiteral("DELETE FROM categories;"))) {
+            m_lastError = sqlText(query.lastError());
+            return false;
+        }
+        for (const Data::DefaultCategory& category : categories) {
+            const int id = m_categoriesTable.insert(category.name, category.color);
+            if (id < 0) {
+                m_lastError = QCoreApplication::translate("Database", "Could not add the category.");
+                return false;
+            }
+            for (const Data::DefaultSubcategory& sub : category.subcategories) {
+                if (m_subcategoriesTable.insert(id, sub.name, sub.color) < 0) {
+                    m_lastError = QCoreApplication::translate("Database", "Could not add the subcategory.");
+                    return false;
+                }
+            }
+        }
+
+        // The transactions: one UPDATE for each pair (category, subcategory).
+        QVector<std::pair<QString, QString>> pairs;
+        if (!query.exec(QStringLiteral("SELECT DISTINCT category, subcategory FROM transactions "
+                                       "WHERE category <> '' OR subcategory <> '';"))) {
+            m_lastError = sqlText(query.lastError());
+            return false;
+        }
+        while (query.next()) {
+            pairs.append({query.value(0).toString(), query.value(1).toString()});
+        }
+        query.finish();
+        QSqlQuery update(m_db);
+        if (!update.prepare(QStringLiteral("UPDATE transactions SET category = ?, subcategory = ? "
+                                           "WHERE category = ? AND subcategory = ?;"))) {
+            m_lastError = sqlText(update.lastError());
+            return false;
+        }
+        for (const auto& [category, subcategory] : std::as_const(pairs)) {
+            const auto [newCategory, newSubcategory] = after(category, subcategory);
+            if (newCategory == category && newSubcategory == subcategory) {
+                continue;
+            }
+            update.addBindValue(Sql::text(newCategory));
+            update.addBindValue(Sql::text(newSubcategory));
+            update.addBindValue(Sql::text(category));
+            update.addBindValue(Sql::text(subcategory));
+            if (!update.exec()) {
+                m_lastError = sqlText(update.lastError());
+                return false;
+            }
+            if (newCategory.isEmpty()) {
+                stats.uncategorizedTransactions += update.numRowsAffected();
+            }
+        }
+
+        // The category rules.
+        QVector<std::tuple<int, QString, QString>> rules;
+        if (!query.exec(QStringLiteral("SELECT id, category, subcategory FROM category_rules;"))) {
+            m_lastError = sqlText(query.lastError());
+            return false;
+        }
+        while (query.next()) {
+            rules.append({query.value(0).toInt(), query.value(1).toString(), query.value(2).toString()});
+        }
+        query.finish();
+        QSqlQuery remove(m_db);
+        QSqlQuery fix(m_db);
+        if (!remove.prepare(QStringLiteral("DELETE FROM category_rules WHERE id = ?;"))
+            || !fix.prepare(QStringLiteral("UPDATE category_rules SET subcategory = '' WHERE id = ?;"))) {
+            m_lastError = sqlText(remove.lastError());
+            return false;
+        }
+        for (const auto& [id, category, subcategory] : std::as_const(rules)) {
+            const auto [newCategory, newSubcategory] = after(category, subcategory);
+            if (newCategory.isEmpty()) {
+                remove.addBindValue(id);
+                if (!remove.exec()) {
+                    m_lastError = sqlText(remove.lastError());
+                    return false;
+                }
+                ++stats.removedRules;
+            } else if (newSubcategory != subcategory) {
+                fix.addBindValue(id);
+                if (!fix.exec()) {
+                    m_lastError = sqlText(fix.lastError());
+                    return false;
+                }
+            }
+        }
+        return true;
+    });
 }
 
 bool Database::resetAll()
@@ -1715,17 +2158,17 @@ bool Database::replaceWithCopyOf(const QString& sourcePath, QString& keptPath)
 {
     keptPath.clear();
     if (!isOpen()) {
-        m_lastError = QStringLiteral("The database is not open.");
+        m_lastError = QCoreApplication::translate("Database", "The database is not open.");
         return false;
     }
     const QString path = m_db.databaseName();
     const QFileInfo source(sourcePath);
     if (!source.isFile()) {
-        m_lastError = QStringLiteral("There is no database at %1.").arg(native(sourcePath));
+        m_lastError = QCoreApplication::translate("Database", "There is no database at %1.").arg(native(sourcePath));
         return false;
     }
     if (source.canonicalFilePath() == QFileInfo(path).canonicalFilePath()) {
-        m_lastError = QStringLiteral("%1 is the open database.").arg(native(sourcePath));
+        m_lastError = QCoreApplication::translate("Database", "%1 is the open database.").arg(native(sourcePath));
         return false;
     }
 
@@ -1744,9 +2187,9 @@ bool Database::replaceWithCopyOf(const QString& sourcePath, QString& keptPath)
     const auto fail = [this, &path, &sourcePath](const QString& error, bool reopen = true) {
         QString message = error;
         if (!reopen || !QFileInfo::exists(path)) {
-            message += QStringLiteral(" Then restart the app.");
+            message += QCoreApplication::translate("Database", " Then restart the app.");
         } else if (!open(path)) {
-            message += QStringLiteral(" The database could not be opened again (%1) Restart the app.")
+            message += QCoreApplication::translate("Database", " The database could not be opened again (%1) Restart the app.")
                            .arg(sentence(m_lastError));
         }
         m_lastError = message;
@@ -1762,23 +2205,23 @@ bool Database::replaceWithCopyOf(const QString& sourcePath, QString& keptPath)
     close();
     if (QFileInfo::exists(path + QStringLiteral("-wal"))) {
         QFile::remove(copyPath);
-        return fail(QStringLiteral("Another connection uses the database (is the app open twice?). "
+        return fail(QCoreApplication::translate("Database", "Another connection uses the database (is the app open twice?). "
                                    "Nothing was changed."));
     }
     keptPath = siblingPath(path, QStringLiteral("before-copy"));
     if (!moveFile(path, keptPath)) {
         keptPath.clear();
         QFile::remove(copyPath);
-        return fail(m_lastError + QStringLiteral(" Nothing was changed."));
+        return fail(m_lastError + QCoreApplication::translate("Database", " Nothing was changed."));
     }
     if (!moveFile(copyPath, path)) {
         const QString error = m_lastError;
         QFile::remove(copyPath);
         if (moveFile(keptPath, path)) {
             keptPath.clear();
-            return fail(error + QStringLiteral(" Nothing was changed."));
+            return fail(error + QCoreApplication::translate("Database", " Nothing was changed."));
         }
-        return fail(QStringLiteral("%1 The database from before is in %2: rename it to %3.")
+        return fail(QCoreApplication::translate("Database", "%1 The database from before is in %2: rename it to %3.")
                         .arg(sentence(error), native(keptPath), QFileInfo(path).fileName()));
     }
 
@@ -1794,19 +2237,19 @@ bool Database::replaceWithCopyOf(const QString& sourcePath, QString& keptPath)
     const QString failedPath = siblingPath(path, QStringLiteral("copy-failed"));
     if (!moveFile(path, failedPath)) {
         // The copy that does not open is still in place: do not open it again.
-        return fail(QStringLiteral("The copy was made, but it does not open: %1 It could not be moved away "
+        return fail(QCoreApplication::translate("Database", "The copy was made, but it does not open: %1 It could not be moved away "
                                    "(%2) Move %3 out of its folder, and rename %4 to %5.")
                         .arg(sentence(error), sentence(m_lastError), native(path), native(keptPath),
                              QFileInfo(path).fileName()),
                     false);
     }
     if (!moveFile(keptPath, path)) {
-        return fail(QStringLiteral("The copy was made, but it does not open: %1 The copy is in %2. The "
+        return fail(QCoreApplication::translate("Database", "The copy was made, but it does not open: %1 The copy is in %2. The "
                                    "database from before is in %3: rename it to %4.")
                         .arg(sentence(error), native(failedPath), native(keptPath), QFileInfo(path).fileName()));
     }
     keptPath.clear();
-    return fail(QStringLiteral("The copy was made, but it does not open: %1 The database from before is "
+    return fail(QCoreApplication::translate("Database", "The copy was made, but it does not open: %1 The database from before is "
                                "back. The copy is in %2.")
                     .arg(sentence(error), native(failedPath)));
 }
@@ -1825,13 +2268,13 @@ bool Database::copyReadOnly(const QString& sourcePath, const QString& copyPath)
         source.setConnectOptions(QStringLiteral("QSQLITE_OPEN_READONLY"));
         source.setDatabaseName(sourcePath);
         if (!source.open()) {
-            error = QStringLiteral("Cannot open %1: %2").arg(native(sourcePath), sentence(sqlText(source.lastError())));
+            error = QCoreApplication::translate("Database", "Cannot open %1: %2").arg(native(sourcePath), sentence(sqlText(source.lastError())));
         } else {
             QSqlQuery query(source);
             if (!query.exec(QStringLiteral("PRAGMA user_version;")) || !query.next()) {
-                error = QStringLiteral("Cannot read %1: %2").arg(native(sourcePath), sentence(sqlText(query.lastError())));
+                error = QCoreApplication::translate("Database", "Cannot read %1: %2").arg(native(sourcePath), sentence(sqlText(query.lastError())));
             } else if (const int version = query.value(0).toInt(); version > kSchemaVersion) {
-                error = QStringLiteral("%1 uses schema version %2. This version of the app knows schema "
+                error = QCoreApplication::translate("Database", "%1 uses schema version %2. This version of the app knows schema "
                                        "version %3 at most: use a newer version of the app.")
                             .arg(native(sourcePath))
                             .arg(version)
@@ -1844,7 +2287,7 @@ bool Database::copyReadOnly(const QString& sourcePath, const QString& copyPath)
                     copied = query.exec();
                 }
                 if (!copied) {
-                    error = QStringLiteral("Cannot copy %1: %2").arg(native(sourcePath), sentence(sqlText(query.lastError())));
+                    error = QCoreApplication::translate("Database", "Cannot copy %1: %2").arg(native(sourcePath), sentence(sqlText(query.lastError())));
                 }
             }
             query.finish();
@@ -1853,7 +2296,7 @@ bool Database::copyReadOnly(const QString& sourcePath, const QString& copyPath)
     }
     QSqlDatabase::removeDatabase(kSourceConnection);
     if (!error.isEmpty()) {
-        m_lastError = error + QStringLiteral(" Nothing was changed.");
+        m_lastError = error + QCoreApplication::translate("Database", " Nothing was changed.");
         qWarning().noquote() << "[Database]" << m_lastError;
         return false;
     }
@@ -1866,7 +2309,7 @@ bool Database::moveFile(const QString& source, const QString& target)
     if (file.rename(target)) {
         return true;
     }
-    m_lastError = QStringLiteral("Cannot move %1 to %2: %3").arg(native(source), native(target), sentence(file.errorString()));
+    m_lastError = QCoreApplication::translate("Database", "Cannot move %1 to %2: %3").arg(native(source), native(target), sentence(file.errorString()));
     qWarning().noquote() << "[Database]" << m_lastError;
     return false;
 }

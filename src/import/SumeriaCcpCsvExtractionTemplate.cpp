@@ -1,10 +1,13 @@
 #include "SumeriaCcpCsvExtractionTemplate.h"
+#include "db/tables/TransactionsTable.h"
+#include "import/StatementSanitizer.h"
 #include "models/ImportLog.h"
 #include "models/ImportedStatement.h"
 #include "utils/Money.h"
 
 #include <QByteArray>
 #include <QChar>
+#include <QCoreApplication>
 #include <QDate>
 #include <QFile>
 #include <QLatin1Char>
@@ -86,12 +89,14 @@ QString decodeStatementText(const QByteArray& bytes, QString& note)
         return character.unicode() > 0x7F && character != QChar(QChar::ReplacementCharacter);
     });
     if (byteOrderMark.has_value() || hasOtherThanAscii) {
-        note = QStringLiteral("Some bytes of the file are not valid %1: they show as \u201C\uFFFD\u201D. "
-                              "Check the names and the amounts.")
+        // The messages of the import log are UI: translated (the context is the class name).
+        note = QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate",
+                                           "Some bytes of the file are not valid %1: they show as “�”. "
+                                           "Check the names and the amounts.")
                    .arg(QLatin1String(QStringConverter::nameForEncoding(encoding)));
         return text;
     }
-    note = QStringLiteral("The file is not UTF-8: it was read as Windows-1252.");
+    note = QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "The file is not UTF-8: it was read as Windows-1252.");
     return decodeWindows1252(bytes);
 }
 
@@ -269,9 +274,12 @@ QString extractTransactionName(const QString& rawDescription)
 // Single-line, truncated preview of a (possibly multi-line) raw record, for
 // the parse log — embedded newlines are shown as "↵" so multi-line
 // descriptions are still recognizable as such when debugging.
+// The log popup is UI: the preview shows no identifier either (#202). The
+// header values are not known here, so only the patterns of
+// StatementSanitizer::clean() apply.
 QString previewRawText(const CsvRecord& rec)
 {
-    QString text = rec.rawText.trimmed();
+    QString text = StatementSanitizer::clean(rec.rawText.trimmed());
     text.replace(QLatin1Char('\n'), QChar(kDownwardsArrowWithCorner));
     text.replace(QLatin1Char('\r'), QString());
     if (text.size() > kPreviewMaxChars) {
@@ -401,7 +409,7 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
     QFile file(filePath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         outLog.append(ImportLogEntry{ LogLevel::Error, 0,
-            QStringLiteral("Could not open file: %1").arg(file.errorString()), QString() });
+            QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Could not open file: %1").arg(file.errorString()), QString() });
         return false;
     }
 
@@ -413,7 +421,7 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
 
     if (content.trimmed().isEmpty()) {
         outLog.append(ImportLogEntry{ LogLevel::Error, 0,
-            QStringLiteral("File is empty"), QString() });
+            QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "File is empty"), QString() });
         return false;
     }
 
@@ -424,7 +432,7 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
 
     if (records.isEmpty()) {
         outLog.append(ImportLogEntry{ LogLevel::Error, 0,
-            QStringLiteral("File is empty"), QString() });
+            QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "File is empty"), QString() });
         return false;
     }
 
@@ -442,7 +450,7 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
 
     if (headerRecordIndex < 0) {
         outLog.append(ImportLogEntry{ LogLevel::Error, 0,
-            QStringLiteral("Could not find the transaction header row "
+            QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Could not find the transaction header row "
                             "(expected a line mentioning \"Confirmation date\" "
                             "and \"Operation date\") — is this the right template?"),
             QString() });
@@ -502,14 +510,14 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
                 const int balanceLine = balanceLinesSeen++;
                 if (balanceLine > 1) {
                     outLog.append(ImportLogEntry{ LogLevel::Info, rec.startLine,
-                        QStringLiteral("Extra \"Account balance on\" line ignored (only 2 expected)"), previewRawText(rec) });
+                        QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Extra \"Account balance on\" line ignored (only 2 expected)"), previewRawText(rec) });
                     continue;
                 }
                 double amount = 0.0;
                 if (!parseAmount(value, amount)) {
                     outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
-                        balanceLine == 0 ? QStringLiteral("Could not read the amount of the start balance")
-                                         : QStringLiteral("Could not read the amount of the end balance"),
+                        balanceLine == 0 ? QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Could not read the amount of the start balance")
+                                         : QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Could not read the amount of the end balance"),
                         previewRawText(rec) });
                     continue;
                 }
@@ -532,25 +540,28 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
     if (!outStatement.periodFrom.isValid() || !outStatement.periodTo.isValid() ||
         outStatement.periodFrom > outStatement.periodTo) {
         outLog.append(ImportLogEntry{ LogLevel::Error, 0,
-            QStringLiteral("Could not read the statement period (a \"Period\" line \"From MM/dd/yyyy to "
+            QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Could not read the statement period (a \"Period\" line \"From MM/dd/yyyy to "
                            "MM/dd/yyyy\"). The row dates have no year, so they cannot be read without it."),
             QString() });
         return false;
     }
     if (outStatement.periodFrom.addDays(-31).daysTo(outStatement.periodTo) >= 365) {
         outLog.append(ImportLogEntry{ LogLevel::Warning, 0,
-            QStringLiteral("The statement period is 11 months or longer, so a row date (MM/dd, no year) can "
+            QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "The statement period is 11 months or longer, so a row date (MM/dd, no year) can "
                            "fit two years: the later one is used. Check the dates of the oldest rows."),
             QString() });
     }
 
     if (balanceLinesSeen < 2) {
         outLog.append(ImportLogEntry{ LogLevel::Warning, 0,
-            QStringLiteral("Expected 2 \"Account balance on\" lines, found %1").arg(balanceLinesSeen),
+            QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Expected 2 \"Account balance on\" lines, found %1").arg(balanceLinesSeen),
             QString() });
     }
 
     // ── 3. Parse transaction rows (everything after the header row) ────────
+    // The identifiers of the header, removed wherever a row repeats them.
+    const QStringList secrets = {outStatement.accountHolderName, outStatement.clientCode,
+                                 outStatement.accountNumber, outStatement.iban, outStatement.bic};
     int parsedCount = 0;
     for (int i = headerRecordIndex + 1; i < records.size(); ++i) {
         const CsvRecord& rec = records.at(i);
@@ -560,7 +571,7 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
 
         if (rec.fields.size() < kExpectedColumnCount) {
             outLog.append(ImportLogEntry{ LogLevel::Error, rec.startLine,
-                QStringLiteral("Expected 6 columns, found %1 — row skipped").arg(rec.fields.size()),
+                QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Expected 6 columns, found %1 — row skipped").arg(rec.fields.size()),
                 previewRawText(rec) });
             continue;
         }
@@ -571,20 +582,20 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
                                                                 outStatement.periodFrom, outStatement.periodTo);
         if (!confirmationDate.isValid() && !operationDate.isValid()) {
             outLog.append(ImportLogEntry{ LogLevel::Error, rec.startLine,
-                QStringLiteral("Could not parse either date on this row — row skipped"), previewRawText(rec) });
+                QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Could not parse either date on this row — row skipped"), previewRawText(rec) });
             continue;
         }
         // One date only: say which one was not used (an empty cell is not
         // reported — there is nothing to read).
         if (!operationDate.isValid() && !rec.fields.at(kColOperationDate).trimmed().isEmpty()) {
             outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
-                QStringLiteral("The operation date of this row is not in the statement period (from 31 days "
+                QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "The operation date of this row is not in the statement period (from 31 days "
                                "before its start to its end) or cannot be read: the confirmation date is used"),
                 previewRawText(rec) });
         }
         if (!confirmationDate.isValid() && !rec.fields.at(kColConfirmationDate).trimmed().isEmpty()) {
             outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
-                QStringLiteral("The confirmation date of this row is not in the statement period (from 31 "
+                QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "The confirmation date of this row is not in the statement period (from 31 "
                                "days before its start to its end) or cannot be read: it is left empty"),
                 previewRawText(rec) });
         }
@@ -598,29 +609,34 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
         const bool hasCredit = parseAmount(rec.fields.at(kColCredit), credit, &creditTooLarge);
         if (debitTooLarge || creditTooLarge) {
             outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
-                QStringLiteral("An amount of this row is larger than 10^13: the app cannot store it — row skipped"),
+                QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "An amount of this row is larger than 10^13: the app cannot store it — row skipped"),
                 previewRawText(rec) });
             continue;
         }
         if (!hasDebit && !hasCredit) {
             outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
-                QStringLiteral("Row has neither a debit nor a credit amount — row skipped"), previewRawText(rec) });
+                QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Row has neither a debit nor a credit amount — row skipped"), previewRawText(rec) });
             continue;
         }
         if (hasDebit && hasCredit) {
             outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
-                QStringLiteral("Row has both a debit and a credit amount — kept both, please check"), previewRawText(rec) });
+                QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Row has both a debit and a credit amount — kept both, please check"), previewRawText(rec) });
         }
         if (!parseAmount(rec.fields.at(kColBalanceAfter), balanceAfter)) {
             outLog.append(ImportLogEntry{ LogLevel::Warning, rec.startLine,
-                QStringLiteral("Could not parse the running balance for this row"), previewRawText(rec) });
+                QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "Could not parse the running balance for this row"), previewRawText(rec) });
         }
 
+        // The privacy rule (#202): name and description leave this template
+        // without any bank identifier. The bank reference is read from the
+        // raw text first and kept in memory only, for the fingerprint.
+        const QString& rawDescription = rec.fields.at(kColDescription);
         Data::ImportedTransaction transaction;
         transaction.confirmationDate = confirmationDate;
         transaction.operationDate    = operationDate.isValid() ? operationDate : confirmationDate;
-        transaction.name              = extractTransactionName(rec.fields.at(kColDescription)); // lines before the ref block, raw (pre-normalize)
-        transaction.description       = normalizeField(rec.fields.at(kColDescription)); // may have had embedded newlines
+        transaction.bankReference    = TransactionsTable::bankReference(normalizeField(rawDescription));
+        transaction.name             = StatementSanitizer::clean(extractTransactionName(rawDescription), secrets);
+        transaction.description      = StatementSanitizer::cleanDescription(rawDescription, secrets);
         transaction.debit              = std::abs(debit);
         transaction.credit             = std::abs(credit);
         transaction.balanceAfter       = balanceAfter;
@@ -635,7 +651,7 @@ bool SumeriaCcpCsvExtractionTemplate::parse(const QString& filePath,
 
     if (parsedCount == 0) {
         outLog.append(ImportLogEntry{ LogLevel::Warning, 0,
-            QStringLiteral("No transaction rows were parsed"), QString() });
+            QCoreApplication::translate("SumeriaCcpCsvExtractionTemplate", "No transaction rows were parsed"), QString() });
     }
 
     return true;

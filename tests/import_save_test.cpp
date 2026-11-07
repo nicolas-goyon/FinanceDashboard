@@ -73,6 +73,7 @@
 #include <QSqlQuery>
 #include <QTemporaryDir>
 #include <QStringEncoder>
+#include <QScopeGuard>
 #include <QSignalSpy>
 #include <QTest>
 #include <QThreadPool>
@@ -252,6 +253,7 @@ private slots:
     void utf8FileWithABadByteStaysUtf8();
     void utf16FileIsRead();
     void refInTheFreeTextStaysInTheName();
+    void bankIdentifiersAreNeverStored();
     void nameFallsBackToTheFirstLine();
     void failedSaveSaysItAndKeepsTheReport();
     void saveWithoutAccountIsAWarning();
@@ -259,10 +261,9 @@ private slots:
     void manualPicksAreNotAutoFilled();
     void newStatusMessageStaysForTheWholeDelay();
     void startCheckUsesTheBookingOrder();
-    void pickedAccountTakesTheHash();
+    void pickedAccountGetsTheTag();
     void failedSaveKeepsTheHashWhereItWas();
-    void bicOnEightOrElevenCharactersGivesOneHash();
-    void oldHashOnAnotherAccountIsReplaced();
+    void tagIsOneByteOfTheIban();
     void predictionsRunInAWorkerThread();
     void olderPredictionJobCountsForNothing();
     void nameGivenBeforeTheSuggestionsIsScored();
@@ -1052,6 +1053,106 @@ void ImportSaveTest::refInTheFreeTextStaysInTheName()
     QCOMPARE(block.transactions.at(0).name, QStringLiteral("Transfer ref: rent March March 2026"));
 }
 
+// The privacy rule (#202): no bank identifier leaves the template, so none
+// reaches the database. Every value below is made up.
+namespace {
+// The messages of the app during bankIdentifiersAreNeverStored() (#205).
+QStringList& capturedLog()
+{
+    static QStringList log;
+    return log;
+}
+QtMessageHandler& forwardHandler()
+{
+    static QtMessageHandler handler = nullptr;
+    return handler;
+}
+void captureMessage(QtMsgType type, const QMessageLogContext& context, const QString& message)
+{
+    capturedLog().append(message);
+    if (forwardHandler() != nullptr) {
+        forwardHandler()(type, context, message);
+    }
+}
+} // namespace
+
+void ImportSaveTest::bankIdentifiersAreNeverStored()
+{
+    capturedLog().clear();
+    forwardHandler() = qInstallMessageHandler(captureMessage);
+    const auto restoreHandler = qScopeGuard([] {
+        qInstallMessageHandler(forwardHandler());
+        forwardHandler() = nullptr;
+    });
+    QByteArray csv = "Pr\xC3\xA9nom Nom,Jeanne Exemple\nAccount number,98765432101\nClient code,CL7788990011\n";
+    csv += statement("From 03/01/2026 to 03/31/2026", "03/01/2026,1000.00 \xE2\x82\xAC", "03/31/2026,394.00 \xE2\x82\xAC",
+        "03/02,03/02,\"Card payment 1234: SAMPLE STORE\nExternal ref.: 123456789012345\n"
+        "Internal ref.: a1b2c3d4-0000-4000-8000-000000000001\",-10.00,,990.00\n"
+        "03/03,03/03,\"Transfer to FR76 3000 6000 0112 3456 7890 189 SAMPLE LANDLORD\n"
+        "Internal ref.: 0123456789ABCDEF0123456789ABCDEF\",-500.00,,490.00\n"
+        "03/04,03/04,\"Direct debit SAMPLE ENERGY RUM: FR12ZZZ123456789 ICS: FR98ZZZ999999\n"
+        "Internal ref.: c0ffee00-0000-4000-8000-000000000003\",-40.00,,450.00\n"
+        "03/05,03/05,\"Transfer from Jeanne Exemple account 98765432101 client CL7788990011\n"
+        "Internal ref.: c0ffee00-0000-4000-8000-000000000004\",,4.00,454.00\n"
+        "03/06,03/06,Payment XXXX XXXX XXXX 4321 SAMPLE CAFE,-60.00,,394.00\n");
+    const QStringList identifiers = {
+        QStringLiteral("1234:"), QStringLiteral("123456789012345"), QStringLiteral("a1b2c3d4"),
+        QStringLiteral("FR76"), QStringLiteral("3000 6000"), QStringLiteral("0123456789ABCDEF"),
+        QStringLiteral("FR12ZZZ"), QStringLiteral("FR98ZZZ"), QStringLiteral("c0ffee00"),
+        QStringLiteral("Jeanne Exemple"), QStringLiteral("98765432101"), QStringLiteral("CL7788990011"),
+        QStringLiteral("4321"), QString::fromLatin1(kIban), QString::fromLatin1(kBic),
+    };
+    const auto check = [&](const QString& where, const QString& text) {
+        for (const QString& identifier : identifiers) {
+            QVERIFY2(!text.contains(identifier, Qt::CaseInsensitive),
+                     qPrintable(QStringLiteral("%1 keeps \"%2\": %3").arg(where, identifier, text)));
+        }
+    };
+
+    // After the parse: name and description are clean, the merchants stay,
+    // and the bank reference is kept in memory for the fingerprint.
+    Data::ImportedStatement st;
+    QVector<Data::ImportLogEntry> log;
+    QVERIFY(readStatement(csv, st, log));
+    QCOMPARE(st.transactions.size(), qsizetype(5));
+    for (const Data::ImportedTransaction& row : st.transactions) {
+        check(QStringLiteral("name"), row.name);
+        check(QStringLiteral("description"), row.description);
+    }
+    QCOMPARE(st.transactions.at(0).name, QStringLiteral("Card payment •••: SAMPLE STORE"));
+    QVERIFY(st.transactions.at(1).description.contains(QStringLiteral("SAMPLE LANDLORD")));
+    QVERIFY(st.transactions.at(2).description.contains(QStringLiteral("SAMPLE ENERGY")));
+    QVERIFY(st.transactions.at(4).description.contains(QStringLiteral("SAMPLE CAFE")));
+    QCOMPARE(st.transactions.at(0).bankReference, QStringLiteral("a1b2c3d4-0000-4000-8000-000000000001"));
+    for (const Data::ImportLogEntry& entry : log) {
+        check(QStringLiteral("log"), entry.rawLine + QLatin1Char(' ') + entry.message);
+    }
+
+    // After the save: the stored rows are clean too, and a second import of
+    // the same statement adds nothing (the fingerprints still match).
+    {
+        SnapshotImportController controller;
+        parse(controller, csv);
+        controller.save(m_account, QStringLiteral("Checking"));
+    }
+    const QVector<Data::Transaction> saved = Database::instance().transactionsForAccount(m_account);
+    QCOMPARE(saved.size(), qsizetype(5));
+    for (const Data::Transaction& row : saved) {
+        check(QStringLiteral("stored name"), row.name);
+        check(QStringLiteral("stored description"), row.description);
+    }
+    SnapshotImportController again;
+    parse(again, csv);
+    again.save(m_account, QStringLiteral("Checking"));
+    QCOMPARE(transactionCount(), 5);
+
+    // The application log has no identifier, and no merchant either (#205).
+    for (const QString& message : capturedLog()) {
+        check(QStringLiteral("application log"), message);
+        QVERIFY2(!message.contains(QStringLiteral("SAMPLE")), qPrintable(message));
+    }
+}
+
 void ImportSaveTest::nameFallsBackToTheFirstLine()
 {
     Data::ImportedStatement st;
@@ -1228,16 +1329,15 @@ void ImportSaveTest::startCheckUsesTheBookingOrder()
     QCOMPARE(laterCheck.value(QStringLiteral("startSourceDateText")).toString(), Fmt::dateOrDash(QDate(2026, 3, 2)));
 }
 
-void ImportSaveTest::pickedAccountTakesTheHash()
+void ImportSaveTest::pickedAccountGetsTheTag()
 {
     Database& db = Database::instance();
     const int savings = db.addAccount(QStringLiteral("Savings"), QStringLiteral("CCP"), QStringLiteral(""),
                                       QStringLiteral("EUR"), QStringLiteral(""));
     QVERIFY(savings >= 0);
-    // The hash of the statement, typed in upper case on Checking. Before
-    // #47, the save did not find it and added a second row.
-    const QString hash = AccountHashing::compute(QString::fromLatin1(kIban), QString::fromLatin1(kBic));
-    QVERIFY2(db.addAccountHash(m_account, hash.toUpper(), QStringLiteral("manual")) >= 0, qPrintable(db.lastError()));
+    // The tag of the statement, typed in upper case on Checking (#47).
+    const QString tag = AccountHashing::compute(QString::fromLatin1(kIban), QString::fromLatin1(kBic));
+    QVERIFY2(db.addAccountHash(m_account, tag.toUpper(), QStringLiteral("manual")) >= 0, qPrintable(db.lastError()));
     {
         SnapshotImportController controller;
         parse(controller, marchStatement());
@@ -1248,22 +1348,22 @@ void ImportSaveTest::pickedAccountTakesTheHash()
     }
     QCOMPARE(hashRowCount(), 1);
 
-    // The user picks Savings for the next statement: the hash moves.
+    // The user picks Savings for the next statement: a tag can be on two
+    // accounts (#203), so Savings gets it too and Checking keeps it.
     {
         SnapshotImportController controller;
         parse(controller, overlappingStatement());
         controller.save(savings, QStringLiteral("Savings"));
         QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓")), qPrintable(controller.statusText()));
     }
-    QCOMPARE(hashRowCount(), 1);
-    QCOMPARE(db.accountOfHash(hash), savings);
-    QVERIFY(!db.accountHasHash(m_account, hash));
+    QCOMPARE(hashRowCount(), 2);
+    QVERIFY(db.accountHasHash(m_account, tag));
+    QVERIFY(db.accountHasHash(savings, tag));
 
-    // The next import suggests Savings.
+    // Two accounts have the tag: the import does not choose, the user does.
     SnapshotImportController controller;
     parse(controller, marchStatement());
-    const QVariantList accounts = accountsForMatch();
-    QCOMPARE(controller.matchAccountIndex(accounts), indexOfAccount(accounts, savings));
+    QCOMPARE(controller.matchAccountIndex(accountsForMatch()), -1);
 }
 
 void ImportSaveTest::failedSaveKeepsTheHashWhereItWas()
@@ -1290,98 +1390,32 @@ void ImportSaveTest::failedSaveKeepsTheHashWhereItWas()
     QCOMPARE(hashRowCount(), 1);
 }
 
-void ImportSaveTest::bicOnEightOrElevenCharactersGivesOneHash()
+void ImportSaveTest::tagIsOneByteOfTheIban()
 {
+    // #203: the first byte of PBKDF2-HMAC-SHA256(IBAN, app salt, 100 000
+    // iterations), in hexadecimal. The values come from Python:
+    //   hashlib.pbkdf2_hmac('sha256', iban, b'FinanceDashboard account tag v1', 100000)[:1].hex()
     const QString iban = QString::fromLatin1(kIban);
-    // The two forms of the BIC of a primary office give one hash.
-    const QString hash = AccountHashing::compute(iban, QStringLiteral("PSSTFRPP"));
-    QCOMPARE(AccountHashing::compute(iban, QStringLiteral("PSSTFRPPXXX")), hash);
-    QCOMPARE(AccountHashing::compute(iban, QStringLiteral(" psst frppxxx ")), hash);
-    // Another branch is another key, and has no form from before #50.
-    QVERIFY(AccountHashing::compute(iban, QStringLiteral("PSSTFRPPLIL")) != hash);
-    QVERIFY(AccountHashing::legacyCompute(iban, QStringLiteral("PSSTFRPPLIL")).isEmpty());
-    QVERIFY(AccountHashing::legacyCompute(QString(), QStringLiteral("PSSTFRPP")).isEmpty());
-    // Before #50, the key was the normalized BIC, without "XXX".
-    QMessageAuthenticationCode mac(QCryptographicHash::Sha256);
-    mac.setKey(QByteArrayLiteral("PSSTFRPP"));
-    mac.addData(QByteArray(kIban));
-    const QString legacy = QString::fromLatin1(mac.result().toHex());
-    QCOMPARE(AccountHashing::legacyCompute(iban, QStringLiteral("PSSTFRPP")), legacy);
-    QCOMPARE(AccountHashing::legacyCompute(iban, QStringLiteral("PSSTFRPPXXX")), legacy);
-    QVERIFY(legacy != hash);
+    const QString tag = AccountHashing::compute(iban, QString::fromLatin1(kBic));
+    QCOMPARE(tag, QStringLiteral("0c"));
+    QVERIFY(AccountHashing::isTag(tag));
+    QCOMPARE(AccountHashing::compute(QStringLiteral("FR7630006000019876543210123"), QString()),
+             QStringLiteral("bb"));
+    // Spaces and case do not change it; the BIC is not in it.
+    QCOMPARE(AccountHashing::compute(QStringLiteral(" fr76 3000 6000 0112 3456 7890 189 "), QString()), tag);
+    QCOMPARE(AccountHashing::compute(iban, QStringLiteral("PSSTFRPPLIL")), tag);
+    QVERIFY(AccountHashing::compute(QString(), QString::fromLatin1(kBic)).isEmpty());
+    // No fingerprint of before v0.3.0 any more.
+    QVERIFY(AccountHashing::legacyCompute(iban, QString::fromLatin1(kBic)).isEmpty());
 
-    // An account linked by v0.2.1 (the statement has the 8-character BIC) is
-    // found, and the save replaces its hash.
-    Database& db = Database::instance();
-    QVERIFY2(db.linkAccountHash(m_account, legacy, QStringLiteral("auto")), qPrintable(db.lastError()));
-    {
-        SnapshotImportController controller;
-        parse(controller, marchStatement());
-        const QVariantList accounts = accountsForMatch();
-        QCOMPARE(controller.matchAccountIndex(accounts), indexOfAccount(accounts, m_account));
-        controller.save(m_account, QStringLiteral("Checking"));
-        QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓")), qPrintable(controller.statusText()));
-    }
-    QCOMPARE(hashRowCount(), 1);
-    QVERIFY(db.accountHasHash(m_account, hash));
-    QVERIFY(!db.accountHasHash(m_account, legacy));
-
-    // A statement with the BIC on 11 characters finds the same account.
-    QByteArray csv = marchStatement();
-    QVERIFY(csv.contains("BIC,PSSTFRPP\n"));
-    csv.replace("BIC,PSSTFRPP\n", "BIC,PSSTFRPPXXX\n");
+    // The review shows the end of the identifiers only, and the tag.
     SnapshotImportController controller;
-    parse(controller, csv);
-    const QVariantList accounts = accountsForMatch();
-    QCOMPARE(controller.matchAccountIndex(accounts), indexOfAccount(accounts, m_account));
-    QCOMPARE(controller.statementInfo().value(QStringLiteral("accountHashRaw")).toString(), hash);
-}
-
-void ImportSaveTest::oldHashOnAnotherAccountIsReplaced()
-{
-    Database& db = Database::instance();
-    const int savings = db.addAccount(QStringLiteral("Savings"), QStringLiteral("CCP"), QStringLiteral(""),
-                                      QStringLiteral("EUR"), QStringLiteral(""));
-    QVERIFY(savings >= 0);
-    const QString iban = QString::fromLatin1(kIban);
-    const QString hash = AccountHashing::compute(iban, QString::fromLatin1(kBic));
-    const QString legacy = AccountHashing::legacyCompute(iban, QString::fromLatin1(kBic));
-    QVERIFY(!legacy.isEmpty());
-
-    // The old hash on Checking, the new one on Savings: the new one wins.
-    QVERIFY2(db.linkAccountHash(m_account, legacy, QStringLiteral("auto")), qPrintable(db.lastError()));
-    QVERIFY2(db.linkAccountHash(savings, hash, QStringLiteral("auto")), qPrintable(db.lastError()));
-    {
-        SnapshotImportController controller;
-        parse(controller, marchStatement());
-        const QVariantList accounts = accountsForMatch();
-        QCOMPARE(controller.matchAccountIndex(accounts), indexOfAccount(accounts, savings));
-        // The review screen tells that Checking has the old hash.
-        QCOMPARE(controller.legacyHashAccountIndex(accounts), indexOfAccount(accounts, m_account));
-        QCOMPARE(controller.statementInfo().value(QStringLiteral("legacyHashRaw")).toString(), legacy);
-
-        // A failed save keeps the old hash on Checking.
-        QSqlQuery query(db.sqlDatabase());
-        QVERIFY(query.exec(QStringLiteral("CREATE TRIGGER fd_test_fail_checkpoint BEFORE INSERT ON"
-                                          " account_balance_checkpoints BEGIN SELECT RAISE(ABORT, 'forced'); END;")));
-        QVERIFY(!controller.save(savings, QStringLiteral("Savings")));
-        QCOMPARE(db.accountOfHash(legacy), m_account);
-        QVERIFY(query.exec(QStringLiteral("DROP TRIGGER fd_test_fail_checkpoint;")));
-        query.finish();
-
-        // The save to Savings removes it: one hash, the new one, on Savings.
-        QVERIFY(controller.save(savings, QStringLiteral("Savings")));
+    parse(controller, marchStatement());
+    const QVariantMap info = controller.statementInfo();
+    QCOMPARE(info.value(QStringLiteral("accountHashRaw")).toString(), tag);
+    for (auto it = info.cbegin(); it != info.cend(); ++it) {
+        QVERIFY2(!it.value().toString().remove(QLatin1Char(' ')).contains(iban), qPrintable(it.key()));
     }
-    QCOMPARE(db.accountOfHash(legacy), -1);
-    QCOMPARE(db.accountOfHash(hash), savings);
-    QCOMPARE(hashRowCount(), 1);
-
-    // "Link this account" replaces the old hash too.
-    QVERIFY(db.linkAccountHash(m_account, legacy, QStringLiteral("auto")));
-    QVERIFY2(db.linkAccountHash(m_account, hash, QStringLiteral("auto"), legacy), qPrintable(db.lastError()));
-    QCOMPARE(db.accountOfHash(legacy), -1);
-    QCOMPARE(db.accountOfHash(hash), m_account);
-    QCOMPARE(hashRowCount(), 1);
 }
 
 void ImportSaveTest::predictionsRunInAWorkerThread()

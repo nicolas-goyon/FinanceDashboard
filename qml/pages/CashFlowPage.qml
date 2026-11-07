@@ -9,7 +9,9 @@ import FinanceDashboard
 // ── Cash Flow — PROJECT.md page 2 ─────────────────────────────────────────────
 // Money flow (Sankey) for a selected month · income vs expenses bars · rolling
 // 3-month average line · category donut · stacked category bars · biggest
-// expenses table    [MOCK DATA — CashFlowController]
+// expenses table. From the rows of the accounts of the net worth, without the
+// internal transfers (#210): CashFlowController reads them again each time
+// the page is shown.
 
 Item {
     id: page
@@ -29,6 +31,33 @@ Item {
         return i < controller.categories.length ? controller.categories[i].color : Theme.overlay0
     }
 
+    // Fills the charts that are not bound to a property. Also after a reload.
+    function fill() {
+        monthAxis.categories = controller.monthLabels
+        stackedAxis.categories = controller.monthLabels
+        incomeSet.values = controller.incomeValues
+        expenseSet.values = controller.expenseValues
+        rollingLine.clear()
+        var t = controller.rollingTimestamps()
+        var v = controller.rollingValues()
+        for (var i = 0; i < t.length; i++)
+            rollingLine.append(t[i], v[i])
+        var sets = [stacked0, stacked1, stacked2, stacked3, stacked4, stacked5]
+        for (var k = 0; k < sets.length; k++)
+            sets[k].values = controller.categoryValues(k)
+        categoryDonut.rebuild()
+    }
+
+    Component.onCompleted: page.fill()
+    // The page stays loaded in the StackLayout: read the data again each time
+    // it is shown.
+    onVisibleChanged: {
+        if (visible) {
+            controller.reload()
+            page.fill()
+        }
+    }
+
     ScrollView {
         anchors.fill: parent
         contentWidth: availableWidth
@@ -40,10 +69,9 @@ Item {
             spacing: 16
 
             PageHeader {
-                title: "Cash Flow"
-                mock: true
+                title: qsTr("Cash Flow")
 
-                Text { text: "Month:"; font.pixelSize: 15; color: Theme.overlay0 }
+                Text { text: qsTr("Month:"); font.pixelSize: 15; color: Theme.overlay0 }
                 ComboBox {
                     id: monthSelector
                     Layout.preferredWidth: 120
@@ -53,17 +81,22 @@ Item {
                 }
             }
 
+            EmptyState {
+                visible: !controller.hasData
+                message: qsTr("No transaction in the accounts of your net worth yet. Import a statement in "
+                    + "Transactions → Import Transactions.")
+            }
+
             // ── Money flow (Sankey) for the selected month ────────────────────
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 420
-                title: "Money flow — " + page.selectedMonthLabel
-                       + " (income → budget → spending & savings)"
+                title: qsTr("Money flow — %1 (income → budget → spending & savings)").arg(page.selectedMonthLabel)
 
                 MoneyFlow {
                     id: moneyFlow
                     anchors.fill: parent
-                    centreName: "Monthly budget"
+                    centreName: qsTr("Monthly budget")
                     inputs: controller.flowInputs
                     outputs: controller.flowOutputs
                 }
@@ -73,7 +106,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 340
-                title: "Income vs expenses per month (€)"
+                title: qsTr("Income vs expenses per month (€)")
 
                 GraphsView {
                     anchors.fill: parent
@@ -88,18 +121,17 @@ Item {
                     BarSeries {
                         barDelegate: Component { HoverBar {} }
 
-                        axisX: BarCategoryAxis {
-                            Component.onCompleted: categories = controller.monthLabels
-                        }
+                        // Filled by page.fill().
+                        axisX: BarCategoryAxis { id: monthAxis }
                         BarSet {
-                            label: "Income"
+                            id: incomeSet
+                            label: qsTr("Income")
                             color: Theme.green
-                            Component.onCompleted: values = controller.incomeValues
                         }
                         BarSet {
-                            label: "Expenses"
+                            id: expenseSet
+                            label: qsTr("Expenses")
                             color: Theme.red
-                            Component.onCompleted: values = controller.expenseValues
                         }
                     }
                 }
@@ -109,7 +141,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 280
-                title: "Rolling 3-month average spending (€)"
+                title: qsTr("Rolling 3-month average spending (€)")
 
                 GraphsView {
                     anchors.fill: parent
@@ -121,7 +153,9 @@ Item {
                     axisX: DateTimeAxis {
                         min: new Date(controller.minTimeMs)
                         max: new Date(controller.maxTimeMs)
-                        labelFormat: "MMM yy"
+                        // Month names in the language of the app (DateAxisLabel).
+                        labelFormat: "yyyy-MM-dd"
+                        labelDelegate: Component { DateAxisLabel { displayFormat: "MMM yy" } }
                     }
                     axisY: ValueAxis {
                         min: 0
@@ -130,19 +164,14 @@ Item {
                     }
 
                     LineSeries {
-                        name: "3-month avg"
+                        id: rollingLine
+                        name: qsTr("3-month avg")
                         color: Theme.blue
                         width: 2
-
-                        Component.onCompleted: {
-                            var t = controller.rollingTimestamps()
-                            var v = controller.rollingValues()
-                            for (var i = 0; i < t.length; i++)
-                                append(t[i], v[i])
-                        }
+                        // Filled by page.fill().
                         pointDelegate: Component {
                             HoverPoint {
-                                seriesName: "3-month avg"
+                                seriesName: qsTr("3-month avg")
                                 pointColor: Theme.blue
                             }
                         }
@@ -159,8 +188,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 360
-                    title: "Spending by category — " + page.selectedMonthLabel
-                           + " — click a slice"
+                    title: qsTr("Spending by category — %1 — click a slice").arg(page.selectedMonthLabel)
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -180,7 +208,7 @@ Item {
 
                                 function rebuild() {
                                     clear()
-                                    sliceInfo.text = "Click a slice for details"
+                                    sliceInfo.text = qsTr("Click a slice for details")
                                     var s = controller.monthSlices
                                     for (var i = 0; i < s.length; i++) {
                                         var slice = append(s[i].label, s[i].value)
@@ -190,7 +218,6 @@ Item {
                                         slice.labelVisible = true
                                     }
                                 }
-                                Component.onCompleted: rebuild()
 
                                 onClicked: (slice) => {
                                     sliceInfo.text = slice.label + "  —  "
@@ -207,7 +234,7 @@ Item {
                         Text {
                             id: sliceInfo
                             Layout.alignment: Qt.AlignHCenter
-                            text: "Click a slice for details"
+                            text: qsTr("Click a slice for details")
                             font.pixelSize: 14
                             color: Theme.overlay0
                         }
@@ -218,7 +245,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 360
-                    title: "Biggest expenses — " + page.selectedMonthLabel
+                    title: qsTr("Biggest expenses — %1").arg(page.selectedMonthLabel)
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -264,7 +291,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 340
-                title: "Category spending across months (€)"
+                title: qsTr("Category spending across months (€)")
 
                 GraphsView {
                     anchors.fill: parent
@@ -272,29 +299,29 @@ Item {
 
                     axisY: ValueAxis {
                         min: 0
-                        max: controller.barsMax
+                        max: controller.stackedMax
                         labelFormat: "%.0f"
                     }
 
                     // BarSets are static: a Repeater cannot fill a BarSeries, and the
                     // QtGraphsExamples bar charts declare each BarSet. There is one
                     // BarSet for each of the CashFlowController::kCategories (6)
-                    // categories. Set i takes its label, colour and values from
+                    // categories (the 5 categories with the most spending, then
+                    // "Other"). Set i takes its label, colour and values from
                     // category i of the controller, so they cannot disagree (#72).
                     BarSeries {
                         barsType: BarSeries.BarsType.Stacked
                         barDelegate: Component { HoverBar {} }
 
-                        axisX: BarCategoryAxis {
-                            Component.onCompleted: categories = controller.monthLabels
-                        }
+                        // Filled by page.fill().
+                        axisX: BarCategoryAxis { id: stackedAxis }
 
-                        BarSet { label: page.categoryName(0); color: page.categoryColor(0); Component.onCompleted: values = controller.categoryValues(0) }
-                        BarSet { label: page.categoryName(1); color: page.categoryColor(1); Component.onCompleted: values = controller.categoryValues(1) }
-                        BarSet { label: page.categoryName(2); color: page.categoryColor(2); Component.onCompleted: values = controller.categoryValues(2) }
-                        BarSet { label: page.categoryName(3); color: page.categoryColor(3); Component.onCompleted: values = controller.categoryValues(3) }
-                        BarSet { label: page.categoryName(4); color: page.categoryColor(4); Component.onCompleted: values = controller.categoryValues(4) }
-                        BarSet { label: page.categoryName(5); color: page.categoryColor(5); Component.onCompleted: values = controller.categoryValues(5) }
+                        BarSet { id: stacked0; label: page.categoryName(0); color: page.categoryColor(0) }
+                        BarSet { id: stacked1; label: page.categoryName(1); color: page.categoryColor(1) }
+                        BarSet { id: stacked2; label: page.categoryName(2); color: page.categoryColor(2) }
+                        BarSet { id: stacked3; label: page.categoryName(3); color: page.categoryColor(3) }
+                        BarSet { id: stacked4; label: page.categoryName(4); color: page.categoryColor(4) }
+                        BarSet { id: stacked5; label: page.categoryName(5); color: page.categoryColor(5) }
                     }
                 }
             }

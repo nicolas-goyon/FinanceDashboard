@@ -15,14 +15,24 @@ Personal finance analytics app for:
 
 ---
 
+## Net worth
+
+The user thinks in **net worth** ("patrimoine"): a set of accounts (checking, livrets, investments).
+
+- A move of money **inside** the set is neither income nor spending: checking → Livret A, or a sale of shares followed by a purchase. The net worth does not change.
+- Each account has a flag "part of my net worth" (on by default). An account that the user only follows (a joint account, the account of a child) is outside: money that goes to it is spending.
+- The questions the app answers: **how much did I save this year?** (external income − external spending) and **how did my net worth change since last year?** (savings + gains and losses of the investments, from manual valuations).
+
+---
+
 ## Pages
 
 ### 1. Overview (Net Worth)
 
 Landing page — "how am I doing overall?"
 
-- KPI cards: total net worth, month-over-month change (€ and %), savings rate this month, months of emergency fund
-- Stacked area chart: net worth over time, split by account type (checking / savings / trading)
+- KPI cards: total net worth, change this month and over 12 months (€ and %), savings rate this month
+- Stacked area chart: net worth over time, split by group of accounts (day-to-day / savings / investments)
 - Donut: current allocation across account types
 - Bar chart: monthly net change over last 12 months (green/red bars)
 
@@ -79,6 +89,8 @@ Per project:
 ---
 
 ## Category System
+
+A new database starts with 15 default categories, each with subcategories: Income (salary, bonus, freelance, social benefits, refunds, interest, dividends, gifts received), Housing, Groceries, Utilities, Subscriptions (streaming, music, software and cloud, press, sport and gym), Transport, Health, Leisure, Shopping, Children and education, Investments (stocks and ETFs, life insurance, retirement savings, real estate, crypto), Transfers, Taxes and fees, Gifts and donations, Other.
 
 ### Editing
 

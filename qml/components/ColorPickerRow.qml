@@ -21,7 +21,7 @@ RowLayout {
 
     // Text ("#rrggbb"): the value is saved as it is.
     property string selectedColor: root.colorToHex(Theme.blue)
-    property string dialogTitle: "Choose color"
+    property string dialogTitle: qsTr("Choose color")
 
     // color -> "#rrggbb", built from the documented r/g/b real (0..1)
     // properties of the QML color value type (avoids relying on the
@@ -47,7 +47,7 @@ RowLayout {
         Layout.preferredWidth: 110; Layout.preferredHeight: 26; radius: 4
         color: swatchHover.hovered ? Theme.surface0 : Theme.base
         border.color: Theme.surface0
-        Text { anchors.centerIn: parent; text: "Choose color…"; font.pixelSize: 14; color: Theme.text }
+        Text { anchors.centerIn: parent; text: qsTr("Choose color…"); font.pixelSize: 14; color: Theme.text }
         HoverHandler { id: swatchHover }
         TapHandler {
             onTapped: { colorDialog.selectedColor = root.selectedColor; colorDialog.open() }

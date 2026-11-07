@@ -52,9 +52,9 @@ const char* const kKeyDismissed = "updates/dismissedVersion";
 QString channelLabel(Update::Channel channel)
 {
     switch (channel) {
-    case Update::Channel::Stable:       return QStringLiteral("Stable");
-    case Update::Channel::Experimental: return QStringLiteral("Experimental");
-    case Update::Channel::Preprod:      return QStringLiteral("Preprod");
+    case Update::Channel::Stable:       return QCoreApplication::translate("UpdateController", "Stable");
+    case Update::Channel::Experimental: return QCoreApplication::translate("UpdateController", "Experimental");
+    case Update::Channel::Preprod:      return QCoreApplication::translate("UpdateController", "Preprod");
     }
     return {};
 }
@@ -144,12 +144,14 @@ QString rateLimitMessage(const QNetworkReply* reply)
         }
     }
     if (until.isValid()) {
-        return QStringLiteral("GitHub refuses more checks until %1: it limits the calls of each internet "
-                              "address (60 an hour). Try again after that time.")
+        return QCoreApplication::translate("UpdateController",
+                                           "GitHub refuses more checks until %1: it limits the calls of each internet "
+                                           "address (60 an hour). Try again after that time.")
             .arg(until.toLocalTime().toString(QStringLiteral("HH:mm")));
     }
-    return QStringLiteral("GitHub refuses more checks for now: it limits the calls of each internet "
-                          "address (60 an hour). Try again later.");
+    return QCoreApplication::translate("UpdateController",
+                                       "GitHub refuses more checks for now: it limits the calls of each internet "
+                                       "address (60 an hour). Try again later.");
 }
 
 } // namespace
@@ -229,12 +231,12 @@ QVariantList UpdateController::channels() const
 {
     if (!m_testApp) {
         return {QVariantMap{{QStringLiteral("id"), QStringLiteral("stable")},
-                            {QStringLiteral("label"), QStringLiteral("Stable")}}};
+                            {QStringLiteral("label"), tr("Stable")}}};
     }
     return {QVariantMap{{QStringLiteral("id"), QStringLiteral("experimental")},
-                        {QStringLiteral("label"), QStringLiteral("Experimental (-exp and -rc builds)")}},
+                        {QStringLiteral("label"), tr("Experimental (-exp and -rc builds)")}},
             QVariantMap{{QStringLiteral("id"), QStringLiteral("preprod")},
-                        {QStringLiteral("label"), QStringLiteral("Preprod (-rc builds)")}}};
+                        {QStringLiteral("label"), tr("Preprod (-rc builds)")}}};
 }
 
 Update::Channel UpdateController::currentChannel() const
@@ -328,7 +330,7 @@ void UpdateController::check()
     m_reply = m_network.get(request);
     QNetworkReply* reply = m_reply;
     connect(reply, &QNetworkReply::finished, this, [this, reply]() { finish(reply); });
-    m_statusText = QStringLiteral("Checking…");
+    m_statusText = tr("Checking…");
     m_statusIsError = false;
     emit stateChanged();
 }
@@ -347,22 +349,22 @@ void UpdateController::finish(QNetworkReply* reply)
     }
     // The transfer timeout of check(): nothing else stops the reply.
     if (reply->error() == QNetworkReply::OperationCanceledError || reply->error() == QNetworkReply::TimeoutError) {
-        fail(QStringLiteral("The check failed: GitHub did not answer within %1 seconds. Try again later.")
+        fail(tr("The check failed: GitHub did not answer within %1 seconds. Try again later.")
                  .arg(m_timeoutMs / kMillisecondsPerSecond));
         return;
     }
     if (status != 0 && status != kHttpOk) {
-        fail(QStringLiteral("The check failed: GitHub answered with the status %1.").arg(status));
+        fail(tr("The check failed: GitHub answered with the status %1.").arg(status));
         return;
     }
     if (reply->error() != QNetworkReply::NoError) {
-        fail(QStringLiteral("The check failed: GitHub could not be reached (%1).").arg(reply->errorString()));
+        fail(tr("The check failed: GitHub could not be reached (%1).").arg(reply->errorString()));
         return;
     }
     QString error;
     QVector<Update::Release> releases = Update::parseReleases(reply->readAll(), &error);
     if (!error.isEmpty()) {
-        fail(QStringLiteral("The check failed: the answer of GitHub cannot be read (%1).").arg(error));
+        fail(tr("The check failed: the answer of GitHub cannot be read (%1).").arg(error));
         return;
     }
     // Once for each list, not at each change of channel.
@@ -436,13 +438,13 @@ void UpdateController::applyChannel()
     }
     const QString checked = m_checkedAt.toString(QStringLiteral("HH:mm"));
     if (releases.isEmpty()) {
-        m_statusText = QStringLiteral("There is no version in the %1 channel yet. Checked at %2.")
+        m_statusText = tr("There is no version in the %1 channel yet. Checked at %2.")
                            .arg(channelLabel(channelNow), checked);
     } else if (!m_latestNewer.isEmpty()) {
-        m_statusText = QStringLiteral("Version %1 is available. This app is version %2. Checked at %3.")
+        m_statusText = tr("Version %1 is available. This app is version %2. Checked at %3.")
                            .arg(m_latestNewer, m_currentVersion, checked);
     } else {
-        m_statusText = QStringLiteral("This app is up to date (version %1). Checked at %2.")
+        m_statusText = tr("This app is up to date (version %1). Checked at %2.")
                            .arg(m_currentVersion, checked);
     }
     m_statusIsError = false;
@@ -531,24 +533,24 @@ QString UpdateController::manualSteps() const
     const Update::InstallKind kind = m_installer.kind();
     switch (kind) {
     case Update::InstallKind::WindowsPortable:
-        return QStringLiteral("This copy of the app is the portable ZIP: update it by hand. Download %1 from the "
-                              "release page, close the app, then extract the ZIP over the folder of the app. Your "
-                              "data is not in that folder.")
+        return tr("This copy of the app is the portable ZIP: update it by hand. Download %1 from the "
+                  "release page, close the app, then extract the ZIP over the folder of the app. Your "
+                  "data is not in that folder.")
             .arg(Update::packageFileName(kind, appName, m_latestNewer));
     case Update::InstallKind::LinuxPackage:
-        return QStringLiteral("This copy of the app comes from the .deb: update it by hand. Download %1 from the "
-                              "release page, then run: sudo apt install ./%1")
+        return tr("This copy of the app comes from the .deb: update it by hand. Download %1 from the "
+                  "release page, then run: sudo apt install ./%1")
             .arg(Update::packageFileName(kind, appName, m_latestNewer));
     case Update::InstallKind::LinuxArchive:
         if (m_testApp) {
             // The Test app has no .tar.gz: its Linux package is the AppImage.
-            return QStringLiteral("This copy of the Test app is not an AppImage: update it by hand. Download %1 from "
-                                  "the release page and start it.")
+            return tr("This copy of the Test app is not an AppImage: update it by hand. Download %1 from "
+                      "the release page and start it.")
                 .arg(Update::packageFileName(Update::InstallKind::AppImage, appName, m_latestNewer));
         }
-        return QStringLiteral("This copy of the app comes from the .tar.gz (or from a build): update it by hand. "
-                              "Download %1 from the release page, close the app, then extract it over the old "
-                              "folder. Your data is not in that folder.")
+        return tr("This copy of the app comes from the .tar.gz (or from a build): update it by hand. "
+                  "Download %1 from the release page, close the app, then extract it over the old "
+                  "folder. Your data is not in that folder.")
             .arg(Update::packageFileName(kind, appName, m_latestNewer));
     case Update::InstallKind::WindowsSetup:
     case Update::InstallKind::AppImage:

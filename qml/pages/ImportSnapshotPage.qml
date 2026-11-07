@@ -66,24 +66,18 @@ Item {
     // adds or removes accounts (#64), so the indexes are read again from the
     // ids when the list changes (see the Connections below).
     property int selectedAccountId: -1
-    // The account that has the hash of this statement from before #50 (an
-    // 8-character BIC): Save replaces it.
-    property int legacyAccountIndex: -1
 
     readonly property var selectedAccount:
         page.selectedAccountIndex >= 0 && page.selectedAccountIndex < AccountController.accounts.length
             ? AccountController.accounts[page.selectedAccountIndex] : null
-    // The account that has the hash of the statement (one at most, #47).
+    // The account that the tag of the statement suggests (-1 when no account
+    // or two accounts have it, #203).
     readonly property string matchedAccountName:
         page.matchedAccountIndex >= 0 && page.matchedAccountIndex < AccountController.accounts.length
             ? AccountController.accounts[page.matchedAccountIndex].name : ""
-    readonly property string legacyAccountName:
-        page.legacyAccountIndex >= 0 && page.legacyAccountIndex < AccountController.accounts.length
-            ? AccountController.accounts[page.legacyAccountIndex].name : ""
 
     function readMatches() {
         matchedAccountIndex = controller.matchAccountIndex(AccountController.accounts)
-        legacyAccountIndex = controller.legacyHashAccountIndex(AccountController.accounts)
     }
 
     function goToReview() {
@@ -149,7 +143,7 @@ Item {
         page.saveBusy = true
         saveButtonResetTimer.restart()
         var accountId = page.selectedAccount !== null ? page.selectedAccount.id : -1
-        var label = page.selectedAccount !== null ? page.selectedAccount.name : "(no account selected)"
+        var label = page.selectedAccount !== null ? page.selectedAccount.name : qsTr("(no account selected)")
         if (!controller.save(accountId, label)) {
             // Nothing was saved: stay on the review step. The status badge
             // tells why, in red (#39).
@@ -224,11 +218,11 @@ Item {
 
     FileDialog {
         id: fileDialog
-        title: "Select a statement file"
+        title: qsTr("Select a statement file")
         fileMode: FileDialog.OpenFile
         nameFilters: page.currentTemplate
-            ? [page.currentTemplate.fileFilter, "All files (*)"]
-            : ["All files (*)"]
+            ? [page.currentTemplate.fileFilter, qsTr("All files (*)")]
+            : [qsTr("All files (*)")]
         onAccepted: {
             // The button is disabled with no template, but check again (#68).
             if (!page.currentTemplate)
@@ -250,7 +244,7 @@ Item {
 
             PageHeader {
                 showBack: true
-                title: "Import Transactions"
+                title: qsTr("Import Transactions")
                 onBackClicked: page.closeRequested()
 
                 StatusBadge {
@@ -265,7 +259,7 @@ Item {
                 visible: page.step === 0
                 Layout.fillWidth: true
                 implicitHeight: pickCol.implicitHeight + 50
-                title: "1. Choose a template and a file"
+                title: qsTr("1. Choose a template and a file")
 
                 ColumnLayout {
                     id: pickCol
@@ -274,7 +268,7 @@ Item {
 
                     RowLayout {
                         spacing: 10
-                        Text { Layout.preferredWidth: 90; text: "Template"; font.pixelSize: 15; color: Theme.overlay0 }
+                        Text { Layout.preferredWidth: 90; text: qsTr("Template"); font.pixelSize: 15; color: Theme.overlay0 }
                         ComboBox {
                             id: templateBox
                             Layout.fillWidth: true
@@ -288,16 +282,16 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
-                        text: "Only one template is available today (a checking-account CSV export). "
-                            + "More bank/PDF templates will be added over time — each gets its own parser "
-                            + "(see ARCHITECTURE.MD § Statement Import)."
+                        text: qsTr("Only one template is available today (a checking-account CSV export). "
+                                   + "More bank/PDF templates will be added over time — each gets its own parser "
+                                   + "(see ARCHITECTURE.MD § Statement Import).")
                         font.pixelSize: 13
                         color: Theme.overlay0
                     }
 
                     PillButton {
                         Layout.alignment: Qt.AlignRight
-                        text: "Choose file & Import"
+                        text: qsTr("Choose file & Import")
                         variant: "primary"
                         Layout.preferredHeight: 32
                         enabled: page.currentTemplate !== null
@@ -317,7 +311,7 @@ Item {
                     visible: controller.lastParseFailed
                     Layout.fillWidth: true
                     implicitHeight: 120
-                    title: "Import failed"
+                    title: qsTr("Import failed")
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -325,15 +319,15 @@ Item {
                         Text {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
-                            text: "The file could not be parsed. Open the log below for details."
+                            text: qsTr("The file could not be parsed. Open the log below for details.")
                             color: Theme.red
                             font.pixelSize: 15
                         }
                         RowLayout {
                             spacing: 10
-                            PillButton { text: "View log"; variant: "neutral"; Layout.preferredHeight: 28; onClicked: logPopup.open() }
+                            PillButton { text: qsTr("View log"); variant: "neutral"; Layout.preferredHeight: 28; onClicked: logPopup.open() }
                             PillButton {
-                                text: "Try again"
+                                text: qsTr("Try again")
                                 variant: "neutral"
                                 Layout.preferredHeight: 28
                                 onClicked: { controller.reset(); page.step = 0 }
@@ -347,7 +341,7 @@ Item {
                     visible: !controller.lastParseFailed
                     Layout.fillWidth: true
                     implicitHeight: infoCol.implicitHeight + 50
-                    title: "Statement — " + controller.sourceFileName
+                    title: qsTr("Statement — %1").arg(controller.sourceFileName)
 
                     ColumnLayout {
                         id: infoCol
@@ -360,20 +354,20 @@ Item {
                             rowSpacing: 6
                             Layout.fillWidth: true
 
-                            Text { text: "Holder";      font.pixelSize: 13; color: Theme.overlay0 }
-                            Text { text: "Account";     font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Holder");      font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Account");     font.pixelSize: 13; color: Theme.overlay0 }
                             Text { text: "IBAN";        font.pixelSize: 13; color: Theme.overlay0 }
-                            Text { text: "Period";      font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Period");      font.pixelSize: 13; color: Theme.overlay0 }
 
                             Text { text: controller.statementInfo.holderName;    font.pixelSize: 15; color: Theme.text }
                             Text { text: controller.statementInfo.accountName;   font.pixelSize: 15; color: Theme.text }
                             Text { text: controller.statementInfo.iban;          font.pixelSize: 15; color: Theme.text }
                             Text { text: controller.statementInfo.periodFromText + " → " + controller.statementInfo.periodToText; font.pixelSize: 15; color: Theme.text }
 
-                            Text { text: "Balance start"; font.pixelSize: 13; color: Theme.overlay0 }
-                            Text { text: "Balance end";   font.pixelSize: 13; color: Theme.overlay0 }
-                            Text { text: "Rows parsed";   font.pixelSize: 13; color: Theme.overlay0 }
-                            Text { text: "Issues";        font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Balance start"); font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Balance end");   font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Rows parsed");   font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Issues");        font.pixelSize: 13; color: Theme.overlay0 }
 
                             Text { text: controller.statementInfo.balanceStartText + " (" + controller.statementInfo.balanceStartDateText + ")"; font.pixelSize: 15; color: Theme.text }
                             Text { text: controller.statementInfo.balanceEndText + " (" + controller.statementInfo.balanceEndDateText + ")"; font.pixelSize: 15; color: Theme.text }
@@ -382,20 +376,20 @@ Item {
                                 pillHeight: 22
                                 variant: controller.errorCount > 0 ? "danger" : (controller.warningCount > 0 ? "warning" : "success")
                                 text: (controller.errorCount + controller.warningCount) === 0
-                                      ? "No issues" : (controller.errorCount + " error(s), " + controller.warningCount + " warning(s)")
+                                      ? qsTr("No issues") : qsTr("%1 error(s), %2 warning(s)").arg(controller.errorCount).arg(controller.warningCount)
                                 TapHandler { onTapped: logPopup.open() }
                             }
                         }
 
-                        // Account-hash fingerprint — HMAC-SHA256(IBAN, key=BIC), used by
-                        // matchAccountIndex() instead of comparing raw IBAN/BIC (see
-                        // SnapshotImportController::accountHash() / § Statement Import in
-                        // ARCHITECTURE.MD). Shown here so the match is auditable.
+                        // The account tag (#203): one byte of a slow hash of the IBAN,
+                        // used by matchAccountIndex() (see utils/AccountHashing.h and
+                        // § Account tags in ARCHITECTURE.MD). Many bank accounts have
+                        // the same tag, so it tells nothing about the IBAN.
                         RowLayout {
                             spacing: 24
-                            Text { text: "BIC:"; font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("BIC:"); font.pixelSize: 13; color: Theme.overlay0 }
                             Text { text: controller.statementInfo.bic; font.pixelSize: 15; color: Theme.text }
-                            Text { text: "Account hash:"; font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Account tag:"); font.pixelSize: 13; color: Theme.overlay0 }
                             Text {
                                 text: controller.statementInfo.accountHash
                                 font.pixelSize: 14
@@ -408,7 +402,7 @@ Item {
 
                         RowLayout {
                             spacing: 10
-                            Text { text: "Target account"; font.pixelSize: 15; color: Theme.overlay0 }
+                            Text { text: qsTr("Target account"); font.pixelSize: 15; color: Theme.overlay0 }
                             ComboBox {
                                 id: accountBox
                                 Layout.preferredWidth: 260
@@ -419,37 +413,38 @@ Item {
                             }
                             Text {
                                 visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex === page.selectedAccountIndex
-                                text: "✓ matched by account hash"
+                                text: qsTr("✓ suggested by the account tag")
                                 font.pixelSize: 13
                                 color: Theme.green
                             }
-                            // A hash belongs to one account (#47): Save (or
-                            // "Link this account") moves it to the picked one.
+                            // A tag can be on two accounts (#203): Save (or "Link
+                            // this account") adds it to the picked one, and the
+                            // other one keeps it.
                             Text {
                                 visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex !== page.selectedAccountIndex
-                                text: "⚠ the account hash is on \"" + page.matchedAccountName + "\": Save moves it to this account"
-                                font.pixelSize: 13
-                                color: Theme.yellow
-                            }
-                            // The old form of the hash (#50) on a third account.
-                            Text {
-                                visible: page.legacyAccountIndex >= 0 && page.legacyAccountIndex !== page.selectedAccountIndex
-                                         && page.legacyAccountIndex !== page.matchedAccountIndex
-                                text: "⚠ the old account hash (8-character BIC) is on \"" + page.legacyAccountName
-                                      + "\": Save moves it to this account"
+                                text: qsTr("⚠ the tag suggests \"%1\": Save links this account too").arg(page.matchedAccountName)
                                 font.pixelSize: 13
                                 color: Theme.yellow
                             }
                             Text {
                                 visible: page.matchedAccountIndex < 0
-                                text: "⚠ no automatic match — please pick the account"
+                                text: AccountController.accounts.length > 0
+                                      ? qsTr("⚠ no automatic match — please pick the account")
+                                      : qsTr("⚠ no account yet — create one")
                                 font.pixelSize: 13
                                 color: Theme.yellow
+                            }
+                            // No account fits the statement: create it here,
+                            // and it becomes the target account.
+                            GhostButton {
+                                visible: page.matchedAccountIndex < 0
+                                text: qsTr("＋ New account")
+                                onClicked: newAccountDialog.openForNew()
                             }
                         }
 
                         // "Not linked" badge — shown whenever the currently
-                        // selected account has zero stored hashes
+                        // selected account has no tag
                         // (account_hashes table), independent of whether
                         // *this* statement happened to match it. Lets the
                         // user notice and fix an unlinked account from
@@ -464,25 +459,13 @@ Item {
                                 visible: page.selectedAccount !== null && !page.selectedAccount.linked
                                 pillHeight: 24
                                 variant: "warning"
-                                text: "⚠ Not linked — no hash set up for this account"
+                                text: qsTr("⚠ Not linked yet — Save links it")
                             }
                             StatusBadge {
                                 visible: page.selectedAccount !== null && page.selectedAccount.linked
                                 pillHeight: 24
                                 variant: "success"
-                                // Guard against null even though `visible` above already
-                                // excludes this case at display time — bindings in QML are
-                                // still evaluated when their dependencies change regardless
-                                // of the item's own `visible` value (it's not a guard), so
-                                // `page.selectedAccount.hashCount` alone would throw
-                                // "Cannot read property 'hashCount' of null" the moment
-                                // `page.selectedAccount` becomes null (e.g. AccountController
-                                // reloads and `selectedAccountIndex` momentarily points past
-                                // the end) even while this badge itself stays invisible.
-                                text: page.selectedAccount !== null
-                                    ? "✓ Linked (" + page.selectedAccount.hashCount + " hash"
-                                      + (page.selectedAccount.hashCount === 1 ? "" : "es") + ")"
-                                    : ""
+                                text: qsTr("✓ Linked")
                             }
 
                             // Offer to link this statement's fingerprint to
@@ -493,16 +476,13 @@ Item {
                                 visible: controller.statementInfo.accountHashRaw.length > 0
                                     && page.selectedAccount !== null
                                     && !AccountController.accountHasHash(page.selectedAccountIndex, controller.statementInfo.accountHashRaw)
-                                text: "Link this account"
+                                text: qsTr("Link this account")
                                 variant: "primary"
                                 Layout.preferredHeight: 24
                                 fontSize: 13
                                 onClicked: {
                                     if (AccountController.linkAccountHash(page.selectedAccountIndex,
-                                                                          controller.statementInfo.accountHashRaw,
-                                                                          controller.statementInfo.legacyHashRaw)) {
-                                        // The hash can move from another account (#47), and
-                                        // its old form goes (#50).
+                                                                          controller.statementInfo.accountHashRaw)) {
                                         page.readMatches()
                                     }
                                 }
@@ -516,7 +496,7 @@ Item {
                     visible: !controller.lastParseFailed
                     Layout.fillWidth: true
                     implicitHeight: txCol.implicitHeight + 50
-                    title: "Transactions"
+                    title: qsTr("Transactions")
 
                     ColumnLayout {
                         id: txCol
@@ -543,7 +523,7 @@ Item {
                             Text {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
-                                text: controller.predicting ? "The app calculates the category suggestions…"
+                                text: controller.predicting ? qsTr("The app calculates the category suggestions…")
                                                             : controller.predictionInfo.summary
                                 font.pixelSize: 13
                                 color: Theme.overlay0
@@ -553,7 +533,8 @@ Item {
                         // The columns need more width than the card has at the default window
                         // size (1280 px), so the header and the rows scroll horizontally (#60).
                         // The rows fill the card when it is wider than the columns.
-                        ScrollView {
+                        // TableScrollView: a vertical wheel over the table scrolls the page.
+                        TableScrollView {
                             id: txScroll
                             Layout.fillWidth: true
                             // The layout gives the width, and the table scrolls in it. The
@@ -600,13 +581,13 @@ Item {
 
                                         ColumnHeaderCell {
                                             Layout.preferredWidth: columnWidths.opDate
-                                            text: "OP. DATE"
+                                            text: qsTr("OP. DATE")
                                             minWidth: 60
                                             onWidthChangeRequested: (w) => columnWidths.opDate = w
                                         }
                                         ColumnHeaderCell {
                                             Layout.preferredWidth: columnWidths.name
-                                            text: "NAME"
+                                            text: qsTr("NAME")
                                             minWidth: 60
                                             onWidthChangeRequested: (w) => columnWidths.name = w
                                         }
@@ -616,61 +597,61 @@ Item {
                                         // column used to, so DEBIT/CREDIT/… stay pinned to the right.
                                         ColumnHeaderCell {
                                             Layout.preferredWidth: columnWidths.desc
-                                            text: "DESC."
+                                            text: qsTr("DESC.")
                                             minWidth: 32
                                             onWidthChangeRequested: (w) => columnWidths.desc = w
                                         }
                                         Item { Layout.fillWidth: true }
                                         ColumnHeaderCell {
                                             Layout.preferredWidth: columnWidths.debit
-                                            text: "DEBIT"
+                                            text: qsTr("DEBIT")
                                             horizontalAlignment: Text.AlignRight
                                             minWidth: 50
                                             onWidthChangeRequested: (w) => columnWidths.debit = w
                                         }
                                         ColumnHeaderCell {
                                             Layout.preferredWidth: columnWidths.credit
-                                            text: "CREDIT"
+                                            text: qsTr("CREDIT")
                                             horizontalAlignment: Text.AlignRight
                                             minWidth: 50
                                             onWidthChangeRequested: (w) => columnWidths.credit = w
                                         }
                                         ColumnHeaderCell {
                                             Layout.preferredWidth: columnWidths.balance
-                                            text: "BALANCE"
+                                            text: qsTr("BALANCE")
                                             horizontalAlignment: Text.AlignRight
                                             minWidth: 60
                                             onWidthChangeRequested: (w) => columnWidths.balance = w
                                         }
                                         ColumnHeaderCell {
                                             Layout.preferredWidth: columnWidths.category
-                                            text: "CATEGORY"
+                                            text: qsTr("CATEGORY")
                                             minWidth: 70
                                             onWidthChangeRequested: (w) => columnWidths.category = w
                                         }
                                         ColumnHeaderCell {
                                             Layout.preferredWidth: columnWidths.subcategory
-                                            text: "SUBCATEGORY"
+                                            text: qsTr("SUBCATEGORY")
                                             minWidth: 70
                                             onWidthChangeRequested: (w) => columnWidths.subcategory = w
                                         }
                                         ColumnHeaderCell {
                                             Layout.preferredWidth: columnWidths.confidence
-                                            text: "CONFIDENCE"
+                                            text: qsTr("CONFIDENCE")
                                             horizontalAlignment: Text.AlignHCenter
                                             minWidth: 60
                                             onWidthChangeRequested: (w) => columnWidths.confidence = w
                                         }
                                         ColumnHeaderCell {
                                             Layout.preferredWidth: columnWidths.rule
-                                            text: "RULE"
+                                            text: qsTr("RULE")
                                             horizontalAlignment: Text.AlignHCenter
                                             minWidth: 40
                                             onWidthChangeRequested: (w) => columnWidths.rule = w
                                         }
                                         ColumnHeaderCell {
                                             Layout.preferredWidth: columnWidths.keep
-                                            text: "KEEP"
+                                            text: qsTr("KEEP")
                                             horizontalAlignment: Text.AlignRight
                                             minWidth: 40
                                             onWidthChangeRequested: (w) => columnWidths.keep = w
@@ -703,7 +684,7 @@ Item {
                                                 font.pixelSize: 15
                                                 color: Theme.text
                                                 placeholderTextColor: Theme.surface1
-                                                placeholderText: "(no name)"
+                                                placeholderText: qsTr("(no name)")
                                                 // Same recipe as FormRow.qml's TextField — see
                                                 // ARCHITECTURE.MD § Shared Components.
                                                 background: Rectangle {
@@ -800,14 +781,14 @@ Item {
 
                                                 HoverHandler { id: ruleHover }
                                                 ToolTip.text: ruleButton.canTeach
-                                                    ? "Always categorize “" + txRow.modelData.merchantKey + "” as "
-                                                      + txRow.modelData.category
-                                                      + (txRow.modelData.subcategory !== ""
-                                                          ? " / " + txRow.modelData.subcategory : "")
+                                                    ? qsTr("Always categorize “%1” as %2").arg(txRow.modelData.merchantKey)
+                                                      .arg(txRow.modelData.category
+                                                           + (txRow.modelData.subcategory !== ""
+                                                              ? " / " + txRow.modelData.subcategory : ""))
                                                     : (txRow.modelData.category === ""
-                                                       ? "Pick a category for this row first"
+                                                       ? qsTr("Pick a category for this row first")
                                                        // A label with only generic words has no key (#40).
-                                                       : "This label has no merchant name to build a rule from")
+                                                       : qsTr("This label has no merchant name to build a rule from"))
                                                 ToolTip.visible: ruleHover.hovered
                                                 ToolTip.delay: 300
                                             }
@@ -831,15 +812,15 @@ Item {
                     Layout.fillWidth: true
                     spacing: 10
 
-                    PillButton { text: "View log"; variant: "neutral"; onClicked: logPopup.open() }
+                    PillButton { text: qsTr("View log"); variant: "neutral"; onClicked: logPopup.open() }
                     PillButton {
-                        text: "Import another file"
+                        text: qsTr("Import another file")
                         variant: "neutral"
                         onClicked: { controller.reset(); page.step = 0 }
                     }
                     Item { Layout.fillWidth: true }
                     PillButton {
-                        text: page.saveBusy ? "Saving…" : "Save"
+                        text: page.saveBusy ? qsTr("Saving…") : qsTr("Save")
                         variant: "primary"
                         // The suggestions come from a worker thread (#52): wait for them.
                         enabled: !page.saveBusy && page.selectedAccount !== null && !controller.predicting
@@ -868,7 +849,7 @@ Item {
                 ChartCard {
                     Layout.fillWidth: true
                     implicitHeight: reportSummaryCol.implicitHeight + 50
-                    title: "Import report — " + (reportStep.report.accountLabel ? reportStep.report.accountLabel : "")
+                    title: qsTr("Import report — %1").arg(reportStep.report.accountLabel ? reportStep.report.accountLabel : "")
 
                     ColumnLayout {
                         id: reportSummaryCol
@@ -881,10 +862,10 @@ Item {
                             rowSpacing: 6
                             Layout.fillWidth: true
 
-                            Text { text: "Transactions saved"; font.pixelSize: 13; color: Theme.overlay0 }
-                            Text { text: "Total income";       font.pixelSize: 13; color: Theme.overlay0 }
-                            Text { text: "Total expenses";     font.pixelSize: 13; color: Theme.overlay0 }
-                            Text { text: "Net change";         font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Transactions saved"); font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Total income");       font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Total expenses");     font.pixelSize: 13; color: Theme.overlay0 }
+                            Text { text: qsTr("Net change");         font.pixelSize: 13; color: Theme.overlay0 }
 
                             Text { text: reportStep.report.transactionCount !== undefined ? reportStep.report.transactionCount : 0; font.pixelSize: 18; font.bold: true; color: Theme.text }
                             Text { text: reportStep.report.totalIncomeText ? reportStep.report.totalIncomeText : "—"; font.pixelSize: 18; font.bold: true; color: Theme.green }
@@ -899,8 +880,8 @@ Item {
                             visible: (reportStep.report.alreadySavedCount || 0) > 0
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
-                            text: (reportStep.report.alreadySavedCount || 0)
-                                + " transaction(s) of this statement were already saved, so they were not added again."
+                            text: qsTr("%1 transaction(s) of this statement were already saved, so they were not added again.")
+                                .arg(reportStep.report.alreadySavedCount || 0)
                             font.pixelSize: 13
                             color: Theme.yellow
                         }
@@ -913,11 +894,11 @@ Item {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             textFormat: Text.StyledText
-                            text: "⚠ " + (reportStep.report.reusedReferenceCount || 0)
-                                + " of these rows have the bank reference and the amount of a saved transaction,"
-                                + " but another operation date, so they were not saved. If they are different"
-                                + " transactions, the bank reuses its references: see <a href=\""
-                                + (reportStep.report.reusedReferenceUrl || "") + "\">this issue</a>."
+                            text: qsTr("⚠ %1 of these rows have the bank reference and the amount of a saved transaction,"
+                                       + " but another operation date, so they were not saved. If they are different"
+                                       + " transactions, the bank reuses its references: see <a href=\"%2\">this issue</a>.")
+                                .arg(reportStep.report.reusedReferenceCount || 0)
+                                .arg(reportStep.report.reusedReferenceUrl || "")
                             font.pixelSize: 13
                             color: Theme.peach
                             linkColor: Theme.blue
@@ -930,7 +911,7 @@ Item {
                 ChartCard {
                     Layout.fillWidth: true
                     implicitHeight: reconCol.implicitHeight + 50
-                    title: "Reconciliation"
+                    title: qsTr("Reconciliation")
 
                     ColumnLayout {
                         id: reconCol
@@ -944,17 +925,18 @@ Item {
                                 variant: !reportStep.reconciliation.hasStartReference ? "neutral"
                                     : (reportStep.reconciliation.startOk ? "success" : "warning")
                                 // A start line that could not be read (#44): not checked.
-                                text: reportStep.reconciliation.hasDeclaredStart === false ? "Start balance — not in the file"
-                                    : !reportStep.reconciliation.hasStartReference ? "Start balance — no prior record"
-                                    : (reportStep.reconciliation.startOk ? "Start balance OK" : "Start balance mismatch")
+                                text: reportStep.reconciliation.hasDeclaredStart === false ? qsTr("Start balance — not in the file")
+                                    : !reportStep.reconciliation.hasStartReference ? qsTr("Start balance — no prior record")
+                                    : (reportStep.reconciliation.startOk ? qsTr("Start balance OK") : qsTr("Start balance mismatch"))
                             }
                             Text {
                                 visible: reportStep.reconciliation.hasStartReference === true
-                                text: "declared " + (reportStep.reconciliation.startDeclaredText || "—")
-                                    + " vs. " + (reportStep.reconciliation.startExpectedText || "—")
-                                    + " (" + (reportStep.reconciliation.startSourceLabel || "") + " on "
-                                    + (reportStep.reconciliation.startSourceDateText || "—") + ") — diff "
-                                    + (reportStep.reconciliation.startDiffText || "—")
+                                text: qsTr("declared %1 vs. %2 (%3 on %4) — diff %5")
+                                    .arg(reportStep.reconciliation.startDeclaredText || "—")
+                                    .arg(reportStep.reconciliation.startExpectedText || "—")
+                                    .arg(reportStep.reconciliation.startSourceLabel || "")
+                                    .arg(reportStep.reconciliation.startSourceDateText || "—")
+                                    .arg(reportStep.reconciliation.startDiffText || "—")
                                 font.pixelSize: 13
                                 color: Theme.overlay0
                             }
@@ -967,14 +949,15 @@ Item {
                                 // A balance line that could not be read (#44): not checked.
                                 variant: reportStep.reconciliation.endAvailable === false ? "neutral"
                                     : (reportStep.reconciliation.endOk ? "success" : "danger")
-                                text: reportStep.reconciliation.endAvailable === false ? "End balance — not checked"
-                                    : (reportStep.reconciliation.endOk ? "End balance OK" : "End balance mismatch")
+                                text: reportStep.reconciliation.endAvailable === false ? qsTr("End balance — not checked")
+                                    : (reportStep.reconciliation.endOk ? qsTr("End balance OK") : qsTr("End balance mismatch"))
                             }
                             Text {
                                 visible: reportStep.reconciliation.endAvailable !== false
-                                text: "computed " + (reportStep.reconciliation.endComputedText || "—")
-                                    + " vs. declared " + (reportStep.reconciliation.endDeclaredText || "—")
-                                    + " — diff " + (reportStep.reconciliation.endDiffText || "—")
+                                text: qsTr("computed %1 vs. declared %2 — diff %3")
+                                    .arg(reportStep.reconciliation.endComputedText || "—")
+                                    .arg(reportStep.reconciliation.endDeclaredText || "—")
+                                    .arg(reportStep.reconciliation.endDiffText || "—")
                                 font.pixelSize: 13
                                 color: Theme.overlay0
                             }
@@ -986,7 +969,7 @@ Item {
                 ChartCard {
                     Layout.fillWidth: true
                     implicitHeight: breakdownCol.implicitHeight + 50
-                    title: "By category — click a slice"
+                    title: qsTr("By category — click a slice")
 
                     ColumnLayout {
                         id: breakdownCol
@@ -995,7 +978,7 @@ Item {
 
                         EmptyState {
                             visible: reportStep.byCategory.length === 0
-                            message: "No transactions were saved."
+                            message: qsTr("No transactions were saved.")
                         }
 
                         // Pie chart: slice size is each category's spending/income
@@ -1023,7 +1006,7 @@ Item {
 
                                 function rebuild() {
                                     clear()
-                                    pieSliceInfo.text = "Click a slice for details"
+                                    pieSliceInfo.text = qsTr("Click a slice for details")
                                     var cats = reportStep.byCategory
                                     for (var i = 0; i < cats.length; i++) {
                                         var magnitude = Math.abs(cats[i].totalRaw)
@@ -1054,7 +1037,7 @@ Item {
                             id: pieSliceInfo
                             Layout.alignment: Qt.AlignHCenter
                             visible: reportStep.byCategory.length > 0
-                            text: "Click a slice for details"
+                            text: qsTr("Click a slice for details")
                             font.pixelSize: 14
                             color: Theme.overlay0
                         }
@@ -1135,7 +1118,7 @@ Item {
                 RowLayout {
                     Layout.fillWidth: true
                     PillButton {
-                        text: "Import another file"
+                        text: qsTr("Import another file")
                         variant: "primary"
                         onClicked: { controller.reset(); page.step = 0 }
                     }
@@ -1143,7 +1126,7 @@ Item {
                     // The page stays loaded after it closes (Main.qml, #64): reset it,
                     // so that the next import starts at step 1.
                     PillButton {
-                        text: "Done"
+                        text: qsTr("Done")
                         variant: "neutral"
                         onClicked: { controller.reset(); page.step = 0; page.closeRequested() }
                     }
@@ -1174,10 +1157,10 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
-                Text { text: "Import log"; font.pixelSize: 18; font.bold: true; color: Theme.text }
+                Text { text: qsTr("Import log"); font.pixelSize: 18; font.bold: true; color: Theme.text }
                 Item { Layout.fillWidth: true }
                 Text {
-                    text: controller.errorCount + " error(s) · " + controller.warningCount + " warning(s)"
+                    text: qsTr("%1 error(s) · %2 warning(s)").arg(controller.errorCount).arg(controller.warningCount)
                     font.pixelSize: 14
                     color: Theme.overlay0
                 }
@@ -1194,7 +1177,7 @@ Item {
 
                     EmptyState {
                         visible: controller.logEntries.length === 0
-                        message: "No log entries."
+                        message: qsTr("No log entries.")
                     }
 
                     Repeater {
@@ -1216,10 +1199,12 @@ Item {
                                     // the old grey-bg/green-text hybrid.
                                     variant: logRow.modelData.level === "Error" ? "danger"
                                            : logRow.modelData.level === "Warning" ? "warning" : "success"
-                                    text: logRow.modelData.level
+                                    // The level is a key ("Error", "Warning", "Info"): the badge shows its translation.
+                                    text: logRow.modelData.level === "Error" ? qsTr("Error")
+                                        : logRow.modelData.level === "Warning" ? qsTr("Warning") : qsTr("Info")
                                 }
                                 Text {
-                                    text: "L" + logRow.modelData.line
+                                    text: qsTr("L%1").arg(logRow.modelData.line)
                                     font.pixelSize: 13
                                     color: Theme.overlay0
                                 }
@@ -1249,7 +1234,7 @@ Item {
             RowLayout {
                 Layout.topMargin: 6
                 Item { Layout.fillWidth: true }
-                PillButton { text: "Close"; variant: "neutral"; onClicked: logPopup.close() }
+                PillButton { text: qsTr("Close"); variant: "neutral"; onClicked: logPopup.close() }
             }
         }
     }
@@ -1279,7 +1264,7 @@ Item {
         contentItem: ColumnLayout {
             spacing: 10
 
-            Text { text: "Full description"; font.pixelSize: 18; font.bold: true; color: Theme.text }
+            Text { text: qsTr("Full description"); font.pixelSize: 18; font.bold: true; color: Theme.text }
 
             ScrollView {
                 Layout.fillWidth: true
@@ -1303,7 +1288,7 @@ Item {
             RowLayout {
                 Layout.topMargin: 6
                 Item { Layout.fillWidth: true }
-                PillButton { text: "Close"; variant: "neutral"; onClicked: descriptionPopup.close() }
+                PillButton { text: qsTr("Close"); variant: "neutral"; onClicked: descriptionPopup.close() }
             }
         }
     }
@@ -1338,16 +1323,16 @@ Item {
         contentItem: ColumnLayout {
             spacing: 12
 
-            Text { text: "Balance doesn't add up"; font.pixelSize: 18; font.bold: true; color: Theme.text }
+            Text { text: qsTr("Balance doesn't add up"); font.pixelSize: 18; font.bold: true; color: Theme.text }
 
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: "The statement declares an ending balance of "
-                    + (reconciliationDialog.check.endDeclaredText || "—")
-                    + ", but the declared starting balance plus every currently-kept transaction only "
-                    + "adds up to " + (reconciliationDialog.check.endComputedText || "—")
-                    + " — a difference of " + (reconciliationDialog.check.endDiffText || "—") + "."
+                text: qsTr("The statement declares an ending balance of %1, but the declared starting balance plus "
+                           + "every currently-kept transaction only adds up to %2 — a difference of %3.")
+                    .arg(reconciliationDialog.check.endDeclaredText || "—")
+                    .arg(reconciliationDialog.check.endComputedText || "—")
+                    .arg(reconciliationDialog.check.endDiffText || "—")
                 font.pixelSize: 14
                 color: Theme.text
             }
@@ -1355,9 +1340,9 @@ Item {
             Text {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: "Either a kept transaction was unchecked by mistake, or a real amount is missing. "
-                    + "Review the KEEP column, or add a matching adjustment transaction (category "
-                    + "\"Reconciliation Adjustment\") to close the gap."
+                text: qsTr("Either a kept transaction was unchecked by mistake, or a real amount is missing. "
+                           + "Review the KEEP column, or add a matching adjustment transaction (category "
+                           + "\"Reconciliation Adjustment\") to close the gap.")
                 font.pixelSize: 13
                 color: Theme.overlay0
             }
@@ -1367,13 +1352,13 @@ Item {
                 Layout.fillWidth: true
                 spacing: 10
                 PillButton {
-                    text: "Review kept transactions"
+                    text: qsTr("Review kept transactions")
                     variant: "neutral"
                     onClicked: reconciliationDialog.close()
                 }
                 Item { Layout.fillWidth: true }
                 PillButton {
-                    text: "Add adjustment transaction"
+                    text: qsTr("Add adjustment transaction")
                     variant: "danger"
                     onClicked: {
                         var accountId = page.selectedAccount !== null ? page.selectedAccount.id : -1
@@ -1384,5 +1369,13 @@ Item {
                 }
             }
         }
+    }
+
+    // ── New account from the review ──────────────────────────────────────────
+    // The same form as Manage Accounts. The new account becomes the target
+    // account; Save links the tag of the statement to it, as for any account.
+    AccountFormDialog {
+        id: newAccountDialog
+        onAccountAdded: (index) => page.selectAccountIndex(index)
     }
 }

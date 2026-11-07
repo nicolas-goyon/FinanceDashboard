@@ -32,16 +32,24 @@ qml/Main.qml          The window, the sidebar and the navigation (currentViewId)
 qml/pages/            One file for each page. Display only.
 qml/components/       Shared QML components (ChartCard, PillButton, FormDialog, HoverPoint, …).
 qml/components/Theme.qml  Every colour of the QML (a singleton, `Theme.<name>`).
+qml/components/AccountFormDialog.qml  The form of an account (add, edit). The accounts page and the
+                      import review ("＋ New account") use it.
+qml/components/TableScrollView.qml  The ScrollView of a wide table in a page: a vertical wheel
+                      scrolls the page, a sideways wheel scrolls the table.
 src/controllers/      One subfolder for each domain. One controller class for each page.
 src/controllers/ui/   QML singletons with no page, for example Fonts (the fixed-pitch font).
 src/db/               Database (connection, transactions, upgrades) and tables/ (one class per table).
 src/models/           Plain data structs (Account, Transaction, Category, …).
 src/import/           Statement templates (ImportTemplate, SumeriaCcpCsvExtractionTemplate).
 src/predict/          Category prediction (CategoryPredictor, LabelNormalizer).
+src/calc/             Calculations with no database and no Qt Quick (TransferMatcher, NetWorthCalc,
+                      CashFlowCalc, SavingsCalc). calc_test checks them.
 src/update/           Release list, versions and SHA256SUMS parsing, with no network.
 src/startup/          Start-up checks (StartupChecks) and the QML network block (LocalOnlyNetwork).
 src/utils/            Money, AccountHashing and other helpers.
 tests/                The CTest suites. tests/CMakeLists.txt has one comment for each test.
+tests/qml/            The QML tests (Qt Quick Test, run by qml_test).
+i18n/                 The translations (financedashboard_fr.ts). See § Text and language rule.
 tools/                version.py, release_flow.py, Docker wrappers, requirement checks, analyzers.
 launcher/             The start-up launcher (Windows exe, Linux script).
 packaging/            Icon, Linux metadata, Windows setup, AppImage and .deb scripts.
@@ -92,6 +100,37 @@ of an import (`SnapshotImportController`, `QtConcurrent::run`, #52):
 
 ## Data rule
 
+### Privacy
+
+The privacy rule (maintainer, 2026-10-29): a person with full access to the machine, the
+database, the files and the logs must see nothing more than the user sees in the UI.
+
+- Do not store a bank identifier: IBAN, BIC, account number, card number (also partial),
+  bank reference, mandate id (RUM), creditor id (ICS), client code, holder name.
+- Do not store a bank identifier in an encrypted form either. Do not store a value that gives
+  an identifier back (for example, a hash that a person can reverse by brute force).
+- An import template returns clean rows. It passes the name and the description of each row
+  through `StatementSanitizer` (`src/import/StatementSanitizer.h`) before it returns them.
+- A new template must call `StatementSanitizer`. Add a test with a fictitious statement that
+  holds every kind of identifier (example: `bankIdentifiersAreNeverStored` in
+  `tests/import_save_test.cpp`).
+- The bank reference of a row stays in memory (`bankReference`). The database stores only the
+  fingerprint (a SHA-256) that is made from it.
+- A row without a bank reference gets its fingerprint from the clean description, not the raw
+  one. A short value (4 card digits) in a hash can be found by brute force.
+- An automatic balance checkpoint has no file name in its note (the name of a statement file
+  can hold an IBAN).
+- Schema step 7 (#204) cleans a database of before v0.3.0, and its copy: the names and
+  descriptions, the fingerprints of rows without a reference, the notes, the category rules
+  with an identifier, the account hashes. The connection has `secure_delete` on, and a
+  `VACUUM` follows, so the old values are not in the free pages of the file.
+- Merchant and counterparty names stay (maintainer decision of 2026-11-04).
+- The app must work the same with fictitious test data and with real data.
+- The application log (stderr) gives counts, ids and steps. It does not give a description, a
+  name, a label, a rule pattern, an account name, a bank reference, an amount or a date of a
+  row (#205). `db_migration_test` and `bankIdentifiersAreNeverStored` capture the log and check
+  it.
+
 ### Transactions and writes
 
 - Put writes that belong together in one SQL transaction, in one `Database` method.
@@ -133,6 +172,18 @@ of an import (`SnapshotImportController`, `QtConcurrent::run`, #52):
   start tries again.
 - "Reset Database" keeps the records. So the default data does not come back, also after a
   restart.
+- `Data::defaultCategories()` (`src/models/DefaultCategories.h`) is the one list of the
+  default categories: 15 categories (income, housing, subscriptions, investments, transfers,
+  taxes…) and their subcategories. The first run, the mock data and the category resets use it.
+- The names are translated at the time of the write (context `DefaultCategories`). After that
+  they are data: a change of language does not rename them.
+- The Database Management page has two category resets: "Reset to defaults" and "Remove all"
+  (`Database::replaceCategories()`, one SQL transaction). The accounts and the transactions
+  stay. A transaction keeps its category when a category of that name is in the new list, and
+  its subcategory when that category has it. Else it gets no category. A rule of a removed
+  category is deleted.
+- A subcategory gets a shade of the colour of its category: the same hue, another HSL
+  lightness, from 95 to 215, and no two shades the same.
 
 ### Copy of the prod database (Test app)
 
@@ -175,20 +226,67 @@ when it closes.
   Examples: the reconciliation of an import, a running balance, a total.
 - Do not add doubles for these. In a double, 0.10 + 0.20 is not 0.30.
 
-### Account hashes
+### Net worth
 
-- An account hash (`account_hashes`) links the statements of a bank account to an account of
-  the app. The import then suggests that account.
-- `AccountHashing::compute()` calculates an HMAC-SHA256 of the IBAN of a statement, with the BIC
-  as the key. The app does not keep the IBAN or the BIC.
-- The hash is not a security feature. The BIC is public, and a person who has the database can
-  find an IBAN by brute force. `src/utils/AccountHashing.h` gives the limit.
-- The app uses the BIC on 11 characters: `PSSTFRPP` is `PSSTFRPPXXX` (#50).
-- The import also tries the hash of an 8-character BIC from before #50. Save (or "Link this
-  account") replaces it, also when it is on another account. The review screen tells the user.
-- A hash belongs to one account, in lower case (#47). A save to another account moves the hash
-  there (`Database::linkAccountHash()`).
-- A hash that the user types must have 64 hexadecimal characters. No other account can have it.
+- The net worth is a set of accounts: the accounts with `accounts.in_net_worth = 1` (#206). A
+  new account is in it. Schema step 8 adds the column, on for every account.
+- A move of money between two accounts of the net worth is an internal transfer. It is not
+  income and not spending (#207).
+- `transactions.transfer_id` (schema step 9): 0 = not decided, -1 (`Data::kNotATransfer`) = the
+  user said no, > 0 = a transfer. The two rows of a transfer have the id of the debit row. A row
+  without its other side has its own id.
+- `TransferMatcher` (`src/calc/`) suggests the pairs: a debit and a credit of the same amount in
+  cents, on two accounts of the net worth, 3 days apart or less, both not decided. The smallest
+  gap wins. It uses no bank identifier.
+- The user confirms or refuses each pair on the Internal Transfers page
+  (`TransfersController`), or marks one row on the transactions page.
+- A page that adds income and spending must leave out the rows with `transfer_id > 0`
+  (`Data::isInternalTransfer()`).
+- Money that goes to an account outside the net worth (a joint account, the account of a
+  child) is spending.
+- `NetWorthCalc` (`src/calc/`) calculates in whole cents, with no database (#208):
+  - The value of an account at the end of a day: the latest balance checkpoint on or before the
+    day, plus the rows booked after it. With no checkpoint: the balance before the first row,
+    plus the rows.
+  - On an investment account (`Data::isInvestment()`), a checkpoint is a valuation, from the
+    statement of the bank. The UI calls it "Valuation".
+  - The savings of a period: the income minus the spending of the accounts of the net worth,
+    without the internal transfers.
+  - The change of the net worth = the savings + the gains. The gains are the rest: valuations,
+    interest that is not in a row, corrections, a transfer with one side only.
+- `NetWorthScope` (`src/controllers/common/`) reads the accounts of the net worth, with their
+  rows and checkpoints, in one pass. It puts each account in a group: day-to-day, savings
+  (`Data::isSavings()`), investments (`Data::isInvestment()`).
+- `CashFlowCalc` (`src/calc/`) gives the figures of the Cash Flow page (#210): income and
+  spending of the last 12 months, by category, without the internal transfers. The stacked bars
+  show the 5 categories with the most spending and "Other".
+- The Savings page (#211) shows the accounts of the savings group. `SavingsCalc` gives the
+  ceiling of a regulated account from its type, and finds the rows of interest (a credit with
+  "interest" or "intérêts" in its category, name or description). A chart has 4 fixed series:
+  the 4 accounts with the highest balance. A series with no account has an empty name and is
+  hidden.
+- The yearly summary of the Overview (#212) shows this year (to date) and the 2 years before:
+  income, spending, savings, savings rate, gains and other changes, change of the net worth,
+  and the spending by category against last year (`NetWorthController::buildYearSummary()`).
+- A page on real data reads the database again when it is shown (`onVisibleChanged` →
+  `reload()`): the pages stay loaded in the StackLayout. It clears its series before it fills
+  them again.
+
+### Account tags
+
+- An account tag (`account_hashes`) links the statements of a bank account to an account of
+  the app. The import then suggests that account (#203).
+- `AccountHashing::compute()` calculates PBKDF2-HMAC-SHA256 of the IBAN (100 000 iterations,
+  a fixed salt of the app). The tag is the first byte of the result: 2 hexadecimal characters.
+- A tag has 256 values. Many bank accounts have the same tag, so the tag does not identify an
+  IBAN. This obeys the privacy rule. The BIC is not in the tag.
+- A tag can be on two accounts. A save adds the tag to the account and the other accounts keep
+  it (`Database::linkAccountHash()`).
+- The import suggests an account only when exactly one account has the tag. Else the user picks
+  the account.
+- "Forget link" (accounts page) removes the tags of an account.
+- Schema step 7 removes the 64-character hashes of before v0.3.0, and the UNIQUE index on the
+  hash. At the next import of each account, the user picks the account once.
 
 ### Category rules
 
@@ -198,7 +296,7 @@ when it closes.
   step normalizes the stored patterns again, as step 6 does (#40, #55).
 - In that step, a rule with only generic words goes. Rules that get one key merge when they give
   one category. They go when they give different categories, because one rule cannot give two.
-- The upgrade message gives the counts. The log names each rule.
+- The upgrade message gives the counts. The log gives the id of each rule.
 - Such a step calls the normalizer of the build that runs it. So `normalize()` of a key must give
   the same key. `tools/predictor_selftest.cpp` checks it.
 - A key has no direction words ("TRANSFER TO", "RECEIVED FROM"). A rule does not look at the
@@ -216,6 +314,26 @@ when it closes.
 - The identity supposes one reference for each transaction. The import reports a skipped row
   that has the reference and the amount of a saved row, but another operation date. The report
   links to the issue in `TransactionsTable::kReusedReferenceIssueUrl`.
+
+## Text and language rule
+
+- English is the language of the sources. Write every text that the user can see with
+  `qsTr()` (QML), `tr()` (a class with Q_OBJECT) or `QCoreApplication::translate()`.
+- Do not translate: logs, SQL, settings keys, data stored in the database, strings that code
+  parses or compares. Build a sentence with `%1` and `.arg()`, not with `+` of translated parts.
+- `i18n/financedashboard_fr.ts` has the French. `qt_add_translations()` builds it into the app
+  (prefix `/i18n`). After you add or change a text, run
+  `cmake --build build --target update_translations` and translate the new messages.
+  `translations_test` fails when a text has no French translation.
+- The `Language` singleton (`src/controllers/ui/Language.h`) keeps the choice of the Settings
+  page in QSettings (`ui/language`: `system`, `en`, `fr`). `main()` applies it before the
+  database and the QML, so the default data of a new database is in that language.
+- A change of language installs the new translator, sets `QLocale::setDefault()`, and calls
+  `QQmlEngine::retranslate()`: every `qsTr()` changes at once. A text that a controller makes
+  in C++ changes when the page reads its data again (the pages on real data do it when they
+  are shown).
+- A date that the user sees uses `QLocale().toString(date, format)`, so the month names follow
+  the language.
 
 ## Network rule
 
@@ -320,8 +438,9 @@ reason.
 | Statement import, review and report | `src/controllers/dataentry/SnapshotImportController.h`, `qml/pages/ImportSnapshotPage.qml`, `src/import/` |
 | Category prediction | `src/predict/CategoryPredictor.h`, `src/predict/LabelNormalizer.h` |
 | Categories, accounts, account types | `src/controllers/dataentry/CategoryController.h`, `AccountController.h` |
+| Net worth, internal transfers, Overview | `src/controllers/common/NetWorthScope.h`, `src/calc/NetWorthCalc.h`, `src/controllers/overview/NetWorthController.h`, `AccountController.h` (`setInNetWorth()`), `src/controllers/dataentry/TransfersController.h`, `src/calc/TransferMatcher.h`, `qml/pages/InternalTransfersPage.qml` |
 | Database, schema, upgrades | `src/db/Database.h`, `src/db/tables/` |
-| Database management (reset, demo data, clean-up) | `src/controllers/database/DatabaseManagementController.h` |
+| Database management (reset, demo data, category resets, clean-up) | `src/controllers/database/DatabaseManagementController.h` |
 | Update check and installation | `src/controllers/updates/UpdateController.h`, `UpdateInstaller.h`, `src/update/`, `packaging/windows/update-restart.iss`, `README.md` § Updates |
 | Start-up checks and the launcher | `src/startup/StartupChecks.h`, `launcher/` |
 | Docker build and requirement check | `README.md` § Building with Docker, `.env.example` |

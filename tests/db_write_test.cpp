@@ -26,7 +26,9 @@
 #include "AccountController.h"
 #include "CategoryController.h"
 #include "DatabaseManagementController.h"
+#include "TransfersController.h"
 #include "db/Database.h"
+#include "models/DefaultCategories.h"
 #include "models/Account.h"
 #include "models/AssetEntry.h"
 #include "models/Category.h"
@@ -36,6 +38,8 @@
 
 #include <QDate>
 #include <QRegularExpression>
+#include <QSet>
+#include <QSignalSpy>
 #include <QScopeGuard>
 #include <QSqlDatabase>
 #include <QSqlError>
@@ -130,6 +134,8 @@ private slots:
     void accountControllerRefusesADuplicateName();
     void defaultsAreWrittenOncePerDatabase();
     void defaultsAreAllOrNothing();
+    void defaultCategoriesAreAFullSet();
+    void categoryResetsKeepWhatStillExists();
     void mockDataHasTheSampleTransactions();
     void balanceHistoryFollowsTheBookingOrder();
     void usdAccountShowsItsCurrency();
@@ -137,7 +143,9 @@ private slots:
     void writeWithoutItsTransactionFails();
     void amountsAreWrittenToTheCent();
     void invalidAmountsAreRefused();
-    void hashBelongsToOneAccount();
+    void tagCanBeOnTwoAccounts();
+    void netWorthFlagIsSaved();
+    void transferIsConfirmedRefusedAndMarked();
 
 private:
     QTemporaryDir m_dir;
@@ -420,7 +428,7 @@ void DbWriteTest::defaultsAreWrittenOncePerDatabase()
         // First run: the defaults are written.
         CategoryController categories;
         AccountController accounts;
-        QVERIFY(!categories.categories().isEmpty());
+        QCOMPARE(categories.categories().size(), Data::defaultCategories().size());
         QVERIFY(!accounts.accounts().isEmpty());
         QVERIFY(!accounts.accountTypes().isEmpty());
     }
@@ -678,7 +686,7 @@ void DbWriteTest::invalidAmountsAreRefused()
     QVERIFY(db.loadBalanceCheckpoints(account).isEmpty());
 }
 
-void DbWriteTest::hashBelongsToOneAccount()
+void DbWriteTest::tagCanBeOnTwoAccounts()
 {
     Database& db = Database::instance();
     const int checking = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
@@ -686,57 +694,233 @@ void DbWriteTest::hashBelongsToOneAccount()
     const int savings = db.addAccount(QStringLiteral("Savings"), QStringLiteral("CCP"), QStringLiteral(""),
                                       QStringLiteral("EUR"), QStringLiteral(""));
     QVERIFY(checking >= 0 && savings >= 0);
-    const QString upper = QStringLiteral("ABCDEF0123456789").repeated(4); // 64 hexadecimal characters
-    const QString lower = upper.toLower();
 
     // Typed in upper case: stored in lower case, found in any case.
-    QVERIFY2(db.addAccountHash(checking, QStringLiteral(" ") + upper + QStringLiteral(" "), QStringLiteral("manual")) >= 0,
+    QVERIFY2(db.addAccountHash(checking, QStringLiteral(" 0C "), QStringLiteral("manual")) >= 0,
              qPrintable(db.lastError()));
-    QCOMPARE(db.loadAccounts().first().hashes.first().hash, lower);
-    QVERIFY(db.accountHasHash(checking, lower));
-    QVERIFY(db.accountHasHash(checking, upper));
-    QCOMPARE(db.accountOfHash(upper), checking);
+    QCOMPARE(db.loadAccounts().first().hashes.first().hash, QStringLiteral("0c"));
+    QVERIFY(db.accountHasHash(checking, QStringLiteral("0C")));
+    QCOMPARE(db.accountOfHash(QStringLiteral("0C")), checking);
 
-    // Not a fingerprint, the same hash again, the hash of another account.
-    for (const QString& wrong : {QStringLiteral("ABCDEF0123"), upper + QStringLiteral("0"),
-                                 QStringLiteral("g").repeated(64)}) {
+    // Not a tag: a 64-character fingerprint of before v0.3.0, 3 characters,
+    // not hexadecimal.
+    for (const QString& wrong : {QStringLiteral("ABCDEF0123456789").repeated(4), QStringLiteral("0c0"),
+                                 QStringLiteral("zz")}) {
         QCOMPARE(db.addAccountHash(savings, wrong, QStringLiteral("manual")), -1);
-        QCOMPARE(db.lastError(), QStringLiteral("An account hash has 64 hexadecimal characters (0-9, a-f)."));
+        QCOMPARE(db.lastError(), QStringLiteral("An account tag has 2 hexadecimal characters (0-9, a-f)."));
+        QVERIFY(!db.linkAccountHash(savings, wrong, QStringLiteral("auto")));
     }
-    QCOMPARE(db.addAccountHash(checking, lower, QStringLiteral("manual")), -1);
-    QCOMPARE(db.lastError(), QStringLiteral("The account already has this hash."));
-    QCOMPARE(db.addAccountHash(savings, lower, QStringLiteral("manual")), -1);
-    QCOMPARE(db.lastError(), QStringLiteral("Another account has this hash."));
+    QCOMPARE(db.addAccountHash(checking, QStringLiteral("0c"), QStringLiteral("manual")), -1);
+    QCOMPARE(db.lastError(), QStringLiteral("The account already has this tag."));
 
-    // A link (the import picked Savings) moves the hash: one row, on Savings.
-    QVERIFY2(db.linkAccountHash(savings, upper, QStringLiteral("auto")), qPrintable(db.lastError()));
-    QCOMPARE(db.accountOfHash(lower), savings);
-    QVERIFY(!db.accountHasHash(checking, lower));
-    QVERIFY(db.linkAccountHash(savings, lower, QStringLiteral("auto"))); // already there: nothing changes
+    // Many bank accounts have the same tag: a link adds it, the other
+    // account keeps it, and a second link changes nothing.
+    QVERIFY2(db.linkAccountHash(savings, QStringLiteral("0C"), QStringLiteral("auto")), qPrintable(db.lastError()));
+    QVERIFY(db.linkAccountHash(savings, QStringLiteral("0c"), QStringLiteral("auto")));
+    QVERIFY(db.accountHasHash(checking, QStringLiteral("0c")));
+    QVERIFY(db.accountHasHash(savings, QStringLiteral("0c")));
     QSqlQuery query(db.sqlDatabase());
-    QVERIFY(query.exec(QStringLiteral("SELECT COUNT(*), MIN(source) FROM account_hashes;")) && query.next());
-    QCOMPARE(query.value(0).toInt(), 1);
-    QCOMPARE(query.value(1).toString(), QStringLiteral("auto"));
+    QVERIFY(query.exec(QStringLiteral("SELECT COUNT(*) FROM account_hashes;")) && query.next());
+    QCOMPARE(query.value(0).toInt(), 2);
     query.finish();
 
-    // The controller says which account has the hash, and a link names the
-    // account that loses it.
+    // The controller: "Link this account" once, then "Forget link".
     AccountController controller;
     const int checkingIndex = indexOfName(controller.accounts(), QStringLiteral("Checking"));
-    const int savingsIndex = indexOfName(controller.accounts(), QStringLiteral("Savings"));
-    QVERIFY(checkingIndex >= 0 && savingsIndex >= 0);
-    QVERIFY(!controller.addHash(checkingIndex, upper));
-    QVERIFY2(controller.statusText().contains(QStringLiteral("\"Savings\" has this hash")),
-             qPrintable(controller.statusText()));
-    QVERIFY(!controller.addHash(checkingIndex, QStringLiteral("not a hash")));
-    QVERIFY2(controller.statusText().contains(QStringLiteral("64 hexadecimal characters")),
-             qPrintable(controller.statusText()));
-    QVERIFY(controller.linkAccountHash(checkingIndex, upper));
-    QVERIFY2(controller.statusText().contains(QStringLiteral("no longer on \"Savings\"")),
-             qPrintable(controller.statusText()));
-    QVERIFY(controller.accountHasHash(checkingIndex, lower));
-    QVERIFY(!controller.accountHasHash(savingsIndex, lower));
-    QVERIFY(!controller.linkAccountHash(checkingIndex, lower)); // already linked
+    QVERIFY(checkingIndex >= 0);
+    QVERIFY(!controller.linkAccountHash(checkingIndex, QStringLiteral("0c"))); // already linked
+    QVERIFY(controller.linkAccountHash(checkingIndex, QStringLiteral("a7")));
+    QVERIFY(controller.accountHasHash(checkingIndex, QStringLiteral("a7")));
+    controller.forgetImportLink(checkingIndex);
+    QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓")), qPrintable(controller.statusText()));
+    QVERIFY(!db.accountHasHash(checking, QStringLiteral("0c")));
+    QVERIFY(!db.accountHasHash(checking, QStringLiteral("a7")));
+    QVERIFY(db.accountHasHash(savings, QStringLiteral("0c")));
+    QVERIFY(!controller.accounts().at(checkingIndex).toMap().value(QStringLiteral("linked")).toBool());
+}
+
+void DbWriteTest::netWorthFlagIsSaved()
+{
+    // #206: an account is in the net worth by default; the flag is saved.
+    Database& db = Database::instance();
+    const int joint = db.addAccount(QStringLiteral("Joint"), QStringLiteral("CCP"), QStringLiteral(""),
+                                    QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(joint >= 0);
+    QVERIFY(db.loadAccounts().constLast().inNetWorth);
+    QVERIFY2(db.setAccountInNetWorth(joint, false), qPrintable(db.lastError()));
+    QVERIFY(!db.loadAccounts().constLast().inNetWorth);
+    QVERIFY(!db.setAccountInNetWorth(joint + 100, false)); // no such account
+
+    AccountController controller;
+    const int index = indexOfName(controller.accounts(), QStringLiteral("Joint"));
+    QVERIFY(index >= 0);
+    QVERIFY(!controller.accounts().at(index).toMap().value(QStringLiteral("inNetWorth")).toBool());
+    controller.setInNetWorth(index, true);
+    QVERIFY(controller.accounts().at(index).toMap().value(QStringLiteral("inNetWorth")).toBool());
+    QVERIFY(db.loadAccounts().constLast().inNetWorth);
+}
+
+void DbWriteTest::transferIsConfirmedRefusedAndMarked()
+{
+    // #207: the transfer_id of the rows.
+    Database& db = Database::instance();
+    const int checking = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
+                                       QStringLiteral("EUR"), QStringLiteral(""));
+    const int livret = db.addAccount(QStringLiteral("Livret A"), QStringLiteral("Livret A"), QStringLiteral(""),
+                                     QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(checking >= 0 && livret >= 0);
+    const auto make = [](const QDate& date, double debit, double credit) {
+        Data::Transaction transaction;
+        transaction.operationDate = date;
+        transaction.confirmationDate = date;
+        transaction.name = QStringLiteral("TRANSFER");
+        transaction.debit = debit;
+        transaction.credit = credit;
+        return transaction;
+    };
+    const QDate day(2026, 3, 10);
+    QVERIFY(db.insertTransactions(checking, {make(day, 500.0, 0.0), make(day, 20.0, 0.0)}));
+    QVERIFY(db.insertTransactions(livret, {make(day.addDays(2), 0.0, 500.0), make(day, 0.0, 20.0)}));
+    const auto idOf = [&](int account, double amount) {
+        for (const Data::Transaction& transaction : db.transactionsForAccount(account)) {
+            if (transaction.debit == amount || transaction.credit == amount) {
+                return transaction.id;
+            }
+        }
+        return -1;
+    };
+    const int debit = idOf(checking, 500.0);
+    const int credit = idOf(livret, 500.0);
+    const auto transferIdOf = [&](int id) {
+        for (const Data::Transaction& transaction : db.allTransactions()) {
+            if (transaction.id == id) {
+                return transaction.transferId;
+            }
+        }
+        return -99;
+    };
+    QCOMPARE(transferIdOf(debit), 0);
+
+    QVERIFY2(db.confirmTransfer(debit, credit), qPrintable(db.lastError()));
+    QCOMPARE(transferIdOf(debit), debit);
+    QCOMPARE(transferIdOf(credit), debit);
+
+    QVERIFY(db.refuseTransfer(idOf(checking, 20.0), idOf(livret, 20.0)));
+    QCOMPARE(transferIdOf(idOf(checking, 20.0)), Data::kNotATransfer);
+
+    // Off on one side: both sides are not a transfer any more.
+    QVERIFY(db.setInternalTransfer(credit, false));
+    QCOMPARE(transferIdOf(debit), Data::kNotATransfer);
+    QCOMPARE(transferIdOf(credit), Data::kNotATransfer);
+    // On alone: the row is its own transfer.
+    QVERIFY(db.setInternalTransfer(credit, true));
+    QCOMPARE(transferIdOf(credit), credit);
+    QVERIFY(!db.setInternalTransfer(999999, true));
+
+    // The controller of the page: no suggestion is left (all decided).
+    TransfersController controller;
+    controller.refresh();
+    QCOMPARE(controller.suggestions().size(), qsizetype(0));
+    QCOMPARE(controller.transfers().size(), qsizetype(1));
+    QVERIFY(!controller.transfers().first().toMap().value(QStringLiteral("complete")).toBool());
+    QVERIFY(controller.cancelTransfer(credit));
+    QCOMPARE(controller.transfers().size(), qsizetype(0));
+}
+
+void DbWriteTest::defaultCategoriesAreAFullSet()
+{
+    // The defaults have the kinds of money that a user needs from the start:
+    // income, investments, subscriptions… Names are unique, colours are
+    // valid, and the subcategories of a category have different shades.
+    const QVector<Data::DefaultCategory> defaults = Data::defaultCategories();
+    QStringList names;
+    for (const Data::DefaultCategory& category : defaults) {
+        names << category.name;
+        QVERIFY2(QRegularExpression(QStringLiteral("^#[0-9a-f]{6}$")).match(category.color).hasMatch(),
+                 qPrintable(category.color));
+        QSet<QString> subNames;
+        QSet<QString> shades;
+        for (const Data::DefaultSubcategory& sub : category.subcategories) {
+            QVERIFY2(QRegularExpression(QStringLiteral("^#[0-9a-f]{6}$")).match(sub.color).hasMatch(),
+                     qPrintable(sub.name + QLatin1Char(' ') + sub.color));
+            subNames.insert(sub.name);
+            shades.insert(sub.color);
+        }
+        QCOMPARE(subNames.size(), category.subcategories.size());
+        QCOMPARE(shades.size(), category.subcategories.size());
+        if (!category.subcategories.isEmpty()) {
+            QCOMPARE(category.subcategories.first().color, category.color);
+        }
+    }
+    QCOMPARE(QSet<QString>(names.cbegin(), names.cend()).size(), names.size());
+    for (const char* expected : {"Income", "Housing", "Subscriptions", "Investments", "Health", "Other"}) {
+        QVERIFY2(names.contains(QLatin1String(expected)), expected);
+    }
+    // The Savings page finds the interest by the word "Interest" (#211).
+    const auto income = std::find_if(defaults.cbegin(), defaults.cend(), [](const Data::DefaultCategory& c) {
+        return c.name == QLatin1String("Income");
+    });
+    QVERIFY(std::any_of(income->subcategories.cbegin(), income->subcategories.cend(),
+                        [](const Data::DefaultSubcategory& sub) { return sub.name == QLatin1String("Interest"); }));
+}
+
+void DbWriteTest::categoryResetsKeepWhatStillExists()
+{
+    // The two category resets of Database management: the accounts and the
+    // transactions stay; a transaction keeps a category that still exists.
+    Database& db = Database::instance();
+    const int account = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral(""),
+                                      QStringLiteral("EUR"), QStringLiteral(""));
+    const int groceries = db.addCategory(QStringLiteral("Groceries"), QStringLiteral("#a6e3a1"));
+    QVERIFY(db.addSubcategory(groceries, QStringLiteral("Supermarket"), QStringLiteral("#a6e3a1")) >= 0);
+    QVERIFY(db.addSubcategory(groceries, QStringLiteral("Organic shop"), QStringLiteral("#a6e3a1")) >= 0);
+    QVERIFY(db.addCategory(QStringLiteral("My own"), QStringLiteral("#89b4fa")) >= 0);
+    QVERIFY(db.insertTransactions(account, {
+        transaction(QStringLiteral("CARREFOUR"), QStringLiteral("Groceries"), QStringLiteral("Supermarket")),
+        transaction(QStringLiteral("BIOCOOP"), QStringLiteral("Groceries"), QStringLiteral("Organic shop")),
+        transaction(QStringLiteral("CLUB"), QStringLiteral("My own"), QStringLiteral("")),
+    }));
+    QVERIFY(db.addCategoryRule(QStringLiteral("CARREFOUR"), QStringLiteral("Groceries"), QStringLiteral("Supermarket")) >= 0);
+    QVERIFY(db.addCategoryRule(QStringLiteral("BIOCOOP"), QStringLiteral("Groceries"), QStringLiteral("Organic shop")) >= 0);
+    QVERIFY(db.addCategoryRule(QStringLiteral("CLUB"), QStringLiteral("My own"), QStringLiteral("")) >= 0);
+
+    // Reset to the defaults (the test runs in English): Groceries and
+    // Groceries/Supermarket exist there, "Organic shop" and "My own" do not.
+    Database::CategoryResetStats stats;
+    QVERIFY2(db.replaceCategories(Data::defaultCategories(), stats), qPrintable(db.lastError()));
+    QCOMPARE(db.loadCategories().size(), Data::defaultCategories().size());
+    auto rows = categoriesByName(account);
+    QCOMPARE(rows.value(QStringLiteral("CARREFOUR")), qMakePair(QStringLiteral("Groceries"), QStringLiteral("Supermarket")));
+    QCOMPARE(rows.value(QStringLiteral("BIOCOOP")), qMakePair(QStringLiteral("Groceries"), QString()));
+    QCOMPARE(rows.value(QStringLiteral("CLUB")), qMakePair(QString(), QString()));
+    QCOMPARE(stats.uncategorizedTransactions, 1);
+    QCOMPARE(stats.removedRules, 1);
+    QVector<Data::CategoryRule> rules = db.loadCategoryRules();
+    QCOMPARE(rules.size(), qsizetype(2));
+    for (const Data::CategoryRule& rule : rules) {
+        QCOMPARE(rule.category, QStringLiteral("Groceries"));
+        QCOMPARE(rule.subcategory, rule.pattern == QLatin1String("CARREFOUR") ? QStringLiteral("Supermarket") : QString());
+    }
+
+    // Remove all: no category, no rule, every transaction uncategorized; the
+    // account and its 3 transactions stay.
+    DatabaseManagementController controller;
+    QSignalSpy reset(&controller, &DatabaseManagementController::databaseReset);
+    controller.resetCategories();
+    QCOMPARE(reset.count(), 1);
+    QVERIFY2(controller.statusText().startsWith(QStringLiteral("✓")), qPrintable(controller.statusText()));
+    QVERIFY(db.loadCategories().isEmpty());
+    QVERIFY(db.loadCategoryRules().isEmpty());
+    rows = categoriesByName(account);
+    QCOMPARE(rows.size(), qsizetype(3));
+    for (const auto& pair : std::as_const(rows)) {
+        QCOMPARE(pair, qMakePair(QString(), QString()));
+    }
+
+    // And back to the defaults from the controller.
+    controller.resetCategoriesToDefaults();
+    QCOMPARE(reset.count(), 2);
+    QCOMPARE(db.loadCategories().size(), Data::defaultCategories().size());
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)

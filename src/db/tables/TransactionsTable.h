@@ -106,7 +106,8 @@ public:
     [[nodiscard]] static QString fingerprint(const Data::Transaction& tx, int occurrence = 1);
     [[nodiscard]] static QString fingerprint(const QString& operationDate, const QString& confirmationDate,
                                              double debit, double credit, double balanceAfter,
-                                             const QString& description, int occurrence = 1);
+                                             const QString& description, int occurrence = 1,
+                                             const QString& reference = QString());
     // The fingerprints of a batch (one statement), in order: the k-th row
     // that has the same plain fingerprint as earlier rows gets occurrence k.
     [[nodiscard]] static QStringList fingerprints(const QVector<Data::Transaction>& txs);
@@ -132,6 +133,15 @@ public:
     [[nodiscard]] QVector<Data::Transaction> allForAccount(int accountId) const;
 
     [[nodiscard]] int countForAccount(int accountId) const;
+
+    // Every transaction, oldest operation date first (the internal transfers
+    // and the pages of the net worth, #207).
+    [[nodiscard]] QVector<Data::Transaction> all() const;
+    // The transfer_id of one row (#207, see Data::Transaction::transferId).
+    // False when no row changes.
+    bool setTransferId(int transactionId, int transferId);
+    // The rows of transfer `transferId` become Data::kNotATransfer.
+    bool clearTransfer(int transferId);
 
     // Every *categorized* transaction across every account, oldest first.
     // Rows with an empty category are excluded in SQL rather than filtered by
@@ -165,6 +175,8 @@ public:
     // closer AccountBalanceCheckpoint (see ARCHITECTURE.MD § Statement
     // Import — reconciliation).
     [[nodiscard]] std::optional<Data::Transaction> latestOnOrBefore(int accountId, const QDate& date) const;
+    // The row with this id, or nothing.
+    [[nodiscard]] std::optional<Data::Transaction> byId(int transactionId) const;
 
 private:
     [[nodiscard]] QSqlDatabase db() const;

@@ -94,8 +94,9 @@ set_tests_properties(db_migration_test PROPERTIES
 #   uses the name, with the duplicate checks of the controllers (#34); the
 #   default data written once per database (#37), the mock data (#38), the
 #   order of the balance history (#36), the currency of an account (#48), and
-#   the checked results of prepare(), BEGIN and COMMIT (#49). It compiles the
-#   core sources plus three controllers.
+#   the checked results of prepare(), BEGIN and COMMIT (#49), the net worth
+#   flag (#206) and the internal transfers (#207). It compiles the core sources
+#   plus four controllers.
 
 qt_add_executable(db_write_test
     db_write_test.cpp
@@ -106,6 +107,8 @@ qt_add_executable(db_write_test
     ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/CategoryController.cpp
     ${CMAKE_SOURCE_DIR}/src/controllers/database/DatabaseManagementController.h
     ${CMAKE_SOURCE_DIR}/src/controllers/database/DatabaseManagementController.cpp
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/TransfersController.h
+    ${CMAKE_SOURCE_DIR}/src/controllers/dataentry/TransfersController.cpp
 )
 target_include_directories(db_write_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src
@@ -194,9 +197,10 @@ set_tests_properties(update_test PROPERTIES
 
 # calc_test
 #   The calculations behind the texts and charts of the pages: the Projects page
-#   (#41), the money flow and the rolling average of the Cash Flow page (#42,
-#   #56), the performance of the Investments page (#56), the money format
-#   (#48) and the whole cents of Money (#33). No database. It compiles the page
+#   (#41), the money flow, the rolling average and the figures of the Cash Flow page
+#   (#42, #56, #210), the performance of the Investments page (#56), the money format
+#   (#48), the whole cents of Money (#33) and the internal transfers that
+#   TransferMatcher finds (#207). No database. It compiles the page
 #   controllers that it tests.
 
 qt_add_executable(calc_test
@@ -205,15 +209,22 @@ qt_add_executable(calc_test
     ${CMAKE_SOURCE_DIR}/src/utils/Money.h
     ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.h
     ${CMAKE_SOURCE_DIR}/src/controllers/projects/ProjectsController.cpp
-    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow/CashFlowController.h
-    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow/CashFlowController.cpp
+    ${CMAKE_SOURCE_DIR}/src/calc/CashFlowCalc.h
+    ${CMAKE_SOURCE_DIR}/src/calc/CashFlowCalc.cpp
+    ${CMAKE_SOURCE_DIR}/src/calc/SavingsCalc.h
+    ${CMAKE_SOURCE_DIR}/src/calc/SavingsCalc.cpp
     ${CMAKE_SOURCE_DIR}/src/controllers/investments/InvestmentsController.h
     ${CMAKE_SOURCE_DIR}/src/controllers/investments/InvestmentsController.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/Transaction.h
+    ${CMAKE_SOURCE_DIR}/src/calc/TransferMatcher.h
+    ${CMAKE_SOURCE_DIR}/src/calc/TransferMatcher.cpp
+    ${CMAKE_SOURCE_DIR}/src/calc/NetWorthCalc.h
+    ${CMAKE_SOURCE_DIR}/src/calc/NetWorthCalc.cpp
+    ${CMAKE_SOURCE_DIR}/src/models/Account.h
 )
 target_include_directories(calc_test PRIVATE
     ${CMAKE_SOURCE_DIR}/src
     ${CMAKE_SOURCE_DIR}/src/controllers/projects
-    ${CMAKE_SOURCE_DIR}/src/controllers/cashflow
     ${CMAKE_SOURCE_DIR}/src/controllers/investments
 )
 # Qt6::Qml for the QML_ELEMENT macros in the controller headers.
@@ -226,6 +237,38 @@ set_tests_properties(calc_test PROPERTIES
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
 )
 
+# qml_test
+#   The QML tests of tests/qml (Qt Quick Test): TableScrollView lets a vertical
+#   wheel over a wide table scroll the page. The tests import the components
+#   by path, so the app module is not needed.
+
+find_package(Qt6 REQUIRED COMPONENTS QuickTest)
+
+qt_add_executable(qml_test qml_test_main.cpp)
+target_link_libraries(qml_test PRIVATE Qt6::QuickTest Qt6::Quick)
+set_target_properties(qml_test PROPERTIES WIN32_EXECUTABLE OFF)
+
+add_test(NAME qml_test COMMAND qml_test -input ${CMAKE_CURRENT_SOURCE_DIR}/qml)
+set_tests_properties(qml_test PROPERTIES
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+)
+
 # Every test target, so that CI and a local build need one target name:
 #   cmake --build build --target fd_tests
-add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test db_copy_test update_test calc_test)
+add_custom_target(fd_tests DEPENDS predictor_selftest import_save_test db_migration_test db_write_test db_copy_test update_test calc_test qml_test)
+
+# translations_test
+#   Every text of the app has a French translation: lupdate reads the sources
+#   into a copy of i18n/financedashboard_fr.ts, and the test fails when a
+#   message has no translation (a new qsTr()/tr() text that nobody translated).
+find_package(Qt6 REQUIRED COMPONENTS LinguistTools)
+add_test(NAME translations_test
+    COMMAND ${CMAKE_COMMAND}
+        -DLUPDATE=$<TARGET_FILE:Qt6::lupdate>
+        -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
+        -DTS=${CMAKE_SOURCE_DIR}/i18n/financedashboard_fr.ts
+        -DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/translations_test
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/check_translations.cmake
+)
+set_tests_properties(translations_test PROPERTIES TIMEOUT 120)

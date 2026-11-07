@@ -1,7 +1,9 @@
 #ifndef FINANCEDASHBOARD_MODELS_ACCOUNT_H
 #define FINANCEDASHBOARD_MODELS_ACCOUNT_H
 
+#include <QCoreApplication>
 #include <QString>
+#include <QStringView>
 #include <QDate>
 #include <QVector>
 
@@ -45,6 +47,11 @@ struct Account {
     QString category;   // e.g. "Day-to-day", "Savings" — DB-managed list (account_categories)
     QString currency;   // "EUR" or "USD" — see AccountsManagePage.qml's currency selector
     QString notes;
+    // Part of the net worth (#206): the accounts of the user (checking,
+    // savings, investments). A move between two of them is neither income
+    // nor spending. Off for an account that the user only follows (a joint
+    // account, the account of a child): money that goes to it is spending.
+    bool    inNetWorth = true;
     QVector<AccountHash> hashes;
     // No iban/bic/number: deliberately NOT stored, the app does not keep them
     // (see ARCHITECTURE.MD § Account Management) — removed after having been MOCK
@@ -53,6 +60,62 @@ struct Account {
     // written to the accounts table) — see AccountHashing.h /
     // SnapshotImportController.
 };
+
+// An investment account (#208): its value changes with the market, so its
+// balance checkpoints are valuations that the user enters from the statement
+// of the bank. The account category "Investments", or a type of the default
+// list for investments. The category name in English or French.
+// A default account category, in the language of the app (context
+// "DefaultAccountCategories"). The seeders write its name; the name is data
+// after that.
+[[nodiscard]] inline QString accountCategory(const char* englishName)
+{
+    return QCoreApplication::translate("DefaultAccountCategories", englishName);
+}
+
+// True when `category` is the default account category `englishName` in one
+// of the languages of the app: a database made in French has "\u00c9pargne",
+// not "Savings". The French names are written here too, so that a database
+// made in French still works after a switch to English.
+[[nodiscard]] inline bool isDefaultAccountCategory(const QString& category, const char* englishName,
+                                                   QStringView frenchName)
+{
+    return category.compare(QLatin1String(englishName), Qt::CaseInsensitive) == 0
+           || category.compare(frenchName, Qt::CaseInsensitive) == 0
+           || category.compare(accountCategory(englishName), Qt::CaseInsensitive) == 0;
+}
+
+[[nodiscard]] inline bool isInvestment(const Account& account)
+{
+    if (isDefaultAccountCategory(account.category, "Investments", u"Investissements")) {
+        return true;
+    }
+    for (const char* type : {"PEA", "CTO", "Assurance Vie"}) {
+        if (account.type.compare(QLatin1String(type), Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// A savings account (#209, #211): the account category "Savings", or a type
+// of the default list for regulated savings. An investment account is not a
+// savings account.
+[[nodiscard]] inline bool isSavings(const Account& account)
+{
+    if (isInvestment(account)) {
+        return false;
+    }
+    if (isDefaultAccountCategory(account.category, "Savings", u"\u00c9pargne")) {
+        return true;
+    }
+    for (const char* type : {"Livret A", "LDDS", "LEP", "PEL", "CEL", "Livret Jeune"}) {
+        if (account.type.compare(QLatin1String(type), Qt::CaseInsensitive) == 0) {
+            return true;
+        }
+    }
+    return false;
+}
 
 struct AccountCategory {
     int     id = -1;

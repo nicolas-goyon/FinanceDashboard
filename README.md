@@ -8,6 +8,9 @@ The app connects to GitHub only: at each start it asks for the list of releases 
 check off on the Updates page), and with the setup and the AppImage it downloads a new version
 when you click **Install** (see "Updates" below).
 
+The app is in English and in French: choose the language on the **Settings** page ("System
+language" follows the language of your computer).
+
 For what the app is trying to do product-wise, see `PROJECT.md`. For how it's built, see
 `ARCHITECTURE.MD`. For how it's tested, packaged and released, see `CI-CD.md`. For the current
 backlog and version history, see `TODO.md` and `version.md`.
@@ -39,7 +42,10 @@ to Finance Dashboard, with its own data.
 Linux builds need glibc 2.39+ (Ubuntu 24.04+, Debian 13+, Fedora 40+); on anything older, build
 from source below.
 
-Your data lives in one local SQLite file and never leaves the machine:
+The app stores no bank identifier: the import removes the IBAN, the BIC, the account and card
+numbers, the bank references and the mandate ids from each row before it saves it. Merchant
+and counterparty names stay. To suggest the account of a statement, the app keeps a tag of one
+byte made from the IBAN, which many bank accounts share: it cannot give the IBAN back. Your data lives in one local SQLite file and never leaves the machine:
 `%APPDATA%\DataAnalysis\FinanceDashboard\` on Windows,
 `~/.local/share/DataAnalysis/FinanceDashboard/` on Linux. When a new version changes the
 database format, the app first saves a copy next to it (`finance_dashboard.backup-<date>.db`) and
@@ -172,11 +178,13 @@ ctest --test-dir build -C Release --output-on-failure
 import, saved to a temporary database), `db_migration_test` (the schema upgrades),
 `db_write_test` (the writes of the table classes, the renames, the default data, the mock data,
 the balance history, the currency of an account, the checked database results, the amounts
-rounded to the cent and the account hashes), `db_copy_test`
+rounded to the cent and the account tags), `db_copy_test`
 (the copy of the prod database in the Test app), `update_test` (the versions, the update check and
 the installation, with a local test server instead of GitHub, and the QML engine that reads no
 file from the network) and `calc_test` (the calculations behind the texts and charts of the pages,
-the money format and the whole cents of `Money`).
+the money format and the whole cents of `Money`) and `qml_test` (the QML components, with Qt Quick
+Test: a wheel over a wide table scrolls the page) and `translations_test` (every text has a French
+translation).
 `cmake --build build --target fd_tests` builds only the tests. The release tools have their own
 tests: `python -m unittest discover -s tools -p "test_*.py"`.
 

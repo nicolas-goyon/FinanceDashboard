@@ -58,7 +58,7 @@ class SnapshotImportController : public QObject
     QML_ELEMENT
 
     // [{ id, displayName, fileFilter }] — available ImportTemplateRegistry entries
-    Q_PROPERTY(QVariantList templates READ templates CONSTANT)
+    Q_PROPERTY(QVariantList templates READ templates NOTIFY templatesChanged)
 
     // true once parseFile() has run and produced a usable statement (even if
     // some rows were skipped — check logEntries/errorCount for issues).
@@ -270,6 +270,7 @@ public:
     Q_INVOKABLE void addReconciliationAdjustment(int accountId);
 
 signals:
+    void templatesChanged();
     void statementChanged();
     void logChanged();
     void statusChanged();
@@ -284,6 +285,8 @@ signals:
     void predictionsAboutToBeApplied();
 
 private:
+    void buildTemplates();
+    bool eventFilter(QObject* watched, QEvent* event) override;
     void setStatus(StatusMessage::Level level, const QString& msg);
     // Adds `name` as a new category (neutral color) if no existing category
     // matches it case-insensitively — used by addReconciliationAdjustment()
@@ -358,6 +361,12 @@ private:
     bool    m_lastParseFailed{false};
     QString m_sourceFileName;
     QString m_templateId; // last parseFile()'s templateId — stored on saved transactions as source_template
+    // The one-byte tag of the account of m_statement (AccountHashing, #203),
+    // computed once: the slow derivation takes about 0.1 s. Cleared with
+    // m_statement.
+    [[nodiscard]] QString accountTag() const;
+    mutable QString m_accountTag;
+    mutable bool m_accountTagComputed = false;
 
     StatusMessage m_status;
     QVariantMap m_lastImportReport;

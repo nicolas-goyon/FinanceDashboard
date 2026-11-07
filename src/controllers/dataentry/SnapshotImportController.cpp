@@ -20,6 +20,8 @@
 #include <functional>
 #include <optional>
 #include <utility>
+#include <QCoreApplication>
+#include <QEvent>
 #include <QDate>
 #include <QFileInfo>
 #include <QFuture>
@@ -55,7 +57,7 @@ constexpr double kPercentScale = 100.0;
 // 2026-10-18).
 bool hasReusedReference(const Data::Transaction& row, const QDate& savedOperationDate)
 {
-    return !TransactionsTable::bankReference(row.description).isEmpty() && savedOperationDate != row.operationDate;
+    return !row.bankReference.isEmpty() && savedOperationDate != row.operationDate;
 }
 
 // credit - debit, the signed amount the category predictor wants (see
@@ -82,6 +84,16 @@ SnapshotImportController::SnapshotImportController(QObject* parent)
 {
     connect(&m_predictionWatcher, &QFutureWatcher<PredictionJob>::finished, this,
             &SnapshotImportController::predictionsReady);
+    buildTemplates();
+    // The names of the templates are translated: a change of language
+    // (QCoreApplication::installTranslator() sends LanguageChange to the
+    // application) builds the list again.
+    QCoreApplication::instance()->installEventFilter(this);
+}
+
+void SnapshotImportController::buildTemplates()
+{
+    m_templates.clear();
     for (const ImportTemplate* tpl : ImportTemplateRegistry::all()) {
         m_templates.append(QVariantMap{
             { "id",          tpl->id() },
@@ -89,6 +101,15 @@ SnapshotImportController::SnapshotImportController(QObject* parent)
             { "fileFilter",  tpl->fileFilter() },
         });
     }
+}
+
+bool SnapshotImportController::eventFilter(QObject* watched, QEvent* event)
+{
+    if (watched == QCoreApplication::instance() && event->type() == QEvent::LanguageChange) {
+        buildTemplates();
+        emit templatesChanged();
+    }
+    return QObject::eventFilter(watched, event);
 }
 
 SnapshotImportController::~SnapshotImportController()
@@ -100,18 +121,40 @@ SnapshotImportController::~SnapshotImportController()
     m_predictionWatcher.future().cancel();
 }
 
+QString SnapshotImportController::accountTag() const
+{
+    if (!m_accountTagComputed) {
+        m_accountTag = AccountHashing::compute(m_statement.iban, m_statement.bic);
+        m_accountTagComputed = true;
+    }
+    return m_accountTag;
+}
+
+namespace {
+// An identifier of the statement header, for the review screen: its last 4
+// characters only (#202). The full value stays in memory and is never shown.
+QString maskedTail(const QString& value)
+{
+    constexpr qsizetype kShown = 4;
+    if (value.isEmpty()) {
+        return QStringLiteral("\u2014"); // —
+    }
+    return QStringLiteral("\u2022\u2022\u2022\u2022 ") + value.right(kShown);
+}
+} // namespace
+
 QVariantMap SnapshotImportController::statementInfo() const
 {
-    const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
+    const QString hash = accountTag();
 
     return QVariantMap{
         { "holderName",         m_statement.accountHolderName.isEmpty() ? QStringLiteral("—") : m_statement.accountHolderName },
         { "accountName",        m_statement.accountName.isEmpty()       ? QStringLiteral("—") : m_statement.accountName },
-        { "clientCode",         m_statement.clientCode.isEmpty()        ? QStringLiteral("—") : m_statement.clientCode },
-        { "accountNumber",      m_statement.accountNumber.isEmpty()     ? QStringLiteral("—") : m_statement.accountNumber },
-        { "iban",               m_statement.iban.isEmpty()              ? QStringLiteral("—") : m_statement.iban },
+        { "clientCode",         maskedTail(m_statement.clientCode) },
+        { "accountNumber",      maskedTail(m_statement.accountNumber) },
+        { "iban",               maskedTail(m_statement.iban) },
         { "bic",                m_statement.bic.isEmpty()               ? QStringLiteral("—") : m_statement.bic },
-        // HMAC-SHA256(iban, key=bic) — see AccountHashing::compute(). Empty IBAN → "—".
+        // The one-byte tag of the account — see AccountHashing::compute(). Empty IBAN → "—".
         { "accountHash",        hash.isEmpty() ? QStringLiteral("—") : hash },
         // Same value, un-prettified (empty string instead of "—") — what
         // ImportSnapshotPage.qml's "Link this account" button actually
@@ -192,20 +235,20 @@ QVariantMap SnapshotImportController::predictionInfo() const
     const int rowCount = static_cast<int>(m_statement.transactions.size());
     QString summary;
     if (!m_predictor.isTrained()) {
-        summary = QStringLiteral("No categorized transactions to learn from yet — categorize this "
-                                  "statement by hand and the next import will start filling itself in.");
+        summary = tr("No categorized transactions to learn from yet — categorize this "
+                     "statement by hand and the next import will start filling itself in.");
     } else if (rowCount == 0) {
-        summary = QStringLiteral("Nothing to categorize.");
+        summary = tr("Nothing to categorize.");
     } else {
-        summary = QStringLiteral("Auto-filled %1 of %2 row(s) from %3 merchant(s) you've categorized before")
+        summary = tr("Auto-filled %1 of %2 row(s) from %3 merchant(s) you've categorized before")
                        .arg(filled)
                        .arg(rowCount)
                        .arg(m_predictor.distinctKeyCount());
         if (m_predictor.ruleCount() > 0) {
-            summary += QStringLiteral(" plus %1 of your rules").arg(m_predictor.ruleCount());
+            summary += tr(" plus %1 of your rules").arg(m_predictor.ruleCount());
         }
         summary += (needsReview > 0)
-            ? QStringLiteral(". %1 marked amber/red — worth a look before saving.").arg(needsReview)
+            ? tr(". %1 marked amber/red — worth a look before saving.").arg(needsReview)
             : QStringLiteral(".");
     }
 
@@ -263,6 +306,8 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
     dropPredictions(); // a job for the earlier statement counts for nothing now
     m_predictor.clear();
     m_statement = Data::ImportedStatement{};
+    m_accountTag.clear();
+    m_accountTagComputed = false;
     m_log.clear();
     m_userEditedRows.clear(); // fresh statement — nobody has decided anything yet
     m_userCategoryRows.clear();
@@ -274,12 +319,12 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
 
     if (tpl == nullptr) {
         m_log.append(Data::ImportLogEntry{ Data::LogLevel::Error, 0,
-            QStringLiteral("Unknown template id: %1").arg(templateId), QString() });
+            tr("Unknown template id: %1").arg(templateId), QString() });
         m_hasParsed = false;
         m_lastParseFailed = true;
     } else if (path.isEmpty()) {
         m_log.append(Data::ImportLogEntry{ Data::LogLevel::Error, 0,
-            QStringLiteral("No file selected"), QString() });
+            tr("No file selected"), QString() });
         m_hasParsed = false;
         m_lastParseFailed = true;
     } else {
@@ -299,9 +344,9 @@ void SnapshotImportController::parseFile(const QUrl& fileUrl, const QString& tem
     emit logChanged();
 
     if (m_lastParseFailed) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Import failed — see the log for details"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Import failed — see the log for details"));
     } else {
-        setStatus(StatusMessage::Level::Success, QString("✓  Parsed %1 transaction(s) from %2")
+        setStatus(StatusMessage::Level::Success, tr("✓  Parsed %1 transaction(s) from %2")
                        .arg(m_statement.transactions.size())
                        .arg(m_sourceFileName));
     }
@@ -400,28 +445,26 @@ int SnapshotImportController::matchAccountIndex(const QVariantList& accounts) co
     // shows the manual picker.
     // The fingerprint first, then its form from before #50 (an
     // 8-character BIC, #50): save() replaces that one.
-    QStringList candidates = {AccountHashing::compute(m_statement.iban, m_statement.bic)};
-    const QString legacy = AccountHashing::legacyCompute(m_statement.iban, m_statement.bic);
-    if (!legacy.isEmpty()) {
-        candidates.append(legacy);
-    }
-    if (candidates.first().isEmpty()) {
+    // A tag can be on two accounts (#203): the import suggests an account
+    // only when one account has the tag; else the user picks.
+    const QString tag = accountTag();
+    if (tag.isEmpty()) {
         return -1;
     }
-
-    for (const QString& targetHash : candidates) {
-        for (int i = 0; i < accounts.size(); ++i) {
-            const QVariantMap acc = accounts.at(i).toMap();
-            const QVariantList hashes = acc.value("hashes").toList();
-            for (const QVariant& hashEntry : hashes) {
-                if (hashEntry.toMap().value("hash").toString().compare(targetHash, Qt::CaseInsensitive) == 0) {
-                    return i;
-                }
+    int match = -1;
+    for (int i = 0; i < accounts.size(); ++i) {
+        const QVariantList hashes = accounts.at(i).toMap().value(QStringLiteral("hashes")).toList();
+        const bool has = std::any_of(hashes.cbegin(), hashes.cend(), [&](const QVariant& entry) {
+            return entry.toMap().value(QStringLiteral("hash")).toString().compare(tag, Qt::CaseInsensitive) == 0;
+        });
+        if (has) {
+            if (match >= 0) {
+                return -1; // two accounts have it
             }
+            match = i;
         }
     }
-
-    return -1;
+    return match;
 }
 
 int SnapshotImportController::legacyHashAccountIndex(const QVariantList& accounts) const
@@ -445,6 +488,8 @@ void SnapshotImportController::reset()
 {
     dropPredictions();
     m_statement = Data::ImportedStatement{};
+    m_accountTag.clear();
+    m_accountTagComputed = false;
     m_log.clear();
     m_hasParsed = false;
     m_lastParseFailed = false;
@@ -634,7 +679,7 @@ bool SnapshotImportController::rememberRowAsRule(int row)
     const QString rowSubcategory = m_statement.transactions.at(row).subcategory;
 
     if (rowCategory.isEmpty()) {
-        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  Pick a category for this row first, then teach it as a rule"));
+        setStatus(StatusMessage::Level::Warning, tr("⚠  Pick a category for this row first, then teach it as a rule"));
         return false;
     }
 
@@ -644,12 +689,12 @@ bool SnapshotImportController::rememberRowAsRule(int row)
     // Data::CategoryRule::pattern).
     const QString pattern = Predict::LabelNormalizer::normalize(rowName, rowDescription).key;
     if (pattern.isEmpty()) {
-        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  This row's label has nothing distinctive to build a rule from"));
+        setStatus(StatusMessage::Level::Warning, tr("⚠  This row's label has nothing distinctive to build a rule from"));
         return false;
     }
 
     if (Database::instance().addCategoryRule(pattern, rowCategory, rowSubcategory) < 0) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Failed to save the rule — see application log"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Failed to save the rule — see application log"));
         return false;
     }
 
@@ -657,7 +702,7 @@ bool SnapshotImportController::rememberRowAsRule(int row)
     // same statement snaps to the new rule without the user re-importing.
     // The row they taught it from is in m_userEditedRows and stays as-is.
     refreshPredictions();
-    setStatus(StatusMessage::Level::Success, QString("✓  From now on, \"%1\" is categorized as %2")
+    setStatus(StatusMessage::Level::Success, tr("✓  From now on, \"%1\" is categorized as %2")
                    .arg(pattern, rowSubcategory.isEmpty()
                                       ? rowCategory
                                       : rowCategory + QStringLiteral(" / ") + rowSubcategory));
@@ -705,14 +750,14 @@ QVariantMap SnapshotImportController::evaluatePredictor()
 bool SnapshotImportController::save(int accountId, const QString& accountLabel)
 {
     if (accountId < 0) {
-        setStatus(StatusMessage::Level::Warning, QStringLiteral("⚠  Please select an account before saving"));
+        setStatus(StatusMessage::Level::Warning, tr("⚠  Please select an account before saving"));
         return false;
     }
     // The rows get their suggestions in the worker thread (#52): a save now
     // would write them without.
     if (m_predicting) {
         setStatus(StatusMessage::Level::Warning,
-                  QStringLiteral("⚠  The category suggestions are not ready yet: save again in a moment"));
+                  tr("⚠  The category suggestions are not ready yet: save again in a moment"));
         return false;
     }
 
@@ -733,6 +778,7 @@ bool SnapshotImportController::save(int accountId, const QString& accountLabel)
         row.operationDate    = transaction.operationDate;
         row.name              = transaction.name;
         row.description      = transaction.description;
+        row.bankReference    = transaction.bankReference;
         row.debit            = transaction.debit;
         row.credit           = transaction.credit;
         row.balanceAfter     = transaction.balanceAfter;
@@ -777,14 +823,12 @@ bool SnapshotImportController::save(int accountId, const QString& accountLabel)
             ++alreadySaved;
             if (hasReusedReference(toSave.at(i), saved.value())) {
                 ++reusedReferences;
+                // No reference, amount or date in the log (#205).
                 qWarning().noquote()
-                    << QStringLiteral("[SnapshotImportController] row not saved: bank reference %1, amount %2, "
-                                      "operation date %3; the saved transaction has %4. See %5")
-                           .arg(TransactionsTable::bankReference(toSave.at(i).description))
-                           .arg(toSave.at(i).credit - toSave.at(i).debit, 0, 'f', 2)
-                           .arg(toSave.at(i).operationDate.toString(Qt::ISODate),
-                                saved.value().toString(Qt::ISODate),
-                                QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
+                    << QStringLiteral("[SnapshotImportController] row %1 not saved: a saved transaction has its "
+                                      "bank reference and amount, but another operation date. See %2")
+                           .arg(i + 1)
+                           .arg(QLatin1String(TransactionsTable::kReusedReferenceIssueUrl));
             }
             continue;
         }
@@ -793,14 +837,12 @@ bool SnapshotImportController::save(int accountId, const QString& accountLabel)
         newRows.append(row);
     }
 
-    const QString hash = AccountHashing::compute(m_statement.iban, m_statement.bic);
-    // The fingerprint from before #50 (an 8-character BIC): replaced by
-    // `hash` (#50).
-    const QString legacyHash = AccountHashing::legacyCompute(m_statement.iban, m_statement.bic);
+    const QString hash = accountTag();
+    const QString legacyHash; // the forms of before v0.3.0 are gone (step 7)
     int inserted = 0;
     if (!Database::instance().saveImport(accountId, newRows, hash, statementCheckpointsToAdd(accountId),
                                          &inserted, legacyHash)) {
-        setStatus(StatusMessage::Level::Danger, QStringLiteral("⚠  Could not save the import. Nothing was saved — see application log"));
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Could not save the import. Nothing was saved — see application log"));
         return false;
     }
     if (inserted != newRows.size()) {
@@ -819,16 +861,16 @@ bool SnapshotImportController::save(int accountId, const QString& accountLabel)
     emit reportChanged();
 
     if (alreadySaved == 0) {
-        setStatus(StatusMessage::Level::Success, QString("✓  Saved %1 of %2 transaction(s) to \"%3\"")
+        setStatus(StatusMessage::Level::Success, tr("✓  Saved %1 of %2 transaction(s) to \"%3\"")
                        .arg(inserted)
                        .arg(m_statement.transactions.size())
                        .arg(accountLabel));
     } else if (inserted == 0) {
-        setStatus(StatusMessage::Level::Success, QString("✓  Nothing new: the %1 transaction(s) of this statement are already saved in \"%2\"")
+        setStatus(StatusMessage::Level::Success, tr("✓  Nothing new: the %1 transaction(s) of this statement are already saved in \"%2\"")
                        .arg(alreadySaved)
                        .arg(accountLabel));
     } else {
-        setStatus(StatusMessage::Level::Success, QString("✓  Saved %1 new transaction(s) to \"%2\" — %3 already saved, not added again")
+        setStatus(StatusMessage::Level::Success, tr("✓  Saved %1 new transaction(s) to \"%2\" — %3 already saved, not added again")
                        .arg(inserted)
                        .arg(accountLabel)
                        .arg(alreadySaved));
@@ -872,12 +914,12 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
     if (checkpoint.has_value() && (!priorTx.has_value() || checkpoint->date >= Data::bookingDate(*priorTx))) {
         hasStartReference = true;
         expectedStart = checkpoint->balance;
-        startSourceLabel = QStringLiteral("balance checkpoint");
+        startSourceLabel = tr("balance checkpoint");
         startSourceDate = checkpoint->date;
     } else if (priorTx.has_value()) {
         hasStartReference = true;
         expectedStart = priorTx->balanceAfter;
-        startSourceLabel = QStringLiteral("last recorded transaction");
+        startSourceLabel = tr("last recorded transaction");
         startSourceDate = Data::bookingDate(*priorTx);
     }
 
@@ -921,6 +963,7 @@ QVariantMap SnapshotImportController::checkReconciliation(int accountId) const
         row.confirmationDate = transaction.confirmationDate;
         row.operationDate    = transaction.operationDate;
         row.description      = transaction.description;
+        row.bankReference    = transaction.bankReference;
         row.debit            = transaction.debit;
         row.credit           = transaction.credit;
         row.balanceAfter     = transaction.balanceAfter;
@@ -984,7 +1027,7 @@ void SnapshotImportController::addReconciliationAdjustment(int accountId)
     m_userEditedRows.insert(static_cast<int>(m_statement.transactions.size()) - 1);
     m_userCategoryRows.insert(static_cast<int>(m_statement.transactions.size()) - 1);
     emit statementChanged();
-    setStatus(StatusMessage::Level::Success, QString("✓  Added a %1 adjustment transaction to match the declared closing balance")
+    setStatus(StatusMessage::Level::Success, tr("✓  Added a %1 adjustment transaction to match the declared closing balance")
                    .arg(Fmt::money(diff, true)));
 }
 
@@ -1024,9 +1067,9 @@ QVector<Data::AccountBalanceCheckpoint> SnapshotImportController::statementCheck
         toAdd.append(checkpoint);
     };
     plan(m_statement.balanceStartDate, m_statement.balanceStart,
-         QStringLiteral("Auto — statement start (%1)").arg(m_sourceFileName));
+         QStringLiteral("Auto — statement start"));
     plan(m_statement.balanceEndDate, m_statement.balanceEnd,
-         QStringLiteral("Auto — statement end (%1)").arg(m_sourceFileName));
+         QStringLiteral("Auto — statement end"));
     return toAdd;
 }
 
@@ -1044,7 +1087,7 @@ void SnapshotImportController::buildImportReport(const QString& accountLabel, co
         totalIncomeCents  += Money::toCents(transaction.credit);
         totalExpenseCents += Money::toCents(transaction.debit);
 
-        const QString category    = transaction.category.isEmpty() ? QStringLiteral("Uncategorized") : transaction.category;
+        const QString category    = transaction.category.isEmpty() ? tr("Uncategorized") : transaction.category;
         const QString subcategory = transaction.subcategory.isEmpty() ? QStringLiteral("—") : transaction.subcategory;
         const qint64 net = Money::toCents(transaction.credit) - Money::toCents(transaction.debit);
 

@@ -19,15 +19,15 @@ Item {
         width: parent.width - 40
         spacing: 12
 
-        PageHeader { title: "Account Management" }
+        PageHeader { title: qsTr("Account Management") }
 
         Text {
             Layout.fillWidth: true
             wrapMode: Text.WordWrap
-            text: "Use the sidebar actions to manage accounts: \"Manage Accounts\" to add/edit/remove "
-                + "accounts, link hash fingerprints, and view an account's transactions, or \"Account "
+            text: qsTr("Use the sidebar actions to manage accounts: \"Manage Accounts\" to add/edit/remove "
+                + "accounts, choose your net worth, and view an account's transactions, or \"Account "
                 + "types & categories\" to edit the type/category lists accounts are classified by. "
-                + "Expand this category in the sidebar (the arrow) to see both."
+                + "Expand this category in the sidebar (the arrow) to see both.")
             font.pixelSize: 15
             color: Theme.overlay0
         }

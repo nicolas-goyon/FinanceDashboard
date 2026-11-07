@@ -93,7 +93,7 @@ if(WIN32)
 endif()
 
 # Qt Quick / QML + Qt Graphs (2D). Qt Charts and Widgets are no longer used.
-find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2 Network Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Core Gui Quick Qml Graphs Sql QuickControls2 Network Concurrent LinguistTools)
 
 qt_standard_project_setup(REQUIRES 6.10)
 
@@ -119,6 +119,8 @@ set(FD_CORE_SOURCES
     src/models/ImportLog.h
     src/models/Category.h
     src/models/Account.h
+    src/models/DefaultCategories.h
+    src/models/DefaultCategories.cpp
     src/models/Transaction.h
     src/models/CategoryRule.h
     src/db/tables/SnapshotsTable.h
@@ -152,6 +154,14 @@ set(FD_CORE_SOURCES
     src/utils/Formatter.h
     src/utils/Money.h
     src/utils/AccountHashing.h
+    src/calc/TransferMatcher.h
+    src/calc/TransferMatcher.cpp
+    src/calc/NetWorthCalc.h
+    src/calc/NetWorthCalc.cpp
+    src/calc/CashFlowCalc.h
+    src/calc/CashFlowCalc.cpp
+    src/calc/SavingsCalc.h
+    src/calc/SavingsCalc.cpp
     src/utils/StatusMessage.h
     src/utils/StatusMessage.cpp
     # Category prediction (see docs/category-prediction.md). UI-independent
@@ -168,6 +178,9 @@ set(FD_CORE_SOURCES
     src/import/ImportTemplateRegistry.cpp
     src/import/SumeriaCcpCsvExtractionTemplate.h
     src/import/SumeriaCcpCsvExtractionTemplate.cpp
+    # Removes the bank identifiers of every imported row (#202).
+    src/import/StatementSanitizer.h
+    src/import/StatementSanitizer.cpp
     # The update check (#117): versions, the list of releases, the kind of
     # installation and the package of a new version. Qt Core only, no network
     # — UpdateController and UpdateInstaller below download.
@@ -211,6 +224,8 @@ qt_add_qml_module(FinanceDashboard
     SOURCES
         # PROJECT.md pages (mock data — UI pass)
         # One subfolder per page/domain under src/controllers/ (see ARCHITECTURE.MD § Directory Map).
+        src/controllers/common/NetWorthScope.h
+        src/controllers/common/NetWorthScope.cpp
         src/controllers/overview/NetWorthController.h
         src/controllers/overview/NetWorthController.cpp
         src/controllers/cashflow/CashFlowController.h
@@ -227,6 +242,8 @@ qt_add_qml_module(FinanceDashboard
         src/controllers/dataentry/CategoryController.cpp
         src/controllers/dataentry/AccountController.h
         src/controllers/dataentry/AccountController.cpp
+        src/controllers/dataentry/TransfersController.h
+        src/controllers/dataentry/TransfersController.cpp
         src/controllers/database/DatabaseManagementController.h
         src/controllers/database/DatabaseManagementController.cpp
         src/controllers/updates/UpdateController.h
@@ -235,6 +252,8 @@ qt_add_qml_module(FinanceDashboard
         src/controllers/updates/UpdateInstaller.cpp
         # Fonts that QML cannot name (fixed-pitch font of the system, #77).
         src/controllers/ui/Fonts.h
+        src/controllers/ui/Language.h
+        src/controllers/ui/Language.cpp
     QML_FILES
         qml/Main.qml
         qml/StartupErrorWindow.qml
@@ -249,6 +268,9 @@ qt_add_qml_module(FinanceDashboard
         qml/components/PillButton.qml
         qml/components/GhostButton.qml
         qml/components/StatusBadge.qml
+        qml/components/AccountFormDialog.qml
+        qml/components/DateAxisLabel.qml
+        qml/components/TableScrollView.qml
         qml/components/ColumnHeaderCell.qml
         qml/components/FormRow.qml
         qml/components/ColorPickerRow.qml
@@ -271,6 +293,21 @@ qt_add_qml_module(FinanceDashboard
         qml/pages/AccountTypesCategoriesPage.qml
         qml/pages/AccountTransactionsPage.qml
         qml/pages/AccountHistoryPage.qml
+        qml/pages/InternalTransfersPage.qml
+        qml/pages/SettingsPage.qml
+)
+
+# ── Translations (Settings → Language) ───────────────────────────────────────
+# English is the language of the sources: qsTr() in QML, tr() and
+# QCoreApplication::translate() in C++. i18n/financedashboard_fr.ts has the
+# French. lrelease builds the .qm files into the app (resource prefix /i18n,
+# read by src/controllers/ui/Language.cpp). After a change of the texts:
+#   cmake --build build --target update_translations
+# updates the .ts files (lupdate) from the sources.
+qt_add_translations(FinanceDashboard
+    TS_FILES i18n/financedashboard_fr.ts
+    RESOURCE_PREFIX "/i18n"
+    LUPDATE_OPTIONS -no-obsolete -locations none
 )
 
 # NOTE — qml/pages/ImportSnapshotPage.qml (FileDialog) and

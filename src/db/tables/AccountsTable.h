@@ -53,6 +53,9 @@ public:
     // Database::removeAccount(), which does all three in one transaction).
     bool remove(int accountId);
 
+    // The net worth flag of the account (#206). False when no row changes.
+    bool setInNetWorth(int accountId, bool inNetWorth);
+
     // Renames (#34). The accounts store their type and category names as
     // text, not as ids: Database::renameAccountType()/renameAccountCategory()
     // call these in the same SQL transaction as the rename itself.

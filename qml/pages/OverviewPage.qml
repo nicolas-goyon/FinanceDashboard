@@ -7,8 +7,9 @@ import QtGraphs
 import FinanceDashboard
 
 // ── Overview (Net Worth) — PROJECT.md page 1 ──────────────────────────────────
-// KPI cards · stacked area by account type · allocation donut · net change bars
-// [MOCK DATA — NetWorthController]
+// KPI cards · stacked area by group of accounts · allocation donut · net
+// change bars. From the accounts of the net worth (#206, #209):
+// NetWorthController reads them again each time the page is shown.
 //
 // Note: axis labelFormat cannot render "€" (shows "?"), so units live in the
 // card titles; tooltips (QML Text) keep the € symbol.
@@ -28,18 +29,24 @@ Item {
     property var savingsOwn: []
     property var tradingOwn: []
 
-    Component.onCompleted: {
+    // Fills the series from the controller. Also after a reload: the series
+    // are cleared first.
+    function fill() {
+        checkingBound.clear()
+        savingsBound.clear()
+        tradingBound.clear()
+        hoverChecking.clear()
+        hoverSavings.clear()
+        hoverTrading.clear()
         var t  = controller.timestamps()
-        var b1 = controller.checkingBound()
+        var b1 = controller.dayToDayBound()
         var b2 = controller.savingsBound()
-        var b3 = controller.tradingBound()
+        var b3 = controller.investmentsBound()
         var own1 = [], own2 = [], own3 = []
         for (var i = 0; i < t.length; i++) {
             checkingBound.append(t[i], b1[i])
             savingsBound.append(t[i], b2[i])
             tradingBound.append(t[i], b3[i])
-            // Hover-carrier lines (children complete before this handler runs,
-            // so they must be filled here, not in their own onCompleted)
             hoverChecking.append(t[i], b1[i])
             hoverSavings.append(t[i], b2[i])
             hoverTrading.append(t[i], b3[i])
@@ -50,6 +57,32 @@ Item {
         checkingOwn = own1
         savingsOwn = own2
         tradingOwn = own3
+
+        allocationSeries.clear()
+        var a = controller.allocation
+        for (var j = 0; j < a.length; j++) {
+            var slice = allocationSeries.append(a[j].label, a[j].value)
+            slice.color = a[j].color
+            // Without it, the slice gets the outline colour of the theme (#71).
+            slice.borderColor = slice.color
+            slice.labelVisible = true
+        }
+        allocationInfo.text = qsTr("Click a slice for details")
+        monthAxis.categories = controller.monthLabels
+        gainSet.values = controller.netGains
+        lossSet.values = controller.netLosses
+    }
+
+    // Hover-carrier lines are children of the GraphsView: they complete before
+    // this handler runs, so they are filled here.
+    Component.onCompleted: page.fill()
+    // The page stays loaded in the StackLayout: read the data again each time
+    // it is shown (an import, a transfer or a valuation can change it).
+    onVisibleChanged: {
+        if (visible) {
+            controller.reload()
+            page.fill()
+        }
     }
 
     ScrollView {
@@ -63,8 +96,13 @@ Item {
             spacing: 16
 
             PageHeader {
-                title: "Overview — Net Worth"
-                mock: true
+                title: qsTr("Overview — Net Worth")
+            }
+
+            EmptyState {
+                visible: !controller.hasData
+                message: qsTr("No account is in your net worth yet. Add accounts in Account Management → Manage "
+                    + "Accounts, and import their statements.")
             }
 
             // ── KPI cards ─────────────────────────────────────────────────────
@@ -88,7 +126,7 @@ Item {
             ChartCard {
                 Layout.fillWidth: true
                 implicitHeight: 360
-                title: "Net worth over time — by account type (€) — hover the dots for values"
+                title: qsTr("Net worth over time — day-to-day, savings, investments (€) — hover the dots for values")
 
                 GraphsView {
                     anchors.fill: parent
@@ -101,23 +139,25 @@ Item {
                     axisX: DateTimeAxis {
                         min: new Date(controller.minTimeMs)
                         max: new Date(controller.maxTimeMs)
-                        labelFormat: "MMM yy"
+                        // Month names in the language of the app (DateAxisLabel).
+                        labelFormat: "yyyy-MM-dd"
+                        labelDelegate: Component { DateAxisLabel { displayFormat: "MMM yy" } }
                     }
                     axisY: ValueAxis {
-                        min: 0
+                        min: controller.minTotal
                         max: controller.maxTotal
                         labelFormat: "%.0f"
                     }
 
                     AreaSeries {
-                        name: "Checking"
+                        name: qsTr("Day-to-day")
                         color: Theme.blueArea
                         borderColor: Theme.blue
                         borderWidth: 1.5
                         upperSeries: checkingBound
                     }
                     AreaSeries {
-                        name: "Savings"
+                        name: qsTr("Savings")
                         color: Theme.greenArea
                         borderColor: Theme.green
                         borderWidth: 1.5
@@ -125,7 +165,7 @@ Item {
                         lowerSeries: checkingBound
                     }
                     AreaSeries {
-                        name: "Trading"
+                        name: qsTr("Investments")
                         color: Theme.mauveArea
                         borderColor: Theme.mauve
                         borderWidth: 1.5
@@ -147,7 +187,7 @@ Item {
                         width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
-                                seriesName: "Checking"
+                                seriesName: qsTr("Day-to-day")
                                 overrideValues: page.checkingOwn
                             }
                         }
@@ -158,7 +198,7 @@ Item {
                         width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
-                                seriesName: "Savings"
+                                seriesName: qsTr("Savings")
                                 overrideValues: page.savingsOwn
                             }
                         }
@@ -169,7 +209,7 @@ Item {
                         width: 1.5
                         pointDelegate: Component {
                             HoverPoint {
-                                seriesName: "Trading"
+                                seriesName: qsTr("Investments")
                                 overrideValues: page.tradingOwn
                             }
                         }
@@ -186,7 +226,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 320
-                    title: "Current allocation — click a slice for details"
+                    title: qsTr("Current allocation — click a slice for details")
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -198,21 +238,12 @@ Item {
                             theme: GraphsTheme { colorScheme: GraphsTheme.ColorScheme.Dark }
 
                             PieSeries {
+                                id: allocationSeries
                                 // Without it the renderer emits no clicked signal (default false).
                                 selectable: true
                                 pieSize: 0.75
                                 holeSize: 0.42
-
-                                Component.onCompleted: {
-                                    var a = controller.allocation
-                                    for (var i = 0; i < a.length; i++) {
-                                        var slice = append(a[i].label, a[i].value)
-                                        slice.color = a[i].color
-                                        // Without it, the slice gets the outline colour of the theme (#71).
-                                        slice.borderColor = slice.color
-                                        slice.labelVisible = true
-                                    }
-                                }
+                                // Filled by page.fill().
                                 onClicked: (slice) => {
                                     allocationInfo.text = slice.label + "  —  "
                                         + slice.value.toLocaleString(Qt.locale("fr-FR"), 'f', 0)
@@ -223,7 +254,7 @@ Item {
                         Text {
                             id: allocationInfo
                             Layout.alignment: Qt.AlignHCenter
-                            text: "Click a slice for details"
+                            text: qsTr("Click a slice for details")
                             font.pixelSize: 14
                             color: Theme.overlay0
                         }
@@ -234,7 +265,7 @@ Item {
                     Layout.fillWidth: true
                     Layout.preferredWidth: 1
                     implicitHeight: 320
-                    title: "Monthly net change (€)"
+                    title: qsTr("Change of the net worth each month (€)")
 
                     GraphsView {
                         anchors.fill: parent
@@ -249,18 +280,148 @@ Item {
                         BarSeries {
                             barDelegate: Component { HoverBar {} }
 
-                            axisX: BarCategoryAxis {
-                                Component.onCompleted: categories = controller.monthLabels
-                            }
+                            // Filled by page.fill().
+                            axisX: BarCategoryAxis { id: monthAxis }
                             BarSet {
-                                label: "Gain"
+                                id: gainSet
+                                label: qsTr("Gain")
                                 color: Theme.green
-                                Component.onCompleted: values = controller.netGains
                             }
                             BarSet {
-                                label: "Loss"
+                                id: lossSet
+                                label: qsTr("Loss")
                                 color: Theme.red
-                                Component.onCompleted: values = controller.netLosses
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ── Yearly summary (#212) ─────────────────────────────────────────
+            // "How much did I save this year?" and "how did my net worth
+            // change since last year?". Savings + gains and losses = change
+            // of the net worth.
+            ChartCard {
+                Layout.fillWidth: true
+                implicitHeight: yearCol.implicitHeight + 50
+                title: qsTr("This year against the last years")
+
+                ColumnLayout {
+                    id: yearCol
+                    anchors.fill: parent
+                    spacing: 0
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 30
+                        spacing: 10
+                        Text { Layout.fillWidth: true; text: ""; font.pixelSize: 13 }
+                        Repeater {
+                            model: controller.yearLabels
+                            delegate: Text {
+                                required property string modelData
+                                Layout.preferredWidth: 160
+                                text: modelData
+                                font.pixelSize: 13
+                                font.bold: true
+                                color: Theme.overlay0
+                                horizontalAlignment: Text.AlignRight
+                            }
+                        }
+                    }
+                    Repeater {
+                        model: controller.yearRows
+                        delegate: Rectangle {
+                            id: yearRow
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 34
+                            color: index % 2 === 0 ? "transparent" : Theme.mantle
+                            radius: 4
+
+                            RowLayout {
+                                anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                spacing: 10
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: yearRow.modelData.label
+                                    font.pixelSize: 15
+                                    color: Theme.text
+                                }
+                                Repeater {
+                                    model: yearRow.modelData.values
+                                    delegate: Text {
+                                        required property string modelData
+                                        required property int index
+                                        Layout.preferredWidth: 160
+                                        text: modelData
+                                        font.pixelSize: 15
+                                        font.bold: true
+                                        color: yearRow.modelData.colors[index]
+                                        horizontalAlignment: Text.AlignRight
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 8
+                        wrapMode: Text.WordWrap
+                        text: qsTr("Savings = income − spending of the accounts of your net worth, without the internal "
+                            + "transfers. Savings + gains, losses and other changes = change of the net worth. The "
+                            + "other changes are the valuations of the investments, interest that is not in a "
+                            + "transaction, a corrected balance, and the opening balance of an account whose first "
+                            + "statement is in the year.")
+                        font.pixelSize: 12
+                        color: Theme.overlay0
+                    }
+                }
+            }
+
+            ChartCard {
+                Layout.fillWidth: true
+                implicitHeight: categoryCol.implicitHeight + 50
+                title: qsTr("Spending by category — this year (to date) against last year")
+
+                ColumnLayout {
+                    id: categoryCol
+                    anchors.fill: parent
+                    spacing: 0
+
+                    EmptyState {
+                        visible: controller.categoryComparison.length === 0
+                        message: qsTr("No spending this year or last year.")
+                    }
+                    RowLayout {
+                        visible: controller.categoryComparison.length > 0
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 30
+                        spacing: 10
+                        Text { Layout.fillWidth: true; text: qsTr("CATEGORY"); font.pixelSize: 13; font.bold: true; color: Theme.overlay0 }
+                        Text { Layout.preferredWidth: 140; text: qsTr("LAST YEAR"); font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                        Text { Layout.preferredWidth: 140; text: qsTr("THIS YEAR"); font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                        Text { Layout.preferredWidth: 140; text: qsTr("DIFFERENCE"); font.pixelSize: 13; font.bold: true; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                    }
+                    Repeater {
+                        model: controller.categoryComparison
+                        delegate: Rectangle {
+                            id: categoryRow
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 32
+                            color: index % 2 === 0 ? "transparent" : Theme.mantle
+                            radius: 4
+
+                            RowLayout {
+                                anchors { fill: parent; leftMargin: 10; rightMargin: 10 }
+                                spacing: 10
+                                Text { Layout.fillWidth: true; text: categoryRow.modelData.category; font.pixelSize: 15; color: Theme.text; elide: Text.ElideRight }
+                                Text { Layout.preferredWidth: 140; text: categoryRow.modelData.lastYearText; font.pixelSize: 15; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 140; text: categoryRow.modelData.thisYearText; font.pixelSize: 15; color: Theme.text; horizontalAlignment: Text.AlignRight }
+                                Text { Layout.preferredWidth: 140; text: categoryRow.modelData.diffText; font.pixelSize: 15; color: categoryRow.modelData.diffColor; horizontalAlignment: Text.AlignRight }
                             }
                         }
                     }

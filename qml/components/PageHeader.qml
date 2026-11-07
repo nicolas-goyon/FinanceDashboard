@@ -45,7 +45,7 @@ RowLayout {
 
     Text {
         visible: root.mock
-        text: "[MOCK]"
+        text: qsTr("[MOCK]")
         font.pixelSize: 14
         color: Theme.red
     }

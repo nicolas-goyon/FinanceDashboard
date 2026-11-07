@@ -19,7 +19,7 @@ Popup {
 
     property string dialogTitle: ""
     property string message: ""
-    property string confirmText: "Delete"
+    property string confirmText: qsTr("Delete")
     property string confirmVariant: "danger" // "danger" | "primary"
 
     signal confirmed()
@@ -45,7 +45,7 @@ Popup {
         RowLayout {
             Layout.topMargin: 6
             Item { Layout.fillWidth: true }
-            PillButton { text: "Cancel"; variant: "neutral"; onClicked: root.close() }
+            PillButton { text: qsTr("Cancel"); variant: "neutral"; onClicked: root.close() }
             PillButton {
                 text: root.confirmText
                 variant: root.confirmVariant
