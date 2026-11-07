@@ -29,7 +29,13 @@ builds, source archives). Then CI opens a pull request that merges the release b
 
 ---
 
-## v0.3.0 (current)
+## v0.3.1 (current)
+
+_No changes logged yet — add one with `python tools/version.py add <Section> "<text>"`._
+
+---
+
+## v0.3.0 (release in progress)
 
 ### Added
 - Privacy: the import removes every bank identifier from each row before it saves it or shows
