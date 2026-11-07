@@ -1349,6 +1349,14 @@ Les libellés des règles de catégorie suivent les nouvelles règles des noms d
             <source>Cannot move %1 to %2: %3</source>
             <translation>Impossible de déplacer %1 vers %2 : %3</translation>
         </message>
+        <message>
+            <source>Could not add the account type.</source>
+            <translation>Impossible d'ajouter le type de compte.</translation>
+        </message>
+        <message>
+            <source>Could not add the account category.</source>
+            <translation>Impossible d'ajouter la catégorie de compte.</translation>
+        </message>
     </context>
     <context>
         <name>DatabaseManagementController</name>
@@ -1417,6 +1425,34 @@ Les données de test d'avant la copie se trouvent dans :
         <message>
             <source>✓  Prod database copied</source>
             <translation>✓  Base de production copiée</translation>
+        </message>
+        <message>
+            <source>✓  Account types removed</source>
+            <translation>✓  Types de compte supprimés</translation>
+        </message>
+        <message>
+            <source>✓  Account types reset to the defaults</source>
+            <translation>✓  Types de compte par défaut rétablis</translation>
+        </message>
+        <message>
+            <source>✓  Account categories removed</source>
+            <translation>✓  Catégories de compte supprimées</translation>
+        </message>
+        <message>
+            <source>✓  Account categories reset to the defaults</source>
+            <translation>✓  Catégories de compte par défaut rétablies</translation>
+        </message>
+        <message>
+            <source>⚠  Account type reset failed — see application log</source>
+            <translation>⚠  Échec de la réinitialisation des types de compte — voir le journal de l'application</translation>
+        </message>
+        <message>
+            <source>⚠  Account category reset failed — see application log</source>
+            <translation>⚠  Échec de la réinitialisation des catégories de compte — voir le journal de l'application</translation>
+        </message>
+        <message>
+            <source>%1 — %2 account(s) changed</source>
+            <translation>%1 — %2 compte(s) modifié(s)</translation>
         </message>
     </context>
     <context>
@@ -1580,6 +1616,74 @@ Les données de test d'avant la copie se trouvent dans :
         <message>
             <source>Every category and subcategory is deleted. All transactions become uncategorized, and the learned category rules are deleted. Accounts and transactions stay. This cannot be undone.</source>
             <translation>Toutes les catégories et sous-catégories seront supprimées. Toutes les opérations deviennent sans catégorie, et les règles apprises sont effacées. Les comptes et les opérations sont conservés. Cette action est irréversible.</translation>
+        </message>
+        <message>
+            <source>Account types &amp; categories</source>
+            <translation>Types et catégories de compte</translation>
+        </message>
+        <message>
+            <source>Reset account types to the defaults</source>
+            <translation>Rétablir les types de compte par défaut</translation>
+        </message>
+        <message>
+            <source>Removes every account type, then adds back the default ones (CCP, Livret A, LDDS, PEL, Assurance Vie, PEA, CTO, Other). An account whose type is not in this list gets no type.</source>
+            <translation>Supprime tous les types de compte, puis rétablit ceux par défaut (CCP, Livret A, LDDS, PEL, Assurance Vie, PEA, CTO, Other). Un compte dont le type n'est pas dans cette liste n'a plus de type.</translation>
+        </message>
+        <message>
+            <source>Remove all account types</source>
+            <translation>Supprimer tous les types de compte</translation>
+        </message>
+        <message>
+            <source>Removes every account type, to build your own list. The accounts stay, with no type.</source>
+            <translation>Supprime tous les types de compte, pour créer votre propre liste. Les comptes sont conservés, sans type.</translation>
+        </message>
+        <message>
+            <source>Reset account categories to the defaults</source>
+            <translation>Rétablir les catégories de compte par défaut</translation>
+        </message>
+        <message>
+            <source>Removes every account category, then adds back the default ones (day-to-day, savings, investments, urgent savings). An account whose category is not in this list gets no category.</source>
+            <translation>Supprime toutes les catégories de compte, puis rétablit celles par défaut (courant, épargne, investissements, épargne de précaution). Un compte dont la catégorie n'est pas dans cette liste n'a plus de catégorie.</translation>
+        </message>
+        <message>
+            <source>Remove all account categories</source>
+            <translation>Supprimer toutes les catégories de compte</translation>
+        </message>
+        <message>
+            <source>Removes every account category, to build your own list. The accounts stay, with no category.</source>
+            <translation>Supprime toutes les catégories de compte, pour créer votre propre liste. Les comptes sont conservés, sans catégorie.</translation>
+        </message>
+        <message>
+            <source>Reset the account types to the defaults?</source>
+            <translation>Rétablir les types de compte par défaut ?</translation>
+        </message>
+        <message>
+            <source>Every account type is replaced with the default ones. An account keeps its type when a default type has the same name; the others get no type. This cannot be undone.</source>
+            <translation>Tous les types de compte seront remplacés par ceux par défaut. Un compte garde son type si un type par défaut porte le même nom ; les autres n'ont plus de type. Cette action est irréversible.</translation>
+        </message>
+        <message>
+            <source>Remove all account types?</source>
+            <translation>Supprimer tous les types de compte ?</translation>
+        </message>
+        <message>
+            <source>Every account type is deleted, and no account has a type after that. Accounts and transactions stay. This cannot be undone.</source>
+            <translation>Tous les types de compte seront supprimés, et plus aucun compte n'aura de type. Les comptes et les opérations sont conservés. Cette action est irréversible.</translation>
+        </message>
+        <message>
+            <source>Reset the account categories to the defaults?</source>
+            <translation>Rétablir les catégories de compte par défaut ?</translation>
+        </message>
+        <message>
+            <source>Every account category is replaced with the default ones. An account keeps its category when a default category has the same name; the others get no category. This cannot be undone.</source>
+            <translation>Toutes les catégories de compte seront remplacées par celles par défaut. Un compte garde sa catégorie si une catégorie par défaut porte le même nom ; les autres n'ont plus de catégorie. Cette action est irréversible.</translation>
+        </message>
+        <message>
+            <source>Remove all account categories?</source>
+            <translation>Supprimer toutes les catégories de compte ?</translation>
+        </message>
+        <message>
+            <source>Every account category is deleted, and no account has a category after that. Accounts and transactions stay. This cannot be undone.</source>
+            <translation>Toutes les catégories de compte seront supprimées, et plus aucun compte n'aura de catégorie. Les comptes et les opérations sont conservés. Cette action est irréversible.</translation>
         </message>
     </context>
     <context>

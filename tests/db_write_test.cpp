@@ -28,6 +28,7 @@
 #include "DatabaseManagementController.h"
 #include "TransfersController.h"
 #include "db/Database.h"
+#include "models/DefaultAccounts.h"
 #include "models/DefaultCategories.h"
 #include "models/Account.h"
 #include "models/AssetEntry.h"
@@ -37,6 +38,7 @@
 #include "utils/Formatter.h"
 
 #include <QDate>
+#include <QHash>
 #include <QRegularExpression>
 #include <QSet>
 #include <QSignalSpy>
@@ -51,6 +53,7 @@
 #include <algorithm>
 #include <array>
 #include <limits>
+#include <utility>
 
 namespace {
 
@@ -136,6 +139,7 @@ private slots:
     void defaultsAreAllOrNothing();
     void defaultCategoriesAreAFullSet();
     void categoryResetsKeepWhatStillExists();
+    void accountTypeAndCategoryResetsClearTheOthers();
     void mockDataHasTheSampleTransactions();
     void balanceHistoryFollowsTheBookingOrder();
     void usdAccountShowsItsCurrency();
@@ -921,6 +925,83 @@ void DbWriteTest::categoryResetsKeepWhatStillExists()
     controller.resetCategoriesToDefaults();
     QCOMPARE(reset.count(), 2);
     QCOMPARE(db.loadCategories().size(), Data::defaultCategories().size());
+}
+
+void DbWriteTest::accountTypeAndCategoryResetsClearTheOthers()
+{
+    // The account type and account category resets of Database management
+    // (#239): an account keeps a type (or category) that is in the new list,
+    // the others get none; the accounts and the transactions stay.
+    Database& db = Database::instance();
+    QVERIFY(db.addAccountType(QStringLiteral("CCP")) >= 0);
+    QVERIFY(db.addAccountType(QStringLiteral("Bank X")) >= 0);
+    QVERIFY(db.addAccountCategory(QStringLiteral("Savings"), QStringLiteral("#a6e3a1")) >= 0);
+    QVERIFY(db.addAccountCategory(QStringLiteral("My own"), QStringLiteral("#89b4fa")) >= 0);
+    const int checking = db.addAccount(QStringLiteral("Checking"), QStringLiteral("CCP"), QStringLiteral("My own"),
+                                       QStringLiteral("EUR"), QStringLiteral(""));
+    QVERIFY(db.addAccount(QStringLiteral("Joint"), QStringLiteral("Bank X"), QStringLiteral("Savings"),
+                          QStringLiteral("EUR"), QStringLiteral("")) >= 0);
+    QVERIFY(db.addAccount(QStringLiteral("Other bank"), QStringLiteral("Bank X"), QStringLiteral(""),
+                          QStringLiteral("EUR"), QStringLiteral("")) >= 0);
+    QVERIFY(db.insertTransactions(checking, {
+        transaction(QStringLiteral("CARREFOUR"), QStringLiteral(""), QStringLiteral("")),
+    }));
+    const auto byName = [&db]() {
+        QHash<QString, std::pair<QString, QString>> out;
+        for (const Data::Account& account : db.loadAccounts()) {
+            out.insert(account.name, {account.type, account.category});
+        }
+        return out;
+    };
+
+    // The types to the defaults (the test runs in English): CCP is there,
+    // "Bank X" is not; its two accounts lose their type.
+    int cleared = -1;
+    QVERIFY2(db.replaceAccountTypes(Data::defaultAccountTypes(), cleared), qPrintable(db.lastError()));
+    QCOMPARE(cleared, 2);
+    QCOMPARE(db.loadAccountTypes().size(), Data::defaultAccountTypes().size());
+    auto accounts = byName();
+    QCOMPARE(accounts.size(), qsizetype(3));
+    QCOMPARE(accounts.value(QStringLiteral("Checking")).first, QStringLiteral("CCP"));
+    QCOMPARE(accounts.value(QStringLiteral("Joint")).first, QString());
+    QCOMPARE(accounts.value(QStringLiteral("Other bank")).first, QString());
+
+    // The categories to the defaults: Savings is there, "My own" is not.
+    QVERIFY2(db.replaceAccountCategories(Data::defaultAccountCategories(), cleared), qPrintable(db.lastError()));
+    QCOMPARE(cleared, 1);
+    const QVector<Data::AccountCategory> categories = db.loadAccountCategories();
+    QCOMPARE(categories.size(), Data::defaultAccountCategories().size());
+    QCOMPARE(categories.first().name, Data::defaultAccountCategories().first().name);
+    QCOMPARE(categories.first().color, Data::defaultAccountCategories().first().color);
+    accounts = byName();
+    QCOMPARE(accounts.value(QStringLiteral("Checking")).second, QString());
+    QCOMPARE(accounts.value(QStringLiteral("Joint")).second, QStringLiteral("Savings"));
+
+    // Remove all, from the controller: no type, no category; the accounts and
+    // the transaction stay.
+    DatabaseManagementController controller;
+    QSignalSpy reset(&controller, &DatabaseManagementController::databaseReset);
+    controller.resetAccountTypes();
+    QCOMPARE(reset.count(), 1);
+    QVERIFY2(controller.statusText().contains(QStringLiteral("1 account(s)")), qPrintable(controller.statusText()));
+    controller.resetAccountCategories();
+    QCOMPARE(reset.count(), 2);
+    QVERIFY(db.loadAccountTypes().isEmpty());
+    QVERIFY(db.loadAccountCategories().isEmpty());
+    accounts = byName();
+    QCOMPARE(accounts.size(), qsizetype(3));
+    for (const auto& pair : std::as_const(accounts)) {
+        QCOMPARE(pair, std::make_pair(QString(), QString()));
+    }
+    QCOMPARE(db.transactionsForAccount(checking).size(), qsizetype(1));
+
+    // And back to the defaults from the controller: nothing to clear.
+    controller.resetAccountTypesToDefaults();
+    controller.resetAccountCategoriesToDefaults();
+    QCOMPARE(reset.count(), 4);
+    QVERIFY2(!controller.statusText().contains(QStringLiteral("account(s)")), qPrintable(controller.statusText()));
+    QCOMPARE(db.loadAccountTypes().size(), Data::defaultAccountTypes().size());
+    QCOMPARE(db.loadAccountCategories().size(), Data::defaultAccountCategories().size());
 }
 
 QTEST_GUILESS_MAIN(DbWriteTest)

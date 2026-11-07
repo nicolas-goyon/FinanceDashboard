@@ -4,6 +4,7 @@
 #include "models/Account.h"
 
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <QSqlDatabase>
 
@@ -61,6 +62,14 @@ public:
     // call these in the same SQL transaction as the rename itself.
     bool renameType(const QString& oldName, const QString& newName);
     bool renameCategory(const QString& oldName, const QString& newName);
+
+    // Resets of the account types and the account categories (#239): an
+    // account whose type (or category) is not empty and not in `kept` gets
+    // none. `cleared` is the number of accounts that changed. Database::
+    // replaceAccountTypes()/replaceAccountCategories() call these in the same
+    // SQL transaction as the new list.
+    bool clearTypesExcept(const QStringList& kept, int& cleared);
+    bool clearCategoriesExcept(const QStringList& kept, int& cleared);
 
     // All accounts, oldest first (insertion order via row id). Hashes left empty.
     [[nodiscard]] QVector<Data::Account> all() const;

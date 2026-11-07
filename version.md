@@ -41,6 +41,12 @@ builds, source archives). Then CI opens a pull request that merges the release b
   can now get its first one from the list. New components AddOptionComboBox, AddOptionPopup and
   NewOptionDialog, and new Qt Quick tests; the QML tests can import the components with their
   Theme.
+- Reset the account types and the account categories (#239): the Database Management page has a
+  card "Account types & categories" with "Reset to defaults" and "Remove all" for each list,
+  with a confirmation. An account keeps its type (or category) when a default has that name,
+  else it gets none; the status tells how many accounts changed. The default account types and
+  categories are now one list (models/DefaultAccounts.h) for the first start, "Reset to Mock
+  Data" and the resets.
 
 ---
 

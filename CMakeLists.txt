@@ -121,6 +121,8 @@ set(FD_CORE_SOURCES
     src/models/Account.h
     src/models/DefaultCategories.h
     src/models/DefaultCategories.cpp
+    src/models/DefaultAccounts.h
+    src/models/DefaultAccounts.cpp
     src/models/Transaction.h
     src/models/CategoryRule.h
     src/db/tables/SnapshotsTable.h

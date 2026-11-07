@@ -208,6 +208,17 @@ database, the files and the logs must see nothing more than the user sees in the
   category is deleted.
 - A subcategory gets a shade of the colour of its category: the same hue, another HSL
   lightness, from 95 to 215, and no two shades the same.
+- `Data::defaultAccountTypes()` and `Data::defaultAccountCategories()`
+  (`src/models/DefaultAccounts.h`) are the one list of the default account types (CCP,
+  Livret A, LDDS, PEL, Assurance Vie, PEA, CTO, Other; not translated) and account categories
+  (Day-to-day, Savings, Investments, Urgent savings; context `DefaultAccountCategories`). The
+  first run, the mock data and the account resets use them.
+- The same page has the account type and account category resets (#239): "Reset to defaults"
+  and "Remove all" for each list (`Database::replaceAccountTypes()` /
+  `replaceAccountCategories()`, one SQL transaction each). The accounts store the names as
+  text: an account keeps its type (or category) when that name is in the new list, else it gets
+  none. The status tells how many accounts changed. The demo accounts of the first run have no
+  reset: "Reset to Mock Data" writes them again with everything else.
 
 ### Copy of the prod database (Test app)
 
