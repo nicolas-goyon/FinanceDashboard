@@ -430,22 +430,30 @@ Item {
         RowLayout {
             spacing: 10
             Text { Layout.preferredWidth: 110; text: qsTr("Category"); font.pixelSize: 15; color: Theme.overlay0 }
-            ComboBox {
+            // "＋ New category…" adds a category and selects it (#237).
+            AddOptionComboBox {
                 id: editCategoryBox
                 Layout.fillWidth: true
                 onActivated: {
                     editSubcategoryBox.model = editDialog.subcategoryNames(editCategoryBox.currentText)
                     editSubcategoryBox.currentIndex = -1
                 }
+                addText: qsTr("＋ New category…")
+                onAddRequested: newEditOptionDialog.openForCategory()
             }
         }
         RowLayout {
             spacing: 10
             Text { Layout.preferredWidth: 110; text: qsTr("Subcategory"); font.pixelSize: 15; color: Theme.overlay0 }
-            ComboBox {
+            // A category with no subcategory yet: the list has only
+            // "＋ New subcategory…".
+            AddOptionComboBox {
                 id: editSubcategoryBox
                 Layout.fillWidth: true
-                enabled: count > 0
+                enabled: editCategoryBox.currentIndex >= 0
+                addText: qsTr("＋ New subcategory…")
+                onAddRequested: newEditOptionDialog.openForSubcategory(
+                    editDialog.categoryNames().indexOf(editCategoryBox.currentText))
             }
         }
         // #207: a move between two accounts of the net worth. Off also
@@ -454,6 +462,55 @@ Item {
             id: editTransferBox
             text: qsTr("Internal transfer (not income, not spending)")
             palette.windowText: Theme.text
+        }
+
+        // The dialog of "＋ New category…" and "＋ New subcategory…" (#237).
+        // It adds the category (or the subcategory of the selected category)
+        // and selects it. A name that is already there (CategoryController
+        // refuses it, case-insensitive) selects that category or subcategory.
+        NewOptionDialog {
+            id: newEditOptionDialog
+            withColor: true
+
+            property int categoryIndex: -1   // -1: a new category
+
+            function indexOfName(names, name) {
+                var wanted = name.toLowerCase()
+                for (var i = 0; i < names.length; ++i)
+                    if (names[i].toLowerCase() === wanted)
+                        return i
+                return -1
+            }
+
+            function openForCategory() {
+                categoryIndex = -1
+                openWith(qsTr("New category"), qsTr("e.g. Health"), Theme.blue)
+            }
+            function openForSubcategory(catIndex) {
+                if (catIndex < 0)
+                    return
+                categoryIndex = catIndex
+                openWith(qsTr("New subcategory of “%1”").arg(CategoryController.categories[catIndex].name),
+                         qsTr("e.g. Pharmacy"), CategoryController.suggestSubcategoryColor(catIndex))
+            }
+
+            onOptionAccepted: (name, color) => {
+                if (categoryIndex < 0) {
+                    CategoryController.addCategory(name, color)
+                    var names = editDialog.categoryNames()
+                    editCategoryBox.model = names
+                    var ci = indexOfName(names, name)
+                    editCategoryBox.currentIndex = ci
+                    editSubcategoryBox.model = ci >= 0 ? editDialog.subcategoryNames(names[ci]) : []
+                    editSubcategoryBox.currentIndex = -1
+                } else {
+                    var categoryName = CategoryController.categories[categoryIndex].name
+                    CategoryController.addSubcategory(categoryIndex, name, color)
+                    var subNames = editDialog.subcategoryNames(categoryName)
+                    editSubcategoryBox.model = subNames
+                    editSubcategoryBox.currentIndex = indexOfName(subNames, name)
+                }
+            }
         }
 
         onSaveClicked: {

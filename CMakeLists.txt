@@ -264,6 +264,9 @@ qt_add_qml_module(FinanceDashboard
         qml/components/MoneyFlow.qml
         qml/components/SidebarCategory.qml
         qml/components/ColorComboBox.qml
+        qml/components/AddOptionPopup.qml
+        qml/components/AddOptionComboBox.qml
+        qml/components/NewOptionDialog.qml
         qml/components/PageHeader.qml
         qml/components/PillButton.qml
         qml/components/GhostButton.qml

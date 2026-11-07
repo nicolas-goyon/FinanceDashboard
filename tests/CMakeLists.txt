@@ -239,8 +239,18 @@ set_tests_properties(calc_test PROPERTIES
 
 # qml_test
 #   The QML tests of tests/qml (Qt Quick Test): TableScrollView lets a vertical
-#   wheel over a wide table scroll the page. The tests import the components
-#   by path, so the app module is not needed.
+#   wheel over a wide table scroll the page; AddOptionComboBox and
+#   ColorComboBox have a last row "＋ New…" (#237).
+#
+#   A test imports the components with `import FinanceDashboard`: a copy of
+#   qml/components/*.qml in the build folder (qml_modules/FinanceDashboard),
+#   with a qmldir that declares Theme as a singleton. An import by path (as
+#   tst_tablescrollview.qml does) does not read `pragma Singleton`, so in such
+#   an import `Theme.<colour>` is undefined. The copy has no C++ type of the
+#   app: test only the components that do not use a controller.
+#   configure_file() copies again a component that changed; CONFIGURE_DEPENDS
+#   runs CMake again when a component is added or removed.
+#   QT_QUICK_CONTROLS_STYLE=Basic: the style of the app (main.cpp).
 
 find_package(Qt6 REQUIRED COMPONENTS QuickTest)
 
@@ -248,10 +258,26 @@ qt_add_executable(qml_test qml_test_main.cpp)
 target_link_libraries(qml_test PRIVATE Qt6::QuickTest Qt6::Quick)
 set_target_properties(qml_test PROPERTIES WIN32_EXECUTABLE OFF)
 
-add_test(NAME qml_test COMMAND qml_test -input ${CMAKE_CURRENT_SOURCE_DIR}/qml)
+set(FD_TEST_QML_MODULES "${CMAKE_CURRENT_BINARY_DIR}/qml_modules")
+set(fd_test_module_dir "${FD_TEST_QML_MODULES}/FinanceDashboard")
+file(GLOB fd_test_components CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/qml/components/*.qml")
+set(fd_test_qmldir "module FinanceDashboard\n")
+foreach(component IN LISTS fd_test_components)
+    get_filename_component(type_name "${component}" NAME_WE)
+    configure_file("${component}" "${fd_test_module_dir}/${type_name}.qml" COPYONLY)
+    if(type_name STREQUAL "Theme")
+        string(APPEND fd_test_qmldir "singleton ${type_name} 1.0 ${type_name}.qml\n")
+    else()
+        string(APPEND fd_test_qmldir "${type_name} 1.0 ${type_name}.qml\n")
+    endif()
+endforeach()
+file(WRITE "${fd_test_module_dir}/qmldir" "${fd_test_qmldir}")
+
+add_test(NAME qml_test
+    COMMAND qml_test -input ${CMAKE_CURRENT_SOURCE_DIR}/qml -import ${FD_TEST_QML_MODULES})
 set_tests_properties(qml_test PROPERTIES
     TIMEOUT 120
-    ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic"
 )
 
 # Every test target, so that CI and a local build need one target name:
