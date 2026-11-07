@@ -1,6 +1,7 @@
 #include "DatabaseManagementController.h"
 
 #include "db/Database.h"
+#include "models/DefaultAccounts.h"
 #include "models/DefaultCategories.h"
 #include "models/Transaction.h"
 
@@ -12,6 +13,7 @@
 #include <QFileInfo>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <QtLogging>
 #include <qtmetamacros.h> // for the emit macro (misc-include-cleaner)
@@ -80,6 +82,61 @@ void DatabaseManagementController::replaceCategories(const QVector<Data::Default
         text = tr("%1 — %2 transaction(s) uncategorized, %3 rule(s) removed")
                    .arg(doneText, QString::number(stats.uncategorizedTransactions),
                         QString::number(stats.removedRules));
+    }
+    setStatus(StatusMessage::Level::Success, text);
+    emit databaseReset();
+}
+
+void DatabaseManagementController::resetAccountTypes()
+{
+    replaceAccountTypes({}, tr("✓  Account types removed"));
+}
+
+void DatabaseManagementController::resetAccountTypesToDefaults()
+{
+    replaceAccountTypes(Data::defaultAccountTypes(), tr("✓  Account types reset to the defaults"));
+}
+
+void DatabaseManagementController::resetAccountCategories()
+{
+    replaceAccountCategories({}, tr("✓  Account categories removed"));
+}
+
+void DatabaseManagementController::resetAccountCategoriesToDefaults()
+{
+    replaceAccountCategories(Data::defaultAccountCategories(), tr("✓  Account categories reset to the defaults"));
+}
+
+void DatabaseManagementController::replaceAccountTypes(const QStringList& types, const QString& doneText)
+{
+    int cleared = 0;
+    if (!Database::instance().replaceAccountTypes(types, cleared)) {
+        qWarning().noquote() << "[DatabaseManagementController] account type reset failed:"
+                             << Database::instance().lastError();
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Account type reset failed — see application log"));
+        return;
+    }
+    setAccountResetStatus(doneText, cleared);
+}
+
+void DatabaseManagementController::replaceAccountCategories(const QVector<Data::DefaultAccountCategory>& categories,
+                                                            const QString& doneText)
+{
+    int cleared = 0;
+    if (!Database::instance().replaceAccountCategories(categories, cleared)) {
+        qWarning().noquote() << "[DatabaseManagementController] account category reset failed:"
+                             << Database::instance().lastError();
+        setStatus(StatusMessage::Level::Danger, tr("⚠  Account category reset failed — see application log"));
+        return;
+    }
+    setAccountResetStatus(doneText, cleared);
+}
+
+void DatabaseManagementController::setAccountResetStatus(const QString& doneText, int clearedAccounts)
+{
+    QString text = doneText;
+    if (clearedAccounts > 0) {
+        text = tr("%1 — %2 account(s) changed").arg(doneText, QString::number(clearedAccounts));
     }
     setStatus(StatusMessage::Level::Success, text);
     emit databaseReset();
@@ -190,22 +247,11 @@ bool DatabaseManagementController::seedMockData() // static, see header
         }
     }
 
-    // Same defaults as AccountController::seedDefaults().
-    struct SeedAccCat { QString name; QString color; };
-    const QVector<SeedAccCat> kAccountCategorySeed = {
-        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Day-to-day")),     "#89b4fa" },
-        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Savings")),        "#a6e3a1" },
-        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Investments")),    "#cba6f7" },
-        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Urgent savings")), "#f9e2af" },
-    };
-    for (const SeedAccCat& seedAccCat : kAccountCategorySeed) {
+    // The default account categories and account types (models/DefaultAccounts.h).
+    for (const Data::DefaultAccountCategory& seedAccCat : Data::defaultAccountCategories()) {
         check(database.addAccountCategory(seedAccCat.name, seedAccCat.color) >= 0, "an account category");
     }
-
-    static const QVector<QString> kAccountTypeSeed = {
-        "CCP", "Livret A", "LDDS", "PEL", "Assurance Vie", "PEA", "CTO", "Other",
-    };
-    for (const QString& name : kAccountTypeSeed) {
+    for (const QString& name : Data::defaultAccountTypes()) {
         check(database.addAccountType(name) >= 0, "an account type");
     }
 

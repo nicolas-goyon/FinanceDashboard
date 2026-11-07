@@ -176,7 +176,7 @@ ctest --test-dir build -C Release --output-on-failure
 
 `ctest` runs `predictor_selftest` (category prediction), `import_save_test` (the statement
 import, saved to a temporary database), `db_migration_test` (the schema upgrades),
-`db_write_test` (the writes of the table classes, the renames, the default data, the mock data,
+`db_write_test` (the writes of the table classes, the renames, the default data and its resets, the mock data,
 the balance history, the currency of an account, the checked database results, the amounts
 rounded to the cent and the account tags), `db_copy_test`
 (the copy of the prod database in the Test app), `update_test` (the versions, the update check and

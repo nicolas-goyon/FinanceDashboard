@@ -14,6 +14,7 @@
 #include "db/tables/CategoryRulesTable.h"
 #include "db/tables/SettingsTable.h"
 #include "models/Category.h"
+#include "models/DefaultAccounts.h"
 #include "models/DefaultCategories.h"
 #include "models/CategoryRule.h"
 #include "models/Account.h"
@@ -303,6 +304,14 @@ public:
         int removedRules = 0;
     };
     bool replaceCategories(const QVector<Data::DefaultCategory>& categories, CategoryResetStats& stats);
+
+    // ── Account type and account category resets (Database management, #239) ──
+    // Replace every account type (or account category) with `types` (or
+    // `categories`; empty: none at all), in one SQL transaction. An account
+    // keeps its type (or category) when that name is in the new list; else it
+    // has none. `clearedAccounts`: the number of accounts that changed.
+    bool replaceAccountTypes(const QStringList& types, int& clearedAccounts);
+    bool replaceAccountCategories(const QVector<Data::DefaultAccountCategory>& categories, int& clearedAccounts);
 
     // ── Copy of another database (the Test app, #130) ──────────────────────────
     // Replaces the open database with a copy of the database at `sourcePath`

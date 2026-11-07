@@ -7,6 +7,7 @@
 #include <QSqlQuery>
 #include <QSqlError>
 #include <QString>
+#include <QStringList>
 #include <QVariant>
 #include <QVector>
 #include <QDebug>
@@ -174,6 +175,54 @@ bool AccountsTable::renameCategory(const QString& oldName, const QString& newNam
         qWarning() << "[AccountsTable] renameCategory error:" << query.lastError().text();
     }
     return success;
+}
+
+namespace {
+// An account whose `column` (a column name of this file: "type" or
+// "category") is not empty and not in `kept` gets an empty value. Only the
+// names to clear need an UPDATE.
+bool clearValuesExcept(const QSqlDatabase& database, const char* column, const QStringList& kept, int& cleared)
+{
+    cleared = 0;
+    const QString name = QLatin1String(column);
+    QSqlQuery query(database);
+    if (!query.exec(QStringLiteral("SELECT DISTINCT %1 FROM accounts WHERE %1 <> '';").arg(name))) {
+        qWarning() << "[AccountsTable] clear" << name << "error:" << query.lastError().text();
+        return false;
+    }
+    QStringList toClear;
+    while (query.next()) {
+        const QString value = query.value(0).toString();
+        if (!kept.contains(value)) {
+            toClear.append(value);
+        }
+    }
+    query.finish();
+    QSqlQuery update(database);
+    if (!update.prepare(QStringLiteral("UPDATE accounts SET %1 = '' WHERE %1 = ?;").arg(name))) {
+        Sql::logPrepareError(update, "[AccountsTable] clearValuesExcept");
+        return false;
+    }
+    for (const QString& value : std::as_const(toClear)) {
+        update.addBindValue(value);
+        if (!update.exec()) {
+            qWarning() << "[AccountsTable] clear" << name << "error:" << update.lastError().text();
+            return false;
+        }
+        cleared += update.numRowsAffected();
+    }
+    return true;
+}
+} // namespace
+
+bool AccountsTable::clearTypesExcept(const QStringList& kept, int& cleared)
+{
+    return clearValuesExcept(db(), "type", kept, cleared);
+}
+
+bool AccountsTable::clearCategoriesExcept(const QStringList& kept, int& cleared)
+{
+    return clearValuesExcept(db(), "category", kept, cleared);
 }
 
 QVector<Data::Account> AccountsTable::all() const

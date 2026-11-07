@@ -5,6 +5,7 @@
 #include "utils/Formatter.h"
 #include "utils/Money.h"
 #include "models/Account.h"
+#include "models/DefaultAccounts.h"
 #include "models/Transaction.h"
 
 #include <QDate>
@@ -13,6 +14,7 @@
 #include <QMap>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantList>
 #include <QVariantMap>
 #include <Qt>
@@ -59,22 +61,9 @@ void AccountController::reload()
 
 void AccountController::seedDefaults()
 {
-    // Fixed list of banking/financial products, now DB-managed like
-    // category (see models/Account.h) — same defaults as the old hardcoded
-    // QStringList this replaced.
-    static const QVector<QString> kTypeSeed = {
-        "CCP", "Livret A", "LDDS", "PEL", "Assurance Vie", "PEA", "CTO", "Other",
-    };
-
-    // Same 4 usage buckets named in the product request: day-to-day basis,
-    // savings, investments, urgent saving.
-    struct SeedCat { QString name; QString color; };
-    const QVector<SeedCat> kCatSeed = {
-        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Day-to-day")),     "#89b4fa" },
-        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Savings")),        "#a6e3a1" },
-        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Investments")),    "#cba6f7" },
-        { Data::accountCategory(QT_TRANSLATE_NOOP("DefaultAccountCategories", "Urgent savings")), "#f9e2af" },
-    };
+    // The default account types and account categories (models/DefaultAccounts.h).
+    const QStringList kTypeSeed = Data::defaultAccountTypes();
+    const QVector<Data::DefaultAccountCategory> kCatSeed = Data::defaultAccountCategories();
 
     // Same accounts as before, minus iban/bic/number (no longer stored — see
     // models/Account.h). Accounts start with zero hashes now (nothing to
@@ -95,13 +84,13 @@ void AccountController::seedDefaults()
     // All the defaults and their record in one SQL transaction: when a write
     // fails, nothing is written, and the next start tries again (#37).
     Database& database = Database::instance();
-    const bool written = database.writeDefaults(Database::Defaults::Accounts, [&database, &kCatSeed, &kAccSeed]() {
+    const bool written = database.writeDefaults(Database::Defaults::Accounts, [&database, &kTypeSeed, &kCatSeed, &kAccSeed]() {
         for (const QString& name : kTypeSeed) {
             if (database.addAccountType(name) < 0) {
                 return false;
             }
         }
-        for (const SeedCat& seedCat : kCatSeed) {
+        for (const Data::DefaultAccountCategory& seedCat : kCatSeed) {
             if (database.addAccountCategory(seedCat.name, seedCat.color) < 0) {
                 return false;
             }

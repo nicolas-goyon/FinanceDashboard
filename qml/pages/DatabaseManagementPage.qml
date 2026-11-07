@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -270,6 +272,83 @@ Item {
                 }
             }
 
+            // ── Account type and account category resets (#239) — the lists
+            //    only; the accounts and the transactions stay. An account loses
+            //    a type or a category that is not in the new list
+            //    (DatabaseManagementController::resetAccountTypes() …,
+            //    Database::replaceAccountTypes()/replaceAccountCategories()).
+            ChartCard {
+                Layout.fillWidth: true
+                implicitHeight: accountListActionsCol.implicitHeight + 50
+                title: qsTr("Account types & categories")
+
+                ColumnLayout {
+                    id: accountListActionsCol
+                    anchors.fill: parent
+                    spacing: 16
+
+                    Repeater {
+                        model: [
+                            { title: qsTr("Reset account types to the defaults"),
+                              text: qsTr("Removes every account type, then adds back the default ones (CCP, Livret A, "
+                                  + "LDDS, PEL, Assurance Vie, PEA, CTO, Other). An account whose type is not "
+                                  + "in this list gets no type."),
+                              button: qsTr("Reset to defaults"), variant: "primary", mode: "accountTypeDefaults" },
+                            { title: qsTr("Remove all account types"),
+                              text: qsTr("Removes every account type, to build your own list. The accounts stay, "
+                                  + "with no type."),
+                              button: qsTr("Remove all"), variant: "danger", mode: "accountTypes" },
+                            { title: qsTr("Reset account categories to the defaults"),
+                              text: qsTr("Removes every account category, then adds back the default ones (day-to-day, "
+                                  + "savings, investments, urgent savings). An account whose category is not in "
+                                  + "this list gets no category."),
+                              button: qsTr("Reset to defaults"), variant: "primary", mode: "accountCategoryDefaults" },
+                            { title: qsTr("Remove all account categories"),
+                              text: qsTr("Removes every account category, to build your own list. The accounts "
+                                  + "stay, with no category."),
+                              button: qsTr("Remove all"), variant: "danger", mode: "accountCategories" }
+                        ]
+
+                        delegate: ColumnLayout {
+                            id: accountListAction
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            spacing: 16
+
+                            Rectangle {
+                                visible: accountListAction.index > 0
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 1
+                                color: Theme.surface0
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: 16
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    Text { text: accountListAction.modelData.title; font.pixelSize: 16; font.bold: true; color: Theme.text }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        wrapMode: Text.WordWrap
+                                        text: accountListAction.modelData.text
+                                        font.pixelSize: 13
+                                        color: Theme.overlay0
+                                    }
+                                }
+                                PillButton {
+                                    text: accountListAction.modelData.button
+                                    variant: accountListAction.modelData.variant
+                                    Layout.preferredHeight: 32
+                                    onClicked: confirmDialog.openFor(accountListAction.modelData.mode)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // ── Per-account cleanup — remove specific data instead of wiping
             //    everything (see ARCHITECTURE.MD § Database Management). "Clear
             //    transactions" leaves the account/hashes/checkpoints in place;
@@ -412,12 +491,14 @@ Item {
         onConfirmed: controller.copyProdDatabase()
     }
 
-    // ── Confirmation dialog (shared by the four actions) ─────────────────────
+    // ── Confirmation dialog (shared by the eight actions) ────────────────────
     ConfirmDialog {
         id: confirmDialog
         width: 380
 
-        property string mode: "reset" // "reset" | "mock" | "categories" | "categoryDefaults"
+        // "reset" | "mock" | "categories" | "categoryDefaults" | "accountTypes"
+        // | "accountTypeDefaults" | "accountCategories" | "accountCategoryDefaults"
+        property string mode: "reset"
 
         function openFor(m) {
             mode = m
@@ -435,6 +516,27 @@ Item {
                     + "category when a default category has the same name; the others become uncategorized. "
                     + "The learned rules of a removed category are deleted. This cannot be undone.")
                 confirmText = qsTr("Reset to defaults")
+            } else if (m === "accountTypeDefaults") {
+                dialogTitle = qsTr("Reset the account types to the defaults?")
+                message = qsTr("Every account type is replaced with the default ones. An account keeps its type when "
+                    + "a default type has the same name; the others get no type. This cannot be undone.")
+                confirmText = qsTr("Reset to defaults")
+            } else if (m === "accountTypes") {
+                dialogTitle = qsTr("Remove all account types?")
+                message = qsTr("Every account type is deleted, and no account has a type after that. Accounts and "
+                    + "transactions stay. This cannot be undone.")
+                confirmText = qsTr("Remove all")
+            } else if (m === "accountCategoryDefaults") {
+                dialogTitle = qsTr("Reset the account categories to the defaults?")
+                message = qsTr("Every account category is replaced with the default ones. An account keeps its "
+                    + "category when a default category has the same name; the others get no category. This "
+                    + "cannot be undone.")
+                confirmText = qsTr("Reset to defaults")
+            } else if (m === "accountCategories") {
+                dialogTitle = qsTr("Remove all account categories?")
+                message = qsTr("Every account category is deleted, and no account has a category after that. "
+                    + "Accounts and transactions stay. This cannot be undone.")
+                confirmText = qsTr("Remove all")
             } else {
                 dialogTitle = qsTr("Remove all categories?")
                 message = qsTr("Every category and subcategory is deleted. All transactions become uncategorized, and the "
@@ -451,6 +553,14 @@ Item {
                 controller.resetToMock()
             else if (mode === "categoryDefaults")
                 controller.resetCategoriesToDefaults()
+            else if (mode === "accountTypeDefaults")
+                controller.resetAccountTypesToDefaults()
+            else if (mode === "accountTypes")
+                controller.resetAccountTypes()
+            else if (mode === "accountCategoryDefaults")
+                controller.resetAccountCategoriesToDefaults()
+            else if (mode === "accountCategories")
+                controller.resetAccountCategories()
             else
                 controller.resetCategories()
         }

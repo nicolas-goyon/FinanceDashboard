@@ -2085,6 +2085,51 @@ bool Database::replaceCategories(const QVector<Data::DefaultCategory>& categorie
     });
 }
 
+bool Database::replaceAccountTypes(const QStringList& types, int& clearedAccounts)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    clearedAccounts = 0;
+    return inTransaction(QStringLiteral("replaceAccountTypes"), [&]() {
+        QSqlQuery query(m_db);
+        if (!query.exec(QStringLiteral("DELETE FROM account_types;"))) {
+            m_lastError = sqlText(query.lastError());
+            return false;
+        }
+        for (const QString& name : types) {
+            if (m_accountTypesTable.insert(name) < 0) {
+                m_lastError = QCoreApplication::translate("Database", "Could not add the account type.");
+                return false;
+            }
+        }
+        return m_accountsTable.clearTypesExcept(types, clearedAccounts);
+    });
+}
+
+bool Database::replaceAccountCategories(const QVector<Data::DefaultAccountCategory>& categories, int& clearedAccounts)
+{
+    if (!isOpen()) { m_lastError = "Database not open."; return false; }
+    clearedAccounts = 0;
+    QStringList names;
+    names.reserve(categories.size());
+    for (const Data::DefaultAccountCategory& category : categories) {
+        names.append(category.name);
+    }
+    return inTransaction(QStringLiteral("replaceAccountCategories"), [&]() {
+        QSqlQuery query(m_db);
+        if (!query.exec(QStringLiteral("DELETE FROM account_categories;"))) {
+            m_lastError = sqlText(query.lastError());
+            return false;
+        }
+        for (const Data::DefaultAccountCategory& category : categories) {
+            if (m_accountCategoriesTable.insert(category.name, category.color) < 0) {
+                m_lastError = QCoreApplication::translate("Database", "Could not add the account category.");
+                return false;
+            }
+        }
+        return m_accountsTable.clearCategoriesExcept(names, clearedAccounts);
+    });
+}
+
 bool Database::resetAll()
 {
     if (!isOpen()) { m_lastError = "Database not open."; return false; }

@@ -3,10 +3,13 @@
 
 #include "utils/StatusMessage.h"
 
+#include "models/DefaultAccounts.h"
 #include "models/DefaultCategories.h"
 
 #include <QObject>
 #include <QString>
+#include <QStringList>
+#include <QVector>
 #include <QtQml/qqml.h>
 
 // ── DatabaseManagementController ──────────────────────────────────────────────
@@ -102,6 +105,18 @@ public:
     Q_INVOKABLE void resetCategories();
     Q_INVOKABLE void resetCategoriesToDefaults();
 
+    // ── Account type and account category resets (#239) ─────────────────────
+    // Remove every account type (or account category), or replace them with
+    // the defaults of models/DefaultAccounts.h, in the language of the app.
+    // An account keeps its type (or category) when a default has that name;
+    // the others get none (Database::replaceAccountTypes()/
+    // replaceAccountCategories()). Accounts, transactions and transaction
+    // categories stay. Emits databaseReset().
+    Q_INVOKABLE void resetAccountTypes();
+    Q_INVOKABLE void resetAccountTypesToDefaults();
+    Q_INVOKABLE void resetAccountCategories();
+    Q_INVOKABLE void resetAccountCategoriesToDefaults();
+
     // ── Per-account cleanup (see ARCHITECTURE.MD § Database Management) ────────
     // Deletes every transaction for `accountId` but leaves the account, its
     // hashes, and its balance checkpoints in place — narrower than
@@ -136,6 +151,11 @@ signals:
 
 private:
     void replaceCategories(const QVector<Data::DefaultCategory>& categories, const QString& doneText);
+    void replaceAccountTypes(const QStringList& types, const QString& doneText);
+    void replaceAccountCategories(const QVector<Data::DefaultAccountCategory>& categories, const QString& doneText);
+    // The status after an account type or account category reset: `doneText`,
+    // and how many accounts lost their type (or category), if any.
+    void setAccountResetStatus(const QString& doneText, int clearedAccounts);
     void setStatus(StatusMessage::Level level, const QString& msg);
     // False when a write failed (the application log has which one): the
     // status then says it, instead of a success (#38).
