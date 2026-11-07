@@ -33,7 +33,10 @@ qml/pages/            One file for each page. Display only.
 qml/components/       Shared QML components (ChartCard, PillButton, FormDialog, HoverPoint, …).
 qml/components/Theme.qml  Every colour of the QML (a singleton, `Theme.<name>`).
 qml/components/AccountFormDialog.qml  The form of an account (add, edit). The accounts page and the
-                      import review ("＋ New account") use it.
+                      import review ("＋ New account…" in the target account list) use it.
+qml/components/AddOptionComboBox.qml  A ComboBox with a last row "＋ New…" (see § Drop-down lists).
+                      AddOptionPopup.qml is its popup; ColorComboBox uses it too.
+                      NewOptionDialog.qml is the dialog of the row (a name, and a colour).
 qml/components/TableScrollView.qml  The ScrollView of a wide table in a page: a vertical wheel
                       scrolls the page, a sideways wheel scrolls the table.
 src/controllers/      One subfolder for each domain. One controller class for each page.
@@ -48,7 +51,9 @@ src/update/           Release list, versions and SHA256SUMS parsing, with no net
 src/startup/          Start-up checks (StartupChecks) and the QML network block (LocalOnlyNetwork).
 src/utils/            Money, AccountHashing and other helpers.
 tests/                The CTest suites. tests/CMakeLists.txt has one comment for each test.
-tests/qml/            The QML tests (Qt Quick Test, run by qml_test).
+tests/qml/            The QML tests (Qt Quick Test, run by qml_test). A test imports the components
+                      with `import FinanceDashboard`: a copy of qml/components with Theme as a
+                      singleton (tests/CMakeLists.txt), with no C++ type of the app.
 i18n/                 The translations (financedashboard_fr.ts). See § Text and language rule.
 tools/                version.py, release_flow.py, Docker wrappers, requirement checks, analyzers.
 launcher/             The start-up launcher (Windows exe, Linux script).
@@ -79,6 +84,25 @@ of an import (`SnapshotImportController`, `QtConcurrent::run`, #52):
 4. Before the rows get the result, the controller emits `predictionsAboutToBeApplied()`. The
    page then gives the text of a focused NAME field to `setRowName()`. This is necessary because
    the new rows replace the field.
+
+### Drop-down lists
+
+A list of things that are simple to make (a name, and sometimes a colour) has a last row
+"＋ New…" (#237): use `AddOptionComboBox`, or `ColorComboBox` with `addText`.
+
+- The row is the `footer` of the ListView of the popup (`AddOptionPopup.qml`), not an item of the
+  model. So the model, `count` and `currentIndex` do not change, and a click on the row does not
+  emit `activated`. The list also opens when the model is empty.
+- A click closes the list and emits `addRequested()`. The page opens `NewOptionDialog` (or the
+  account form for an account), calls the controller to add the item, then selects it. The
+  controllers refuse a name that is already in the list (case-insensitive): the page then
+  selects that item.
+- These lists have the row: the account type and the account category (account form); the
+  category and the subcategory (each row of the import review, and the edit dialog of a
+  transaction); the target account (import review, it opens the account form).
+- Keep a plain `ComboBox` for a fixed list (currency, language, update channel, import template,
+  month) and for a list that selects an existing item to show or change (the account selectors
+  of the Transactions, Account Details and Database Management pages).
 
 ## Add a page
 

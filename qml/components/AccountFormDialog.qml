@@ -43,6 +43,15 @@ FormDialog {
     function typeNames() {
         return AccountController.accountTypes.map(function(t) { return t.name })
     }
+    // Index of `name` in `items` ({name, …} objects), case-insensitive as the
+    // duplicate check of AccountController; -1 if it is not there.
+    function indexOfName(items, name) {
+        var wanted = name.toLowerCase()
+        for (var i = 0; i < items.length; ++i)
+            if (items[i].name.toLowerCase() === wanted)
+                return i
+        return -1
+    }
     function currencyIndexForCode(code) {
         for (var i = 0; i < currencyOptions.length; ++i)
             if (currencyOptions[i].code === code)
@@ -88,12 +97,15 @@ FormDialog {
     RowLayout {
         spacing: 10
         Text { Layout.preferredWidth: 70; text: qsTr("Type"); font.pixelSize: 15; color: Theme.overlay0 }
-        ComboBox {
+        // "＋ New type…" adds a type and selects it (#237).
+        AddOptionComboBox {
             id: accTypeBox
             Layout.fillWidth: true
             model: AccountController.accountTypes
             textRole: "name"
             displayText: currentIndex >= 0 ? currentText : accountDialog.keptText(accountDialog.keptType)
+            addText: qsTr("＋ New type…")
+            onAddRequested: newTypeDialog.openWith(qsTr("New account type"), qsTr("e.g. Livret A"))
         }
     }
     // After "Reset Database" the list of types is empty (#62).
@@ -101,20 +113,24 @@ FormDialog {
         visible: AccountController.accountTypes.length === 0
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        text: qsTr("There is no account type. The account is saved without a type. To add types, go to "
-            + "Account Management → \"Account types & categories\".")
+        text: qsTr("There is no account type. Add one with \"＋ New type…\" in the list, or save the "
+            + "account without a type.")
         font.pixelSize: 13
         color: Theme.yellow
     }
     RowLayout {
         spacing: 10
         Text { Layout.preferredWidth: 70; text: qsTr("Category"); font.pixelSize: 15; color: Theme.overlay0 }
-        ComboBox {
+        // "＋ New category…" adds an account category and selects it (#237).
+        AddOptionComboBox {
             id: accCategoryBox
             Layout.fillWidth: true
             model: AccountController.accountCategories
             textRole: "name"
             displayText: currentIndex >= 0 ? currentText : accountDialog.keptText(accountDialog.keptCategory)
+            addText: qsTr("＋ New category…")
+            onAddRequested: newCategoryDialog.openWith(qsTr("New account category"),
+                                                       qsTr("e.g. Urgent savings"), Theme.blue)
         }
     }
     RowLayout {
@@ -144,6 +160,24 @@ FormDialog {
             + "child): the money that goes to it then counts as spending.")
         font.pixelSize: 12
         color: Theme.overlay0
+    }
+
+    // The dialogs of the "＋ New…" rows (#237). A name that is already in the
+    // list (AccountController refuses it, case-insensitive) selects that item.
+    NewOptionDialog {
+        id: newTypeDialog
+        onOptionAccepted: (name) => {
+            AccountController.addAccountType(name)
+            accTypeBox.currentIndex = accountDialog.indexOfName(AccountController.accountTypes, name)
+        }
+    }
+    NewOptionDialog {
+        id: newCategoryDialog
+        withColor: true
+        onOptionAccepted: (name, color) => {
+            AccountController.addAccountCategory(name, color)
+            accCategoryBox.currentIndex = accountDialog.indexOfName(AccountController.accountCategories, name)
+        }
     }
 
     onSaveClicked: {

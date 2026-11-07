@@ -403,13 +403,18 @@ Item {
                         RowLayout {
                             spacing: 10
                             Text { text: qsTr("Target account"); font.pixelSize: 15; color: Theme.overlay0 }
-                            ComboBox {
+                            // No account fits the statement: "＋ New account…",
+                            // the last row of the list, opens the account form,
+                            // and the new account becomes the target (#232, #237).
+                            AddOptionComboBox {
                                 id: accountBox
                                 Layout.preferredWidth: 260
                                 model: AccountController.accounts
                                 textRole: "name"
                                 currentIndex: page.selectedAccountIndex
                                 onActivated: page.selectAccountIndex(currentIndex)
+                                addText: qsTr("＋ New account…")
+                                onAddRequested: newAccountDialog.openForNew()
                             }
                             Text {
                                 visible: page.matchedAccountIndex >= 0 && page.matchedAccountIndex === page.selectedAccountIndex
@@ -429,17 +434,10 @@ Item {
                             Text {
                                 visible: page.matchedAccountIndex < 0
                                 text: AccountController.accounts.length > 0
-                                      ? qsTr("⚠ no automatic match — please pick the account")
-                                      : qsTr("⚠ no account yet — create one")
+                                      ? qsTr("⚠ no automatic match — pick the account, or \"＋ New account…\" in the list")
+                                      : qsTr("⚠ no account yet — pick \"＋ New account…\" in the list")
                                 font.pixelSize: 13
                                 color: Theme.yellow
-                            }
-                            // No account fits the statement: create it here,
-                            // and it becomes the target account.
-                            GhostButton {
-                                visible: page.matchedAccountIndex < 0
-                                text: qsTr("＋ New account")
-                                onClicked: newAccountDialog.openForNew()
                             }
                         }
 
@@ -716,6 +714,9 @@ Item {
                                             Text { Layout.preferredWidth: columnWidths.credit;  text: txRow.modelData.creditText; font.pixelSize: 15; color: Theme.green; horizontalAlignment: Text.AlignRight }
                                             Text { Layout.preferredWidth: columnWidths.balance; text: txRow.modelData.balanceText; font.pixelSize: 14; color: Theme.overlay0; horizontalAlignment: Text.AlignRight }
 
+                                            // "＋ New…" adds a category or a
+                                            // subcategory and gives it to this row
+                                            // (#237, newRowOptionDialog below).
                                             ColorComboBox {
                                                 id: categoryBox
                                                 Layout.preferredWidth: columnWidths.category
@@ -723,19 +724,27 @@ Item {
                                                 items: CategoryController.categories
                                                 currentName: txRow.modelData.category
                                                 onNameActivated: (name) => controller.setRowCategory(txRow.modelData.index, name)
+                                                addText: qsTr("＋ New category…")
+                                                onAddRequested: newRowOptionDialog.openForCategory(txRow.modelData.index)
                                             }
 
                                             ColorComboBox {
+                                                id: subcategoryBox
                                                 Layout.preferredWidth: columnWidths.subcategory
                                                 Layout.preferredHeight: 36
-                                                readonly property var subItems: {
-                                                    var cat = CategoryController.categories.find(function(c) { return c.name === txRow.modelData.category })
-                                                    return cat ? cat.subcategories : []
-                                                }
-                                                items: subItems
-                                                enabled: subItems.length > 0
+                                                readonly property int categoryIndex:
+                                                    CategoryController.categories.findIndex(function(c) { return c.name === txRow.modelData.category })
+                                                readonly property var subItems: subcategoryBox.categoryIndex >= 0
+                                                    ? CategoryController.categories[subcategoryBox.categoryIndex].subcategories : []
+                                                items: subcategoryBox.subItems
+                                                // A category with no subcategory yet: the
+                                                // list has only "＋ New subcategory…".
+                                                enabled: subcategoryBox.categoryIndex >= 0
                                                 currentName: txRow.modelData.subcategory
                                                 onNameActivated: (name) => controller.setRowSubcategory(txRow.modelData.index, name)
+                                                addText: qsTr("＋ New subcategory…")
+                                                onAddRequested: newRowOptionDialog.openForSubcategory(txRow.modelData.index,
+                                                                                                      subcategoryBox.categoryIndex)
                                             }
 
                                             // Pre-formatted in C++ (Fmt::confidenceVariant()/
@@ -1377,5 +1386,53 @@ Item {
     AccountFormDialog {
         id: newAccountDialog
         onAccountAdded: (index) => page.selectAccountIndex(index)
+    }
+
+    // The dialog of "＋ New category…" and "＋ New subcategory…" in the rows
+    // of the review (#237). It adds the category (or the subcategory of the
+    // category of the row) and gives it to the row. A name that is already
+    // there (CategoryController refuses it, case-insensitive) gives the row
+    // that category or subcategory.
+    NewOptionDialog {
+        id: newRowOptionDialog
+        withColor: true
+
+        property int rowIndex: -1
+        property int categoryIndex: -1   // -1: a new category
+
+        function indexOfName(items, name) {
+            var wanted = name.toLowerCase()
+            for (var i = 0; i < items.length; ++i)
+                if (items[i].name.toLowerCase() === wanted)
+                    return i
+            return -1
+        }
+
+        function openForCategory(row) {
+            rowIndex = row
+            categoryIndex = -1
+            openWith(qsTr("New category"), qsTr("e.g. Health"), Theme.blue)
+        }
+        function openForSubcategory(row, catIndex) {
+            rowIndex = row
+            categoryIndex = catIndex
+            openWith(qsTr("New subcategory of “%1”").arg(CategoryController.categories[catIndex].name),
+                     qsTr("e.g. Pharmacy"), CategoryController.suggestSubcategoryColor(catIndex))
+        }
+
+        onOptionAccepted: (name, color) => {
+            if (categoryIndex < 0) {
+                CategoryController.addCategory(name, color)
+                var ci = indexOfName(CategoryController.categories, name)
+                if (ci >= 0)
+                    controller.setRowCategory(rowIndex, CategoryController.categories[ci].name)
+            } else {
+                CategoryController.addSubcategory(categoryIndex, name, color)
+                var subs = CategoryController.categories[categoryIndex].subcategories
+                var si = indexOfName(subs, name)
+                if (si >= 0)
+                    controller.setRowSubcategory(rowIndex, subs[si].name)
+            }
+        }
     }
 }

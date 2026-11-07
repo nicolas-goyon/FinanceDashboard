@@ -58,11 +58,25 @@ ComboBox {
     property string currentName: ""
     // Swatch/background color used when nothing is selected / name not found.
     property color emptyColor: Theme.surface1
+    // Text of a last row "＋ New…" in the list (#237, see AddOptionPopup.qml).
+    // Empty: no last row.
+    property string addText: ""
 
     signal nameActivated(string name)
+    // A click on the last row "＋ New…".
+    signal addRequested()
+
+    popup: AddOptionPopup {
+        comboBox: control
+        addText: control.addText
+        onAddClicked: control.addRequested()
+    }
 
     model: items
     textRole: "name"
+    // The size of the names in the list and in the box (delegate and
+    // contentItem below); the last row "＋ New…" takes this font.
+    font.pixelSize: 15
 
     function indexForName(name) {
         for (var i = 0; i < items.length; ++i)

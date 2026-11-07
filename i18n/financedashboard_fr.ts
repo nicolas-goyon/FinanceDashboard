@@ -163,10 +163,6 @@
             <translation>Type</translation>
         </message>
         <message>
-            <source>There is no account type. The account is saved without a type. To add types, go to Account Management → "Account types &amp; categories".</source>
-            <translation>Il n'y a aucun type de compte. Le compte est enregistré sans type. Pour ajouter des types, allez dans Gestion des comptes → « Types et catégories de compte ».</translation>
-        </message>
-        <message>
             <source>Category</source>
             <translation>Catégorie</translation>
         </message>
@@ -189,6 +185,34 @@
         <message>
             <source>Turn it off for an account that you only follow (a joint account, the account of a child): the money that goes to it then counts as spending.</source>
             <translation>Désactivez-le pour un compte que vous suivez seulement (un compte joint, le compte d'un enfant) : l'argent qui y est versé compte alors comme une dépense.</translation>
+        </message>
+        <message>
+            <source>＋ New type…</source>
+            <translation>＋ Nouveau type…</translation>
+        </message>
+        <message>
+            <source>New account type</source>
+            <translation>Nouveau type de compte</translation>
+        </message>
+        <message>
+            <source>e.g. Livret A</source>
+            <translation>ex. Livret A</translation>
+        </message>
+        <message>
+            <source>There is no account type. Add one with "＋ New type…" in the list, or save the account without a type.</source>
+            <translation>Il n'y a aucun type de compte. Ajoutez-en un avec « ＋ Nouveau type… » dans la liste, ou enregistrez le compte sans type.</translation>
+        </message>
+        <message>
+            <source>＋ New category…</source>
+            <translation>＋ Nouvelle catégorie…</translation>
+        </message>
+        <message>
+            <source>New account category</source>
+            <translation>Nouvelle catégorie de compte</translation>
+        </message>
+        <message>
+            <source>e.g. Urgent savings</source>
+            <translation>ex. Épargne de précaution</translation>
         </message>
     </context>
     <context>
@@ -486,6 +510,30 @@
         <message>
             <source>Internal transfer (not income, not spending)</source>
             <translation>Virement interne (ni revenu, ni dépense)</translation>
+        </message>
+        <message>
+            <source>＋ New category…</source>
+            <translation>＋ Nouvelle catégorie…</translation>
+        </message>
+        <message>
+            <source>＋ New subcategory…</source>
+            <translation>＋ Nouvelle sous-catégorie…</translation>
+        </message>
+        <message>
+            <source>New category</source>
+            <translation>Nouvelle catégorie</translation>
+        </message>
+        <message>
+            <source>e.g. Health</source>
+            <translation>ex. Santé</translation>
+        </message>
+        <message>
+            <source>New subcategory of “%1”</source>
+            <translation>Nouvelle sous-catégorie de « %1 »</translation>
+        </message>
+        <message>
+            <source>e.g. Pharmacy</source>
+            <translation>ex. Pharmacie</translation>
         </message>
     </context>
     <context>
@@ -2005,18 +2053,6 @@ Les données de test d'avant la copie se trouvent dans :
             <translation>⚠ l'étiquette suggère « %1 » : Enregistrer lie aussi ce compte</translation>
         </message>
         <message>
-            <source>⚠ no automatic match — please pick the account</source>
-            <translation>⚠ aucune correspondance automatique — choisissez le compte</translation>
-        </message>
-        <message>
-            <source>⚠ no account yet — create one</source>
-            <translation>⚠ aucun compte pour l'instant — créez-en un</translation>
-        </message>
-        <message>
-            <source>＋ New account</source>
-            <translation>＋ Nouveau compte</translation>
-        </message>
-        <message>
             <source>⚠ Not linked yet — Save links it</source>
             <translation>⚠ Pas encore lié — Enregistrer le lie</translation>
         </message>
@@ -2247,6 +2283,42 @@ Les données de test d'avant la copie se trouvent dans :
         <message>
             <source>Add adjustment transaction</source>
             <translation>Ajouter une opération d'ajustement</translation>
+        </message>
+        <message>
+            <source>＋ New account…</source>
+            <translation>＋ Nouveau compte…</translation>
+        </message>
+        <message>
+            <source>⚠ no automatic match — pick the account, or "＋ New account…" in the list</source>
+            <translation>⚠ aucune correspondance automatique — choisissez le compte, ou « ＋ Nouveau compte… » dans la liste</translation>
+        </message>
+        <message>
+            <source>⚠ no account yet — pick "＋ New account…" in the list</source>
+            <translation>⚠ aucun compte pour l'instant — choisissez « ＋ Nouveau compte… » dans la liste</translation>
+        </message>
+        <message>
+            <source>＋ New category…</source>
+            <translation>＋ Nouvelle catégorie…</translation>
+        </message>
+        <message>
+            <source>＋ New subcategory…</source>
+            <translation>＋ Nouvelle sous-catégorie…</translation>
+        </message>
+        <message>
+            <source>New category</source>
+            <translation>Nouvelle catégorie</translation>
+        </message>
+        <message>
+            <source>e.g. Health</source>
+            <translation>ex. Santé</translation>
+        </message>
+        <message>
+            <source>New subcategory of “%1”</source>
+            <translation>Nouvelle sous-catégorie de « %1 »</translation>
+        </message>
+        <message>
+            <source>e.g. Pharmacy</source>
+            <translation>ex. Pharmacie</translation>
         </message>
     </context>
     <context>
@@ -2648,6 +2720,25 @@ Les données de test d'avant la copie se trouvent dans :
         <message>
             <source>Uncategorized</source>
             <translation>Sans catégorie</translation>
+        </message>
+    </context>
+    <context>
+        <name>NewOptionDialog</name>
+        <message>
+            <source>Add</source>
+            <translation>Ajouter</translation>
+        </message>
+        <message>
+            <source>Name</source>
+            <translation>Nom</translation>
+        </message>
+        <message>
+            <source>Color</source>
+            <translation>Couleur</translation>
+        </message>
+        <message>
+            <source>Choose color</source>
+            <translation>Choisir une couleur</translation>
         </message>
     </context>
     <context>
