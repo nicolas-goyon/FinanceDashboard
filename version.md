@@ -29,7 +29,15 @@ builds, source archives). Then CI opens a pull request that merges the release b
 
 ---
 
-## v0.3.0 (current)
+## v0.3.0 — 2026-11-07 — Net worth and privacy
+
+Net worth and privacy release. The import removes every bank identifier before it saves or
+shows a row, the old identifiers are cleaned from existing databases, and the log shows no
+statement data. Each account can be part of the net worth, and the moves of money between these
+accounts are internal transfers, not income or spending. The investment accounts get
+valuations. Overview, Cash Flow and Savings show real data, with a yearly summary on the
+Overview. The app is available in French, a new database has more default categories, the
+categories can be reset, and an account can be created from the import review.
 
 ### Added
 - Privacy: the import removes every bank identifier from each row before it saves it or shows

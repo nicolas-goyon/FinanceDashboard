@@ -3,9 +3,9 @@
   "releases": [
     {
       "version": "0.3.0",
-      "date": null,
-      "title": null,
-      "summary": "",
+      "date": "2026-11-07",
+      "title": "Net worth and privacy",
+      "summary": "Net worth and privacy release. The import removes every bank identifier before it saves or shows a row, the old identifiers are cleaned from existing databases, and the log shows no statement data. Each account can be part of the net worth, and the moves of money between these accounts are internal transfers, not income or spending. The investment accounts get valuations. Overview, Cash Flow and Savings show real data, with a yearly summary on the Overview. The app is available in French, a new database has more default categories, the categories can be reset, and an account can be created from the import review.",
       "sections": [
         {
           "name": "Added",
